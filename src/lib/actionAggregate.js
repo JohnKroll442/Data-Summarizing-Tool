@@ -1,0 +1,189 @@
+/**
+ * Action-level aggregation for the Action View summary table.
+ *
+ * One row per distinct action — keyed by USER_ACTION + ACTION_TIMESTAMP so
+ * the same action fired twice (e.g. two "Input control state changed"
+ * events) stay separate.
+ *
+ * Columns:
+ *   User · Action name · Widget count (distinct WIDGET_IDs) ·
+ *   Max frontend · Max network · Max backend
+ *
+ * In this CSV shape each row carries a WIDGET_MEASURE flag of
+ *   render | backend | network | offset
+ * and the timing lives in DURATION. So per-action timings are computed as
+ *   max(DURATION) where WIDGET_MEASURE = 'render'  → Max frontend
+ *   max(DURATION) where WIDGET_MEASURE = 'backend' → Max backend
+ *   max(DURATION) where WIDGET_MEASURE = 'network' → Max network
+ *
+ * Returns { rows, columns, mapping } so the table can render predictable
+ * columns and we can flag missing fields.
+ */
+
+export function aggregateByAction(rows, headers) {
+  const mapping = detectMapping(headers)
+
+  const columns = [
+    { key: 'user',         label: 'User' },
+    { key: 'action_name',  label: 'Action name' },
+    { key: 'widget_count', label: 'Widget count' },
+    { key: 'max_frontend', label: 'Max frontend' },
+    { key: 'max_network',  label: 'Max network' },
+    { key: 'max_backend',  label: 'Max backend' },
+  ]
+
+  if (!mapping.actionName || !rows?.length) {
+    return { rows: [], columns, mapping }
+  }
+
+  // Composite key: action name + action timestamp. Falls back to just the
+  // action name if there's no timestamp column.
+  const keyOf = (row) => {
+    const name = row?.[mapping.actionName] ?? ''
+    const ts = mapping.actionTimestamp ? row?.[mapping.actionTimestamp] ?? '' : ''
+    return `${name}${ts}`
+  }
+
+  const groups = new Map()
+  for (const row of rows) {
+    const name = row?.[mapping.actionName]
+    if (name === undefined || name === null || name === '') continue
+    const key = keyOf(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+
+  const outRows = []
+  for (const [, groupRows] of groups) {
+    outRows.push({
+      // Hidden meta — not in the displayed columns, but carried on the
+      // row so click handlers can disambiguate two invocations of the
+      // same action name fired at different times.
+      _action_timestamp: mapping.actionTimestamp
+        ? firstNonEmpty(groupRows, mapping.actionTimestamp)
+        : '',
+      user:         firstNonEmpty(groupRows, mapping.user),
+      action_name:  firstNonEmpty(groupRows, mapping.actionName),
+      widget_count: distinctCount(groupRows, mapping.widgetId),
+      max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
+      max_network:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network']),
+      max_backend:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['backend']),
+    })
+  }
+
+  return { rows: outRows, columns, mapping }
+}
+
+/* ——— helpers ——— */
+
+function firstNonEmpty(rows, key) {
+  if (!key) return ''
+  for (const r of rows) {
+    const v = r?.[key]
+    if (v !== undefined && v !== null && v !== '') return v
+  }
+  return ''
+}
+
+function distinctCount(rows, key) {
+  if (!key) return ''
+  const seen = new Set()
+  for (const r of rows) {
+    const v = r?.[key]
+    if (v === undefined || v === null || v === '') continue
+    seen.add(String(v))
+  }
+  return seen.size
+}
+
+/**
+ * Max of `durationKey` across rows whose `measureKey` value (case-insensitive)
+ * is one of `targets`. Returns '' when no matching row has a finite duration.
+ */
+function maxNumericWhere(rows, durationKey, measureKey, targets) {
+  if (!durationKey || !measureKey) return ''
+  const wanted = new Set(targets.map((t) => t.toLowerCase()))
+  let max = -Infinity
+  let found = false
+  for (const r of rows) {
+    const m = r?.[measureKey]
+    if (m === undefined || m === null) continue
+    if (!wanted.has(String(m).toLowerCase())) continue
+    const n = Number(r?.[durationKey])
+    if (Number.isFinite(n)) {
+      if (n > max) max = n
+      found = true
+    }
+  }
+  return found ? max : ''
+}
+
+function detectMapping(headers) {
+  const norm = (s) => String(s).trim().toLowerCase().replace(/[\s_\-.]+/g, '')
+
+  const find = (exacts, substrings, reject = () => false) => {
+    for (const h of headers) {
+      if (reject(h)) continue
+      if (exacts.includes(norm(h))) return h
+    }
+    for (const h of headers) {
+      if (reject(h)) continue
+      const n = norm(h)
+      if (substrings.some((s) => n.includes(s))) return h
+    }
+    return ''
+  }
+
+  // Pick the action-name column based on what's populated and what looks
+  // categorical (e.g. USER_ACTION holds "Open story", "Not specified", etc).
+  const actionName = find(
+    ['useraction', 'actionname'],
+    ['useraction'],
+    (h) => {
+      const n = norm(h)
+      return n.includes('id') || n.includes('timestamp') ||
+             n.includes('details') || n.includes('end')
+    },
+  ) || find(['action'], ['action'], (h) => {
+    const n = norm(h)
+    return n.includes('id') || n.includes('timestamp') ||
+           n.includes('details') || n.includes('count') || n.includes('end')
+  })
+
+  const actionTimestamp = find(
+    ['actiontimestamp'],
+    ['actiontimestamp'],
+    (h) => norm(h).includes('end'),
+  )
+
+  const widgetId = find(['widgetid'], ['widgetid'])
+
+  // WIDGET_MEASURE is the flag that distinguishes render / backend / network.
+  const measure = find(
+    ['widgetmeasure', 'measure'],
+    ['widgetmeasure'],
+    (h) => {
+      const n = norm(h)
+      return n.includes('sub')
+    },
+  )
+
+  const duration = find(
+    ['duration'],
+    ['duration'],
+    (h) => {
+      const n = norm(h)
+      return n.startsWith('widget') || n.includes('action') ||
+             n.includes('story') || n.includes('session')
+    },
+  ) || find(['duration'], ['duration'])
+
+  return {
+    user: find(['username', 'user'], ['user']),
+    actionName,
+    actionTimestamp,
+    widgetId,
+    measure,
+    duration,
+  }
+}

@@ -3,11 +3,10 @@ import { useCsvData } from '../context/useCsvData'
 import './SummaryPage.css'
 
 /**
- * SummaryPage — shell for the three CSV views.
+ * SummaryPage — shell for the four CSV views (Raw, Session, Action, Widget).
  *
- * Renders a centered file-name banner at the top, then a tab bar for
- * Session View / Action View / Widget View, and an <Outlet /> for the
- * active view's table. If we land here without parsed data (refresh /
+ * Renders the file-name banner, the tab bar, and an <Outlet /> for the
+ * active view's content. If we land here without parsed data (refresh /
  * direct URL), bounce back to /.
  */
 function SummaryPage() {
@@ -24,6 +23,7 @@ function SummaryPage() {
       </div>
 
       <nav className="summary-tabs" aria-label="Summary views">
+        <NavLink to="raw" className="summary-tab">Raw Data View</NavLink>
         <NavLink to="session" className="summary-tab">Session View</NavLink>
         <NavLink to="action" className="summary-tab">Action View</NavLink>
         <NavLink to="widget" className="summary-tab">Widget View</NavLink>

@@ -2,11 +2,19 @@ import { createContext, useCallback, useMemo, useState } from 'react'
 import { profileColumns } from '../lib/chartData'
 
 /**
- * CsvDataContext — in-memory store for the parsed CSV and per-view charts.
+ * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
+ * and the cross-view drill-down filters.
  *
- * Lives at the router level so navigation between `/` and `/summary/*` retains
- * the parsed rows AND the charts the user has added on each view. A hard
- * reload clears it (no backend persistence).
+ * Lives at the router level so navigation between `/` and `/summary/*`
+ * retains the parsed rows, the user's chart selections, and any drill-down
+ * the user clicked into. A hard reload clears everything (no backend
+ * persistence).
+ *
+ * Drill-down state:
+ *   sessionFilter — when set, ActionView only aggregates rows whose
+ *                   session-id column equals this value
+ *   actionFilter  — { name, timestamp } — when set, WidgetView only
+ *                   aggregates rows from a specific action invocation
  *
  * Charts are stored per view as `{ [viewId]: ChartDef[] }` where ChartDef is
  *   { uid: string, typeId: string, config: Record<string, any> }
@@ -28,12 +36,15 @@ export function CsvDataProvider({ children }) {
     fileSize: 0,
   })
 
-  // chartsByView: { session: [], action: [], widget: [] }
   const [chartsByView, setChartsByView] = useState({
     session: [],
     action: [],
     widget: [],
   })
+
+  // Drill-down state — null means "no filter applied for this view"
+  const [sessionFilter, setSessionFilter] = useState(null)
+  const [actionFilter, setActionFilter] = useState(null)
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
     setData({
@@ -42,13 +53,16 @@ export function CsvDataProvider({ children }) {
       fileName: fileName ?? '',
       fileSize: fileSize ?? 0,
     })
-    // Reset chart selections when a new file is loaded
     setChartsByView({ session: [], action: [], widget: [] })
+    setSessionFilter(null)
+    setActionFilter(null)
   }, [])
 
   const clear = useCallback(() => {
     setData({ headers: [], rows: [], fileName: '', fileSize: 0 })
     setChartsByView({ session: [], action: [], widget: [] })
+    setSessionFilter(null)
+    setActionFilter(null)
   }, [])
 
   const addChart = useCallback((viewId, typeId, config) => {
@@ -70,16 +84,27 @@ export function CsvDataProvider({ children }) {
     () => ({
       ...data,
       hasData: data.rows.length > 0,
-      // Per-column type profile, built once when rows change. Used by the
-      // chart picker to filter dropdowns to columns that fit each field.
       columnProfile: profileColumns(data.rows, data.headers),
       setCsvData,
       clear,
       chartsByView,
       addChart,
       removeChart,
+      sessionFilter,
+      setSessionFilter,
+      actionFilter,
+      setActionFilter,
     }),
-    [data, setCsvData, clear, chartsByView, addChart, removeChart]
+    [
+      data,
+      setCsvData,
+      clear,
+      chartsByView,
+      addChart,
+      removeChart,
+      sessionFilter,
+      actionFilter,
+    ]
   )
 
   return <CsvDataContext.Provider value={value}>{children}</CsvDataContext.Provider>

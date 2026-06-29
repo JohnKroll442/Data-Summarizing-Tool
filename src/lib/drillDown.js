@@ -1,0 +1,69 @@
+/**
+ * Shared helpers used by ActionView / WidgetView to figure out the session
+ * column without re-running the whole session-aggregation pipeline.
+ */
+
+const norm = (s) => String(s).trim().toLowerCase().replace(/[\s_\-.]+/g, '')
+
+/**
+ * Pick the CSV column that holds the session id by inspecting the headers
+ * AND the data — same logic as sessionAggregate's detector. Some exports
+ * have SESSION_ID present but empty while BROWSERSESSION_ID is fully
+ * populated; we want whichever has actual values.
+ */
+export function detectSessionKey(headers, rows) {
+  if (!headers?.length) return ''
+  const candidates = headers.filter((h) => {
+    const n = norm(h)
+    return n === 'session' || n.includes('sessionid') || n === 'browsersessionid'
+  })
+  let best = ''
+  let bestFill = 0
+  for (const h of candidates) {
+    let fill = 0
+    if (rows?.length) {
+      for (const row of rows) {
+        const v = row?.[h]
+        if (v !== undefined && v !== null && v !== '') fill++
+      }
+    }
+    if (fill >= bestFill) {
+      bestFill = fill
+      best = h
+    }
+  }
+  return best
+}
+
+/**
+ * Filter rows down to a specific session. No-op when sessionFilter is null
+ * or the session column can't be detected.
+ */
+export function applySessionFilter(rows, headers, sessionFilter) {
+  if (!sessionFilter) return rows
+  const key = detectSessionKey(headers, rows)
+  if (!key) return rows
+  return rows.filter((r) => String(r?.[key] ?? '') === String(sessionFilter))
+}
+
+/**
+ * Filter rows to those belonging to one specific action invocation.
+ * actionFilter is { name, timestamp } where timestamp may be '' if the
+ * source row lacked one.
+ */
+export function applyActionFilter(rows, headers, actionFilter) {
+  if (!actionFilter) return rows
+  const nameKey = headers.find((h) => norm(h) === 'useraction') ||
+                  headers.find((h) => norm(h).includes('useraction')) ||
+                  headers.find((h) => norm(h) === 'action')
+  if (!nameKey) return rows
+  const tsKey = headers.find((h) => norm(h) === 'actiontimestamp') ||
+                headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end'))
+  return rows.filter((r) => {
+    if (String(r?.[nameKey] ?? '') !== String(actionFilter.name)) return false
+    if (actionFilter.timestamp && tsKey) {
+      if (String(r?.[tsKey] ?? '') !== String(actionFilter.timestamp)) return false
+    }
+    return true
+  })
+}

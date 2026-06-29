@@ -1,19 +1,23 @@
-import DataTable from '../../components/DataTable'
+import WidgetSummaryTable from '../../components/WidgetSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
 import { useCsvData } from '../../context/useCsvData'
 
 /**
- * WidgetView — empty by default. Charts are added via the "Add chart"
- * button; the user picks the type and the dimensions/measures.
+ * WidgetView — one row per widget table at the top, followed by user-added
+ * charts. Use Raw Data View for the underlying detail rows.
  */
 function WidgetView() {
-  const { rows } = useCsvData()
+  const { rows, headers } = useCsvData()
   return (
     <>
       <h2 className="view-heading">Widget View</h2>
-      <p className="view-subheading">Add charts to summarize your widget data.</p>
+      <p className="view-subheading">
+        One row per widget — search or filter to narrow the list.
+      </p>
+      <WidgetSummaryTable rows={rows} headers={headers} />
+
+      <h3 className="view-section-heading">Charts</h3>
       <ChartGrid viewId="widget" />
-      <DataTable rows={rows} columns={[]} />
     </>
   )
 }

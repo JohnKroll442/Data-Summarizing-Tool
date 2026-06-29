@@ -63,7 +63,7 @@ function UploadPage() {
         fileName: file.name,
         fileSize: file.size,
       })
-      navigate('/summary/session')
+      navigate('/summary/raw')
     } catch (err) {
       setParseError(err.message || 'Failed to parse CSV.')
     } finally {

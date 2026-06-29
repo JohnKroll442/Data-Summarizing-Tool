@@ -1,0 +1,96 @@
+/* Filter toolbar that sits above the per-session summary table. */
+.summary-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.summary-filter-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--sap-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--sap-text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.summary-filter-search:focus {
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
+}
+
+.summary-filter-select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--sap-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--sap-text);
+  outline: none;
+  max-width: 220px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.summary-filter-select:focus {
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
+}
+
+.summary-filter-count {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+}
+
+.summary-filter-clear {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-light);
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.summary-filter-clear:hover {
+  background: var(--sap-blue-bg);
+}
+
+/* Small inline note shown when a column can't be auto-matched. */
+.summary-note {
+  margin-bottom: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-left: 3px solid var(--sap-gold);
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: var(--sap-text);
+  backdrop-filter: blur(6px);
+}
+
+.summary-note code {
+  font-size: 0.85em;
+  background: var(--sap-blue-bg);
+  color: var(--sap-blue-darker);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

@@ -52,10 +52,11 @@ function DataTable({ rows, columns, emptyMessage = 'No rows to display.' }) {
   )
 }
 
-// Render unknown cell values predictably — show empty string for nullish,
-// stringify objects, leave primitives as-is.
+// Render unknown cell values predictably — show an em dash for empty /
+// nullish values so blank cells read as "no data" instead of looking
+// accidentally truncated; stringify objects; leave primitives as-is.
 function formatCell(value) {
-  if (value === null || value === undefined) return ''
+  if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }

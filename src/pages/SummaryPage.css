@@ -103,6 +103,16 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+/* Section heading used by views that have more than one section (e.g.
+   "Charts" below the SessionSummaryTable). */
+.view-section-heading {
+  margin: 1.25rem 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
 @media (max-width: 600px) {
   .summary-tabs {
     flex-wrap: wrap;

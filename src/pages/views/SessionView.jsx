@@ -1,19 +1,23 @@
-import DataTable from '../../components/DataTable'
+import SessionSummaryTable from '../../components/SessionSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
 import { useCsvData } from '../../context/useCsvData'
 
 /**
- * SessionView — empty by default. Charts are added via the "Add chart"
- * button; the user picks the type and the dimensions/measures.
+ * SessionView — one row per session table at the top, followed by
+ * user-added charts. Use Raw Data View for the underlying detail rows.
  */
 function SessionView() {
-  const { rows } = useCsvData()
+  const { rows, headers } = useCsvData()
   return (
     <>
       <h2 className="view-heading">Session View</h2>
-      <p className="view-subheading">Add charts to summarize your session data.</p>
+      <p className="view-subheading">
+        One row per session — search or filter to narrow the list.
+      </p>
+      <SessionSummaryTable rows={rows} headers={headers} />
+
+      <h3 className="view-section-heading">Charts</h3>
       <ChartGrid viewId="session" />
-      <DataTable rows={rows} columns={[]} />
     </>
   )
 }

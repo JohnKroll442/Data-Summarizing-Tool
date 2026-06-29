@@ -1,0 +1,71 @@
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.85rem;
+  background: var(--sap-gold);
+  color: var(--sap-blue-darker);
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
+}
+
+.filter-pill-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.filter-pill-value {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-pill-clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 41, 92, 0.15);
+  color: var(--sap-blue-darker);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.filter-pill-clear:hover {
+  background: rgba(0, 41, 92, 0.3);
+}
+
+/* Cells you can click to drill down. Underlined SAP-blue text inside a
+   transparent button so the whole cell stays the hit target. */
+.cell-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--sap-blue-dark);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-link:hover {
+  color: var(--sap-blue);
+  text-decoration-thickness: 2px;
+}
