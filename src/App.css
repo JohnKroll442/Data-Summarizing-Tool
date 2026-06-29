@@ -3,7 +3,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   padding: 2.5rem 1.25rem 3rem;
+  text-align: center;
 }
 
 .app-header {
@@ -11,43 +13,136 @@
   max-width: 720px;
   margin-bottom: 1.75rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 0.9rem;
 }
 
 .app-header-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--sap-blue) 0%, var(--sap-blue-dark) 100%);
-  color: #fff;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ffffff 0%, #eaf3ff 100%);
+  color: var(--sap-blue-darker);
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(0, 64, 176, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.app-header-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .app-header-text h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 600;
-  color: var(--sap-blue-darker);
+  color: #ffffff;
   letter-spacing: -0.01em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
 }
 
 .app-header-text p {
   margin: 2px 0 0;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* The name in "Hello, <name>" — styled as a subtle inline button so the
+   user can click it to change their name. */
+.app-header-name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--sap-gold-light);
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.app-header-name:hover {
+  color: var(--sap-gold);
+  border-bottom-color: var(--sap-gold);
+}
+
+/* Inline "what's your name" form, shown before the user has set a name */
+.app-name-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-name-label {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.app-name-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.app-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--sap-text);
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transition: box-shadow 0.15s ease;
+}
+
+.app-name-input:focus {
+  box-shadow: 0 0 0 3px rgba(240, 171, 0, 0.45),
+              0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.app-name-submit {
+  padding: 0.55rem 1.1rem;
   font-size: 0.9rem;
-  color: var(--sap-text-muted);
+  font-weight: 600;
+  color: var(--sap-blue-darker);
+  background: var(--sap-gold);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.app-name-submit:hover {
+  background: var(--sap-gold-light);
+}
+
+.app-name-submit:active {
+  transform: translateY(1px);
 }
 
 .app-main {
   width: 100%;
-  max-width: 720px;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 1.25rem;
 }
 
@@ -56,4 +151,26 @@
   border: 1px solid var(--sap-border);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 41, 92, 0.04);
+}
+
+.app-status,
+.app-error {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.app-status {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--sap-blue-darker);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.app-error {
+  background: rgba(255, 230, 230, 0.95);
+  color: var(--sap-danger);
+  border: 1px solid rgba(187, 0, 0, 0.25);
 }

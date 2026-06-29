@@ -1,0 +1,66 @@
+.echart-card {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  padding: 0.85rem 1rem 1rem;
+  min-width: 0;
+}
+
+.echart-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.echart-card-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.echart-card-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--sap-text-muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.echart-card-remove:hover {
+  background: rgba(187, 0, 0, 0.08);
+  color: var(--sap-danger);
+}
+
+.echart-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--sap-blue-darker);
+}
+
+.echart-card-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--sap-text-muted);
+}
+
+.echart-card-empty {
+  display: grid;
+  place-items: center;
+  color: var(--sap-text-muted);
+  font-size: 0.85rem;
+  background: var(--sap-surface-alt);
+  border: 1px dashed var(--sap-border);
+  border-radius: 8px;
+  padding: 1rem;
+}

@@ -1,9 +1,11 @@
 import './FileList.css'
+import { formatFileSize } from '../lib/format'
 
 /**
  * FileList — displays the list of selected files with their name and size,
- * plus a remove button per file. When the upload-to-server logic is added,
- * this is also where per-file progress and status indicators would live.
+ * plus a remove button per file. Kept around for future flows (e.g. multi-file
+ * staging); the CSV-summary flow navigates away immediately on parse so this
+ * is not currently rendered on the upload page.
  */
 function FileList({ files, onRemove }) {
   if (files.length === 0) {
@@ -48,14 +50,6 @@ function FileList({ files, onRemove }) {
       </ul>
     </div>
   )
-}
-
-// Convert raw bytes into a human-readable string (e.g. "1.2 MB")
-function formatFileSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
 export default FileList

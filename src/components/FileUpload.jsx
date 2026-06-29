@@ -4,10 +4,10 @@ import './FileUpload.css'
 /**
  * FileUpload — compact drop zone with an inline action button.
  * Calls `onFilesAdded(files)` with an array of File objects when the user
- * selects or drops files. Actual upload-to-server logic is intentionally
- * left out — wire it up in `handleUpload` later.
+ * selects or drops files. Pass `accept` (e.g. ".csv") to restrict the
+ * file picker; drag-and-drop validation is left to the caller.
  */
-function FileUpload({ onFilesAdded }) {
+function FileUpload({ onFilesAdded, accept }) {
   const fileInputRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -46,6 +46,10 @@ function FileUpload({ onFilesAdded }) {
     }
   }
 
+  const subtitle = accept === '.csv'
+    ? 'CSV files only · parsed in your browser'
+    : 'Supports any file type · multiple files allowed'
+
   return (
     <div
       className={`file-upload ${isDragging ? 'dragging' : ''}`}
@@ -59,7 +63,7 @@ function FileUpload({ onFilesAdded }) {
       <input
         ref={fileInputRef}
         type="file"
-        multiple
+        accept={accept}
         onChange={handleFileInputChange}
         style={{ display: 'none' }}
       />
@@ -72,8 +76,8 @@ function FileUpload({ onFilesAdded }) {
         </svg>
       </div>
       <div className="file-upload-content">
-        <p className="file-upload-title">Drop files here or browse</p>
-        <p className="file-upload-subtitle">Supports any file type · multiple files allowed</p>
+        <p className="file-upload-title">Drop a CSV here or browse</p>
+        <p className="file-upload-subtitle">{subtitle}</p>
       </div>
       <button
         type="button"

@@ -1,36 +1,28 @@
-import { useState } from 'react'
-import FileUpload from './components/FileUpload'
-import FileList from './components/FileList'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import UploadPage from './pages/UploadPage'
+import SummaryPage from './pages/SummaryPage'
+import SessionView from './pages/views/SessionView'
+import ActionView from './pages/views/ActionView'
+import WidgetView from './pages/views/WidgetView'
 import './App.css'
 
+/**
+ * App — the route host. The full-screen gradient and centered layout live
+ * in `.app` (App.css); each route owns its own header / content.
+ */
 function App() {
-  // Holds metadata for files the user has selected/uploaded
-  const [files, setFiles] = useState([])
-
-  // Called by FileUpload when the user picks one or more files
-  const handleFilesAdded = (newFiles) => {
-    setFiles((prev) => [...prev, ...newFiles])
-  }
-
-  // Remove a file from the list by index
-  const handleRemoveFile = (indexToRemove) => {
-    setFiles((prev) => prev.filter((_, i) => i !== indexToRemove))
-  }
-
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="app-header-logo" aria-hidden="true">SAP</div>
-        <div className="app-header-text">
-          <h1>File Upload</h1>
-          <p>Select one or more files to upload</p>
-        </div>
-      </header>
-
-      <main className="app-main">
-        <FileUpload onFilesAdded={handleFilesAdded} />
-        <FileList files={files} onRemove={handleRemoveFile} />
-      </main>
+      <Routes>
+        <Route path="/" element={<UploadPage />} />
+        <Route path="/summary" element={<SummaryPage />}>
+          <Route index element={<Navigate to="session" replace />} />
+          <Route path="session" element={<SessionView />} />
+          <Route path="action" element={<ActionView />} />
+          <Route path="widget" element={<WidgetView />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   )
 }

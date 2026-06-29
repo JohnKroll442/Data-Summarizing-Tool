@@ -1,0 +1,58 @@
+.chart-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.chart-grid-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.05rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--sap-blue-darker);
+  background: var(--sap-gold);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
+  transition: background-color 0.15s ease, transform 0.08s ease;
+}
+
+.chart-grid-add:hover {
+  background: var(--sap-gold-light);
+}
+
+.chart-grid-add:active {
+  transform: translateY(1px);
+}
+
+.chart-grid-add-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.chart-grid-count {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.chart-grid-empty {
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.chart-grid-empty strong {
+  color: var(--sap-gold-light);
+}
