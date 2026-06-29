@@ -1,0 +1,40 @@
+:root {
+  /* SAP brand palette */
+  --sap-blue: #0070f2;
+  --sap-blue-dark: #0040b0;
+  --sap-blue-darker: #00295c;
+  --sap-blue-light: #d1e8ff;
+  --sap-blue-bg: #f5faff;
+  --sap-gold: #f0ab00;
+  --sap-gold-light: #ffd966;
+  --sap-text: #1d2d3e;
+  --sap-text-muted: #556b82;
+  --sap-border: #d5dfe7;
+  --sap-surface: #ffffff;
+  --sap-surface-alt: #f7f9fb;
+  --sap-danger: #bb0000;
+  --sap-success: #107e3e;
+
+  font-family: '72', -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--sap-text);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(0, 112, 242, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(240, 171, 0, 0.06) 0%, transparent 40%),
+    linear-gradient(180deg, #eaf2fb 0%, #f5faff 100%);
+  color: var(--sap-text);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
