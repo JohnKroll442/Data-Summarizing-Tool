@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
+import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { applySessionFilter, applyActionFilter } from '../lib/drillDown'
-import { formatDurationMs } from '../lib/format'
+import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -17,6 +19,7 @@ import './SessionSummaryTable.css'
  * active filters; clicking the × on either clears just that filter.
  */
 function WidgetSummaryTable({ rows, headers }) {
+  const navigate = useNavigate()
   const {
     sessionFilter,
     setSessionFilter,
@@ -37,6 +40,10 @@ function WidgetSummaryTable({ rows, headers }) {
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({})
+  // Clicking a widget name opens the per-widget timing modal. Holds the
+  // selected row's widget_id + display name, plus the rows we should pass
+  // to the chart builder.
+  const [timingModal, setTimingModal] = useState(null)
 
   const optionsByColumn = useMemo(() => {
     const out = {}
@@ -77,14 +84,21 @@ function WidgetSummaryTable({ rows, headers }) {
         <FilterPill
           label="Session"
           value={sessionFilter}
-          onClear={() => setSessionFilter(null)}
+          onClear={() => {
+            setSessionFilter(null)
+            setActionFilter(null)
+            navigate('/summary/session')
+          }}
         />
       )}
       {actionFilter && (
         <FilterPill
           label="Action"
           value={actionFilter.name}
-          onClear={() => setActionFilter(null)}
+          onClear={() => {
+            setActionFilter(null)
+            navigate('/summary/action')
+          }}
         />
       )}
     </>
@@ -188,13 +202,66 @@ function WidgetSummaryTable({ rows, headers }) {
         rows={visibleRows}
         columns={columns.map((c) => ({
           ...c,
-          render: (v) => {
+          render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
             if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
+            if (TIME_COLUMNS.has(c.key)) return formatCsvTime(v)
+            if (c.key === 'widget_name') {
+              return (
+                <button
+                  type="button"
+                  className="cell-link"
+                  title={`Open timing chart for "${row.widget_name}"`}
+                  onClick={() => {
+                    const widgetId = row.widget_id
+                    const idKey = mapping.widgetId
+                    const rowsForWidget = idKey
+                      ? scopedRows.filter(
+                          (r) => String(r?.[idKey] ?? '') === String(widgetId)
+                        )
+                      : []
+
+                    // Identify the parent action from the widget's own rows so
+                    // the chart's Action Start / End markLines reflect just
+                    // that action — not the whole session. We try the
+                    // ACTION_TIMESTAMP column first (works even with no active
+                    // action filter), then fall back to scopedRows when no
+                    // ACTION_TIMESTAMP column is present.
+                    const actionTsKey = findActionTimestampKey(headers)
+                    let actionRows = scopedRows
+                    if (actionTsKey && rowsForWidget.length) {
+                      const ts = String(rowsForWidget[0]?.[actionTsKey] ?? '')
+                      if (ts) {
+                        actionRows = scopedRows.filter(
+                          (r) => String(r?.[actionTsKey] ?? '') === ts
+                        )
+                      }
+                    }
+
+                    setTimingModal({
+                      widgetId,
+                      widgetName: row.widget_name || String(widgetId),
+                      widgetRows: rowsForWidget,
+                      actionRows,
+                    })
+                  }}
+                >
+                  {String(v)}
+                </button>
+              )
+            }
             return String(v)
           },
         }))}
         emptyMessage="No widgets match your filters."
+      />
+
+      <WidgetTimingModal
+        open={!!timingModal}
+        onClose={() => setTimingModal(null)}
+        widgetName={timingModal?.widgetName}
+        widgetRows={timingModal?.widgetRows ?? []}
+        actionRows={timingModal?.actionRows ?? []}
       />
     </>
   )
@@ -202,6 +269,26 @@ function WidgetSummaryTable({ rows, headers }) {
 
 const FILTERABLE_COLUMNS = ['widget_name']
 const COLUMN_LABEL = { widget_name: 'Widget name' }
-const DURATION_COLUMNS = new Set(['render', 'network', 'backend'])
+const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'offset'])
+const TIME_COLUMNS = new Set([
+  'render_start', 'render_end',
+  'network_start', 'network_end',
+  'backend_start', 'backend_end',
+])
+
+// Match the same heuristic actionAggregate uses — exact "ACTION_TIMESTAMP"
+// (case/punctuation-insensitive) first, then substring fallback, ignoring
+// columns that look like end-times.
+function findActionTimestampKey(headers) {
+  const norm = (s) => String(s).trim().toLowerCase().replace(/[\s_\-.]+/g, '')
+  for (const h of headers) {
+    if (norm(h) === 'actiontimestamp') return h
+  }
+  for (const h of headers) {
+    const n = norm(h)
+    if (n.includes('actiontimestamp') && !n.includes('end')) return h
+  }
+  return ''
+}
 
 export default WidgetSummaryTable

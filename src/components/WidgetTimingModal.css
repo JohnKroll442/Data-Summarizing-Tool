@@ -1,0 +1,59 @@
+.widget-timing-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 41, 92, 0.55);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+
+.widget-timing-modal {
+  width: min(1200px, 100%);
+  max-height: 88vh;
+  background: var(--sap-surface);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--sap-text);
+}
+
+.widget-timing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--sap-border);
+  background: linear-gradient(135deg, var(--sap-blue) 0%, var(--sap-blue-dark) 100%);
+  color: #fff;
+}
+
+.widget-timing-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.widget-timing-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.widget-timing-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.widget-timing-body {
+  padding: 0.75rem 1rem 1rem;
+  background: var(--sap-surface);
+}

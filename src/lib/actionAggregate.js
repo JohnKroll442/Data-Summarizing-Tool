@@ -14,7 +14,8 @@
  * and the timing lives in DURATION. So per-action timings are computed as
  *   max(DURATION) where WIDGET_MEASURE = 'render'  → Max frontend
  *   max(DURATION) where WIDGET_MEASURE = 'backend' → Max backend
- *   max(DURATION) where WIDGET_MEASURE = 'network' → Max network
+ *   max(DURATION) where WIDGET_MEASURE = 'network' → Max network (across
+ *                                                    every submeasure)
  *
  * Returns { rows, columns, mapping } so the table can render predictable
  * columns and we can flag missing fields.
@@ -98,17 +99,32 @@ function distinctCount(rows, key) {
 
 /**
  * Max of `durationKey` across rows whose `measureKey` value (case-insensitive)
- * is one of `targets`. Returns '' when no matching row has a finite duration.
+ * is one of `targets`. If `subKey`/`subTargets` are provided, also requires
+ * the row's sub-measure value to match one of those (e.g. only count
+ * network rows whose WIDGET_SUBMEASURE = 'ttfb').
+ * Returns '' when no matching row has a finite duration.
  */
-function maxNumericWhere(rows, durationKey, measureKey, targets) {
+function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTargets) {
   if (!durationKey || !measureKey) return ''
   const wanted = new Set(targets.map((t) => t.toLowerCase()))
+  const subWanted = subTargets && subTargets.length
+    ? new Set(subTargets.map((t) => t.toLowerCase()))
+    : null
+  // If a sub-measure filter was requested but the CSV has no such column,
+  // we can't match anything — bail out with no value rather than silently
+  // ignoring the filter.
+  if (subWanted && !subKey) return ''
   let max = -Infinity
   let found = false
   for (const r of rows) {
     const m = r?.[measureKey]
     if (m === undefined || m === null) continue
     if (!wanted.has(String(m).toLowerCase())) continue
+    if (subWanted) {
+      const s = r?.[subKey]
+      if (s === undefined || s === null) continue
+      if (!subWanted.has(String(s).toLowerCase())) continue
+    }
     const n = Number(r?.[durationKey])
     if (Number.isFinite(n)) {
       if (n > max) max = n
@@ -168,6 +184,14 @@ function detectMapping(headers) {
     },
   )
 
+  // WIDGET_SUBMEASURE further qualifies a measure (e.g. for network rows:
+  // 'ttfb' / 'waiting' / 'contentDownload' / 'Full'). Per the data owner,
+  // network timings should only count rows where this column == 'ttfb'.
+  const submeasure = find(
+    ['widgetsubmeasure', 'submeasure'],
+    ['widgetsubmeasure', 'submeasure'],
+  )
+
   const duration = find(
     ['duration'],
     ['duration'],
@@ -184,6 +208,7 @@ function detectMapping(headers) {
     actionTimestamp,
     widgetId,
     measure,
+    submeasure,
     duration,
   }
 }

@@ -45,27 +45,31 @@
   background: rgba(0, 41, 92, 0.3);
 }
 
-/* Cells you can click to drill down. Underlined SAP-blue text inside a
-   transparent button so the whole cell stays the hit target. */
+/* Cells you can click to drill down. Bold black text inside a
+   transparent button that fills its td so the whole cell is the hit target.
+   Negative margins match the td's padding (0.55rem 0.85rem) so the button
+   covers exactly one cell — no more, no less. */
 .cell-link {
+  display: block;
+  width: calc(100% + 1.7rem);
+  box-sizing: border-box;
   background: none;
   border: none;
-  padding: 0;
-  margin: 0;
+  padding: 0.55rem 0.85rem;
+  margin: -0.55rem -0.85rem;
   font: inherit;
-  color: var(--sap-blue-dark);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
+  font-weight: 700;
+  color: #000;
+  text-decoration: none;
   cursor: pointer;
   text-align: left;
-  max-width: 100%;
+  max-width: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cell-link:hover {
-  color: var(--sap-blue);
-  text-decoration-thickness: 2px;
+  color: #000;
+  background: rgba(0, 0, 0, 0.06);
 }

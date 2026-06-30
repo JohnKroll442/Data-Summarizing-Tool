@@ -57,7 +57,7 @@
 }
 
 .data-table tbody tr:hover td {
-  background: var(--sap-blue-bg);
+  background: rgba(255, 255, 255, 0.97);
 }
 
 .data-table tbody tr:last-child td {

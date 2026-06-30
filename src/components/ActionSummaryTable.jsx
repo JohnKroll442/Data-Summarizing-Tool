@@ -82,7 +82,10 @@ function ActionSummaryTable({ rows, headers }) {
     <FilterPill
       label="Session"
       value={sessionFilter}
-      onClear={() => setSessionFilter(null)}
+      onClear={() => {
+        setSessionFilter(null)
+        navigate('/summary/session')
+      }}
     />
   ) : null
 

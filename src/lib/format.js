@@ -1,4 +1,38 @@
 /**
+ * Format a CSV timestamp cell as a clean "mm:ss.t" (or "h:mm:ss.t") time-only
+ * string. Handles three shapes the parser actually produces:
+ *
+ *  1. A JS Date object — papaparse's `dynamicTyping` turns Excel-style
+ *     time cells like "17:58.2" into a Date anchored on 1899-12-30. We
+ *     want only the time-of-day portion.
+ *  2. A string that already looks like a time ("17:58.2", "1:23:45.6")
+ *     — pass it through, just strip insignificant trailing zeros after
+ *     the decimal point so "17:58.20000" becomes "17:58.2".
+ *  3. Anything else — coerce to String.
+ *
+ * Returns '' for empty / null / undefined.
+ */
+export function formatCsvTime(value) {
+  if (value === '' || value === null || value === undefined) return ''
+
+  // Case 1: a real Date from papaparse
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const h = value.getHours()
+    const m = String(value.getMinutes()).padStart(2, '0')
+    const s = String(value.getSeconds()).padStart(2, '0')
+    // Fractional second — keep one decimal place if it isn't zero
+    const ms = value.getMilliseconds()
+    const frac = ms === 0 ? '' : `.${Math.round(ms / 100)}`
+    return h === 0 ? `${m}:${s}${frac}` : `${h}:${m}:${s}${frac}`
+  }
+
+  // Case 2/3: stringify, then strip trailing zeros after a decimal
+  const str = String(value).trim()
+  // e.g. "17:58.20000" → "17:58.2",  "17:58.0" → "17:58", "17:58" untouched
+  return str.replace(/(\.\d*?)0+(?!\d)/, '$1').replace(/\.$/, '')
+}
+
+/**
  * Convert raw bytes into a human-readable string (e.g. "1.2 MB").
  */
 export function formatFileSize(bytes) {
