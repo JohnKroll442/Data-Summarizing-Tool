@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload from '../components/FileUpload'
 import { parseCsvFile } from '../lib/parseCsv'
+import { formatFileSize } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 
 /**
@@ -10,7 +11,7 @@ import { useCsvData } from '../context/useCsvData'
  */
 function UploadPage() {
   const navigate = useNavigate()
-  const { setCsvData } = useCsvData()
+  const { setCsvData, recentFiles, selectRecentFile, removeRecentFile } = useCsvData()
 
   // Persisted user name (so we can say "Hello, <name>"). Loaded from localStorage.
   const [userName, setUserName] = useState(
@@ -124,6 +125,39 @@ function UploadPage() {
         )}
         {parseError && (
           <p className="app-error" role="alert">{parseError}</p>
+        )}
+        {recentFiles.length > 0 && (
+          <section className="recent-files" aria-label="Recently uploaded files">
+            <h2 className="recent-files-heading">Recent files</h2>
+            <ul className="recent-files-list">
+              {recentFiles.map((file) => (
+                <li key={file.id} className="recent-files-item">
+                  <button
+                    type="button"
+                    className="recent-files-pick"
+                    onClick={() => {
+                      selectRecentFile(file.id)
+                      navigate('/summary/raw')
+                    }}
+                  >
+                    <span className="recent-files-name">{file.fileName}</span>
+                    <span className="recent-files-meta">
+                      {formatFileSize(file.fileSize)} · {file.rows.length.toLocaleString()} rows
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="recent-files-remove"
+                    title={`Remove ${file.fileName} from recent files`}
+                    aria-label={`Remove ${file.fileName} from recent files`}
+                    onClick={() => removeRecentFile(file.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </main>
     </>

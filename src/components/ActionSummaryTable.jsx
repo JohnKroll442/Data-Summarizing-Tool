@@ -5,6 +5,8 @@ import FilterPill from './FilterPill'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
+import { sortRows } from '../lib/sortRows'
+import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -26,6 +28,7 @@ function ActionSummaryTable({ rows, headers }) {
     sessionFilter,
     setSessionFilter,
     setActionFilter,
+    fileName,
   } = useCsvData()
 
   // Scope the input rows to the active session BEFORE aggregating, so
@@ -42,6 +45,7 @@ function ActionSummaryTable({ rows, headers }) {
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({})
+  const [sort, setSort] = useState(null)
 
   const optionsByColumn = useMemo(() => {
     const out = {}
@@ -72,6 +76,12 @@ function ActionSummaryTable({ rows, headers }) {
       })
     })
   }, [summaryRows, search, filters, columns])
+
+  const sortedRows = useMemo(() => {
+    if (!sort) return visibleRows
+    const col = columns.find((c) => c.key === sort.key)
+    return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
+  }, [visibleRows, sort, columns])
 
   const activeFilterCount =
     Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
@@ -199,6 +209,18 @@ function ActionSummaryTable({ rows, headers }) {
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
+        <button
+          type="button"
+          className="summary-filter-export"
+          disabled={sortedRows.length === 0}
+          title={sortedRows.length === 0 ? 'No rows to export' : 'Download visible rows as CSV'}
+          onClick={() => {
+            const csv = rowsToCsv(sortedRows, columns)
+            downloadCsv(buildExportFilename(fileName, 'action'), csv)
+          }}
+        >
+          Export CSV
+        </button>
         {activeFilterCount > 0 && (
           <button
             type="button"
@@ -214,7 +236,9 @@ function ActionSummaryTable({ rows, headers }) {
       </div>
 
       <DataTable
-        rows={visibleRows}
+        rows={sortedRows}
+        sort={sort}
+        onSortChange={setSort}
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {

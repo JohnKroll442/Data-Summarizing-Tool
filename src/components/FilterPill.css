@@ -70,6 +70,6 @@
 }
 
 .cell-link:hover {
-  color: #000;
-  background: rgba(0, 0, 0, 0.06);
+  color: #fff;
+  background: var(--sap-blue);
 }

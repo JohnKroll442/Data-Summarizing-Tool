@@ -35,16 +35,16 @@ export function aggregateByWidget(rows, headers) {
   const columns = [
     { key: 'widget_id',     label: 'Widget ID' },
     { key: 'widget_name',   label: 'Widget name' },
-    { key: 'render',        label: 'Render' },
+    { key: 'render',        label: 'Render',        sortType: 'duration' },
     { key: 'render_start',  label: 'Render start' },
     { key: 'render_end',    label: 'Render end' },
-    { key: 'network',       label: 'Network' },
+    { key: 'network',       label: 'Network',       sortType: 'duration' },
     { key: 'network_start', label: 'Network start' },
     { key: 'network_end',   label: 'Network end' },
-    { key: 'backend',       label: 'Backend' },
+    { key: 'backend',       label: 'Backend',       sortType: 'duration' },
     { key: 'backend_start', label: 'Backend start' },
     { key: 'backend_end',   label: 'Backend end' },
-    { key: 'offset',        label: 'Offset' },
+    { key: 'offset',        label: 'Offset',        sortType: 'duration' },
   ]
 
   if (!mapping.widgetId || !rows?.length) {

@@ -41,6 +41,39 @@
   border-right: none;
 }
 
+.data-table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.data-table-sort:hover {
+  color: #000;
+}
+
+.data-table-sort.is-active {
+  color: #000;
+}
+
+.data-table-sort-indicator {
+  display: inline-block;
+  min-width: 0.75em;
+  font-size: 0.7rem;
+  color: var(--sap-blue-darker);
+}
+
 .data-table tbody td {
   padding: 0.55rem 0.85rem;
   border-bottom: 1px solid #000;

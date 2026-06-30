@@ -21,8 +21,8 @@ export function aggregateBySession(rows, headers) {
     { key: 'session',             label: 'Session' },
     { key: 'user',                label: 'User' },
     { key: 'story',               label: 'Story' },
-    { key: 'action_count',        label: 'Action count' },
-    { key: 'max_action_duration', label: 'Max action duration' },
+    { key: 'action_count',        label: 'Action count',        sortType: 'number' },
+    { key: 'max_action_duration', label: 'Max action duration', sortType: 'duration' },
   ]
 
   const sessionKey = mapping.session

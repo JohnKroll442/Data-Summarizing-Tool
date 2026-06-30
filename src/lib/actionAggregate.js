@@ -35,10 +35,10 @@ export function aggregateByAction(rows, headers) {
   const columns = [
     { key: 'user',         label: 'User' },
     { key: 'action_name',  label: 'Action name' },
-    { key: 'widget_count', label: 'Widget count' },
-    { key: 'max_frontend', label: 'Max frontend' },
-    { key: 'max_network',  label: 'Max network' },
-    { key: 'max_backend',  label: 'Max backend' },
+    { key: 'widget_count', label: 'Widget count', sortType: 'number' },
+    { key: 'max_frontend', label: 'Max frontend', sortType: 'duration' },
+    { key: 'max_network',  label: 'Max network',  sortType: 'duration' },
+    { key: 'max_backend',  label: 'Max backend',  sortType: 'duration' },
   ]
 
   if (!mapping.actionName || !rows?.length) {

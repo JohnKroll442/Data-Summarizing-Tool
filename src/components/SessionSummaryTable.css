@@ -74,6 +74,28 @@
   background: var(--sap-blue-bg);
 }
 
+.summary-filter-export {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-light);
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.summary-filter-export:hover:not(:disabled) {
+  background: var(--sap-blue-bg);
+}
+
+.summary-filter-export:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Small inline note shown when a column can't be auto-matched. */
 .summary-note {
   margin-bottom: 0.6rem;

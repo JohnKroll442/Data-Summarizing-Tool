@@ -7,6 +7,8 @@ import { aggregateByWidget } from '../lib/widgetAggregate'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter, applyActionFilter } from '../lib/drillDown'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
+import { sortRows } from '../lib/sortRows'
+import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -26,6 +28,7 @@ function WidgetSummaryTable({ rows, headers }) {
     setSessionFilter,
     actionFilter,
     setActionFilter,
+    fileName,
   } = useCsvData()
 
   // Apply session filter first (broader), then action filter (narrower).
@@ -41,6 +44,7 @@ function WidgetSummaryTable({ rows, headers }) {
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({})
+  const [sort, setSort] = useState(null)
   // Clicking a widget name opens the per-widget timing modal. Holds the
   // selected row's widget_id + display name, plus the rows we should pass
   // to the chart builder.
@@ -75,6 +79,12 @@ function WidgetSummaryTable({ rows, headers }) {
       })
     })
   }, [summaryRows, search, filters, columns])
+
+  const sortedRows = useMemo(() => {
+    if (!sort) return visibleRows
+    const col = columns.find((c) => c.key === sort.key)
+    return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
+  }, [visibleRows, sort, columns])
 
   const activeFilterCount =
     Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
@@ -214,6 +224,18 @@ function WidgetSummaryTable({ rows, headers }) {
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
+        <button
+          type="button"
+          className="summary-filter-export"
+          disabled={sortedRows.length === 0}
+          title={sortedRows.length === 0 ? 'No rows to export' : 'Download visible rows as CSV'}
+          onClick={() => {
+            const csv = rowsToCsv(sortedRows, columns)
+            downloadCsv(buildExportFilename(fileName, 'widget'), csv)
+          }}
+        >
+          Export CSV
+        </button>
         {activeFilterCount > 0 && (
           <button
             type="button"
@@ -229,7 +251,9 @@ function WidgetSummaryTable({ rows, headers }) {
       </div>
 
       <DataTable
-        rows={visibleRows}
+        rows={sortedRows}
+        sort={sort}
+        onSortChange={setSort}
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {

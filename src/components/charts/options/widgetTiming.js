@@ -4,10 +4,7 @@ import {
   BASE_TOOLTIP,
   SAP_BLUE,
   SAP_BLUE_DARK,
-  SAP_BLUE_LIGHT,
   SAP_GOLD,
-  SAP_GOLD_LIGHT,
-  SAP_SUCCESS,
   SAP_TEXT_MUTED,
 } from '../../../lib/chartColors'
 
@@ -175,7 +172,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         value: extDur,
         trueDurationMs: trueDur,
         itemStyle: {
-          color: extDur > 0 ? withAlpha(PHASE_COLOR[seg.key], 0.28) : 'transparent',
+          color: extDur > 0 ? withAlpha(PHASE_COLOR[seg.key], 0.55) : 'transparent',
         },
         phaseLabel: seg.label,
         isExtension: true,
@@ -389,12 +386,12 @@ function withAlpha(color, alpha) {
 }
 
 const PHASE_COLOR = {
-  offset:         SAP_BLUE_LIGHT,
+  offset:         '#ff6b35', // vivid orange — was SAP_BLUE_LIGHT (#d1e8ff, too pale)
   render:         SAP_BLUE,
   'network-full': SAP_GOLD,
   backend:        SAP_BLUE_DARK,
-  'network-wait': SAP_GOLD_LIGHT,
-  'network-cdn':  SAP_SUCCESS,
+  'network-wait': '#c026d3', // vivid magenta — was SAP_GOLD_LIGHT (#ffd966, too washed out next to GOLD)
+  'network-cdn':  '#10b981', // vivid emerald — was SAP_SUCCESS (#107e3e, dark muted green)
 }
 
 function emptyOption(note) {

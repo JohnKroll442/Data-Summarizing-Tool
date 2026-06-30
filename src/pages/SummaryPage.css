@@ -30,6 +30,45 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* Same look as .summary-file-name, but a native select so the user can
+   swap between recently-uploaded files without leaving the summary view. */
+.summary-file-select {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 2rem 0.35rem 0.85rem;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: rgba(0, 41, 92, 0.45);
+  background-image: linear-gradient(45deg, transparent 50%, #fff 50%),
+                    linear-gradient(135deg, #fff 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.summary-file-select:focus {
+  box-shadow: 0 0 0 3px rgba(240, 171, 0, 0.45);
+}
+
+.summary-file-select option {
+  color: var(--sap-text);
+  background: #fff;
+}
+
 .summary-tabs {
   display: flex;
   gap: 0.25rem;

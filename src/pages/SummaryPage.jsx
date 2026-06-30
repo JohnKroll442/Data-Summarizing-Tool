@@ -5,21 +5,43 @@ import './SummaryPage.css'
 /**
  * SummaryPage — shell for the four CSV views (Raw, Session, Action, Widget).
  *
- * Renders the file-name banner, the tab bar, and an <Outlet /> for the
- * active view's content. If we land here without parsed data (refresh /
- * direct URL), bounce back to /.
+ * Renders the file-name banner (or a recent-files switcher when more than
+ * one file has been uploaded this session), the tab bar, and an <Outlet />
+ * for the active view's content. If we land here without parsed data
+ * (refresh / direct URL), bounce back to /.
  */
 function SummaryPage() {
-  const { hasData, fileName } = useCsvData()
+  const { hasData, fileName, recentFiles, activeFileId, selectRecentFile } = useCsvData()
 
   if (!hasData) {
     return <Navigate to="/" replace />
   }
 
+  const canSwitch = recentFiles.length > 1
+
   return (
     <div className="summary-page">
       <div className="summary-file-banner" aria-label="Loaded file">
-        <span className="summary-file-name">{fileName}</span>
+        {canSwitch ? (
+          <select
+            className="summary-file-select"
+            value={activeFileId}
+            aria-label="Switch loaded file"
+            onChange={(e) => {
+              if (e.target.value && e.target.value !== activeFileId) {
+                selectRecentFile(e.target.value)
+              }
+            }}
+          >
+            {recentFiles.map((file) => (
+              <option key={file.id} value={file.id}>
+                {file.fileName}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="summary-file-name">{fileName}</span>
+        )}
       </div>
 
       <nav className="summary-tabs" aria-label="Summary views">

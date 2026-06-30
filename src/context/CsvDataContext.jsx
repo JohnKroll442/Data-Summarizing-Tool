@@ -19,6 +19,11 @@ import { profileColumns } from '../lib/chartData'
  * Charts are stored per view as `{ [viewId]: ChartDef[] }` where ChartDef is
  *   { uid: string, typeId: string, config: Record<string, any> }
  *
+ * Recent files: a small in-memory ring of recently-parsed CSVs so the user
+ * can swap between files without re-uploading from disk. Deduped by
+ * (fileName, fileSize); capped at MAX_RECENT_FILES; cleared on `clear()`.
+ * Deliberately NOT persisted — survives navigation, lost on hard refresh.
+ *
  * The `useCsvData` hook is exported from a sibling file so this module only
  * exports components (keeps Vite Fast Refresh happy).
  */
@@ -26,15 +31,20 @@ import { profileColumns } from '../lib/chartData'
 // eslint-disable-next-line react-refresh/only-export-components
 export const CsvDataContext = createContext(null)
 
+const MAX_RECENT_FILES = 5
+
 let nextUid = 1
 
 export function CsvDataProvider({ children }) {
   const [data, setData] = useState({
+    id: '',
     headers: [],
     rows: [],
     fileName: '',
     fileSize: 0,
   })
+
+  const [recentFiles, setRecentFiles] = useState([])
 
   const [chartsByView, setChartsByView] = useState({
     session: [],
@@ -46,24 +56,57 @@ export function CsvDataProvider({ children }) {
   const [sessionFilter, setSessionFilter] = useState(null)
   const [actionFilter, setActionFilter] = useState(null)
 
-  const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
-    setData({
-      headers: headers ?? [],
-      rows: rows ?? [],
-      fileName: fileName ?? '',
-      fileSize: fileSize ?? 0,
-    })
+  const resetDerivedState = useCallback(() => {
     setChartsByView({ session: [], action: [], widget: [] })
     setSessionFilter(null)
     setActionFilter(null)
   }, [])
 
-  const clear = useCallback(() => {
-    setData({ headers: [], rows: [], fileName: '', fileSize: 0 })
-    setChartsByView({ session: [], action: [], widget: [] })
-    setSessionFilter(null)
-    setActionFilter(null)
+  const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
+    const entry = {
+      id: generateFileId(),
+      headers: headers ?? [],
+      rows: rows ?? [],
+      fileName: fileName ?? '',
+      fileSize: fileSize ?? 0,
+      uploadedAt: Date.now(),
+    }
+    setData(entry)
+    setRecentFiles((prev) => {
+      const dedupKey = `${entry.fileName}|${entry.fileSize}`
+      const filtered = prev.filter(
+        (f) => `${f.fileName}|${f.fileSize}` !== dedupKey
+      )
+      return [entry, ...filtered].slice(0, MAX_RECENT_FILES)
+    })
+    resetDerivedState()
+  }, [resetDerivedState])
+
+  const selectRecentFile = useCallback((id) => {
+    let target
+    setRecentFiles((prev) => {
+      target = prev.find((f) => f.id === id)
+      if (!target) return prev
+      // Move the selected file to the head so the recent list reflects
+      // the most-recently-used order.
+      const rest = prev.filter((f) => f.id !== id)
+      return [{ ...target, uploadedAt: Date.now() }, ...rest]
+    })
+    if (target) {
+      setData(target)
+      resetDerivedState()
+    }
+  }, [resetDerivedState])
+
+  const removeRecentFile = useCallback((id) => {
+    setRecentFiles((prev) => prev.filter((f) => f.id !== id))
   }, [])
+
+  const clear = useCallback(() => {
+    setData({ id: '', headers: [], rows: [], fileName: '', fileSize: 0 })
+    setRecentFiles([])
+    resetDerivedState()
+  }, [resetDerivedState])
 
   const addChart = useCallback((viewId, typeId, config) => {
     const uid = `c${nextUid++}`
@@ -87,6 +130,10 @@ export function CsvDataProvider({ children }) {
       columnProfile: profileColumns(data.rows, data.headers),
       setCsvData,
       clear,
+      recentFiles,
+      selectRecentFile,
+      removeRecentFile,
+      activeFileId: data.id,
       chartsByView,
       addChart,
       removeChart,
@@ -99,6 +146,9 @@ export function CsvDataProvider({ children }) {
       data,
       setCsvData,
       clear,
+      recentFiles,
+      selectRecentFile,
+      removeRecentFile,
       chartsByView,
       addChart,
       removeChart,
@@ -108,4 +158,11 @@ export function CsvDataProvider({ children }) {
   )
 
   return <CsvDataContext.Provider value={value}>{children}</CsvDataContext.Provider>
+}
+
+function generateFileId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `f-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
