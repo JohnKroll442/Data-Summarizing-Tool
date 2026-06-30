@@ -21,6 +21,14 @@
  * columns and we can flag missing fields.
  */
 
+/**
+ * Measure values we recognize as phase tags. If a CSV has a WIDGET_MEASURE
+ * column but none of its values match these, every phase column will come
+ * back empty and the table looks broken — the UI uses this list to surface
+ * a warning in that case.
+ */
+export const RECOGNIZED_MEASURES = ['render', 'frontend', 'network', 'backend', 'offset']
+
 export function aggregateByAction(rows, headers) {
   const mapping = detectMapping(headers)
 

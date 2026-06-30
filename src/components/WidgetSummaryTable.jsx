@@ -4,6 +4,7 @@ import DataTable from './DataTable'
 import FilterPill from './FilterPill'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
+import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter, applyActionFilter } from '../lib/drillDown'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
@@ -78,6 +79,20 @@ function WidgetSummaryTable({ rows, headers }) {
   const activeFilterCount =
     Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
 
+  const unrecognizedMeasure = useMemo(() => {
+    if (!mapping.measure) return null
+    const seen = new Set()
+    for (const r of scopedRows) {
+      const v = r?.[mapping.measure]
+      if (v === undefined || v === null || v === '') continue
+      seen.add(String(v).toLowerCase())
+    }
+    if (seen.size === 0) return null
+    const wanted = new Set(RECOGNIZED_MEASURES)
+    for (const v of seen) if (wanted.has(v)) return null
+    return Array.from(seen).slice(0, 8).join(', ')
+  }, [scopedRows, mapping.measure])
+
   const pills = (
     <>
       {sessionFilter && (
@@ -140,9 +155,15 @@ function WidgetSummaryTable({ rows, headers }) {
   }
 
   const missing = []
-  if (!mapping.widgetName) missing.push('Widget name')
-  if (!mapping.measure)    missing.push('Render / Network / Backend (needs a WIDGET_MEASURE column)')
-  if (!mapping.duration)   missing.push('Render / Network / Backend durations (needs a DURATION column)')
+  if (!mapping.widgetName)            missing.push('Widget name')
+  if (!mapping.measure)               missing.push('Render / Network / Backend (needs a WIDGET_MEASURE column)')
+  if (!mapping.duration)              missing.push('Render / Network / Backend durations (needs a DURATION column)')
+  if (!mapping.renderTimestampStart || !mapping.renderTimestamp) {
+    missing.push('Render start / end times (needs WIDGET_RENDER_TIMESTAMP_START + WIDGET_RENDER_TIMESTAMP)')
+  }
+  if (!mapping.widgetTimestampStart || !mapping.widgetTimestamp) {
+    missing.push('Network/Backend start / end times (needs WIDGET_TIMESTAMP_START + WIDGET_TIMESTAMP)')
+  }
 
   return (
     <>
@@ -151,6 +172,15 @@ function WidgetSummaryTable({ rows, headers }) {
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}
           <strong>{missing.join(', ')}</strong>.
+        </div>
+      )}
+      {unrecognizedMeasure && (
+        <div className="summary-note">
+          <strong>Unrecognized phase tags in <code>{mapping.measure}</code>.</strong>{' '}
+          Expected values like <code>render</code> / <code>network</code> /{' '}
+          <code>backend</code> / <code>offset</code> but saw:{' '}
+          <code>{unrecognizedMeasure}</code>. Render / Network / Backend columns
+          will be empty until the values match.
         </div>
       )}
 

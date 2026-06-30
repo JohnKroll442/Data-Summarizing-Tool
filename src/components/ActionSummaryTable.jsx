@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
-import { aggregateByAction } from '../lib/actionAggregate'
+import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
@@ -76,6 +76,24 @@ function ActionSummaryTable({ rows, headers }) {
   const activeFilterCount =
     Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
 
+  // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
+  // but contains none of render/frontend/network/backend/offset, every phase
+  // max will be '' — surface that as a distinct warning so the user doesn't
+  // think the durations are wrong.
+  const unrecognizedMeasure = useMemo(() => {
+    if (!mapping.measure) return null
+    const seen = new Set()
+    for (const r of scopedRows) {
+      const v = r?.[mapping.measure]
+      if (v === undefined || v === null || v === '') continue
+      seen.add(String(v).toLowerCase())
+    }
+    if (seen.size === 0) return null
+    const wanted = new Set(RECOGNIZED_MEASURES)
+    for (const v of seen) if (wanted.has(v)) return null
+    return Array.from(seen).slice(0, 8).join(', ')
+  }, [scopedRows, mapping.measure])
+
   // Drill-down pill — render BEFORE the data-shape error gates so the user
   // can always escape an "0 actions for this session" empty state.
   const pill = sessionFilter ? (
@@ -126,10 +144,11 @@ function ActionSummaryTable({ rows, headers }) {
   }
 
   const missing = []
-  if (!mapping.user)     missing.push('User')
-  if (!mapping.widgetId) missing.push('Widget count (needs a WIDGET_ID column)')
-  if (!mapping.measure)  missing.push('Frontend / Network / Backend (needs a WIDGET_MEASURE column)')
-  if (!mapping.duration) missing.push('Frontend / Network / Backend durations (needs a DURATION column)')
+  if (!mapping.user)            missing.push('User')
+  if (!mapping.actionTimestamp) missing.push('Action timestamp (without it, two invocations of the same action collapse into one row)')
+  if (!mapping.widgetId)        missing.push('Widget count (needs a WIDGET_ID column)')
+  if (!mapping.measure)         missing.push('Frontend / Network / Backend (needs a WIDGET_MEASURE column)')
+  if (!mapping.duration)        missing.push('Frontend / Network / Backend durations (needs a DURATION column)')
 
   return (
     <>
@@ -138,6 +157,15 @@ function ActionSummaryTable({ rows, headers }) {
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}
           <strong>{missing.join(', ')}</strong>.
+        </div>
+      )}
+      {unrecognizedMeasure && (
+        <div className="summary-note">
+          <strong>Unrecognized phase tags in <code>{mapping.measure}</code>.</strong>{' '}
+          Expected values like <code>render</code> / <code>network</code> /{' '}
+          <code>backend</code> / <code>offset</code> but saw:{' '}
+          <code>{unrecognizedMeasure}</code>. Frontend / Network / Backend columns
+          will be empty until the values match.
         </div>
       )}
 
