@@ -58,7 +58,9 @@ export function applyActionFilter(rows, headers, actionFilter) {
                   headers.find((h) => norm(h) === 'action')
   if (!nameKey) return rows
   const tsKey = headers.find((h) => norm(h) === 'actiontimestamp') ||
-                headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end'))
+                headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end')) ||
+                headers.find((h) => norm(h) === 'timestamp') ||
+                headers.find((h) => norm(h).includes('timestamp') && !norm(h).includes('end'))
   return rows.filter((r) => {
     if (String(r?.[nameKey] ?? '') !== String(actionFilter.name)) return false
     if (actionFilter.timestamp && tsKey) {

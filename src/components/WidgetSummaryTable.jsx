@@ -168,10 +168,11 @@ function WidgetSummaryTable({ rows, headers }) {
   if (!mapping.widgetName)            missing.push('Widget name')
   if (!mapping.measure)               missing.push('Render / Network / Backend (needs a WIDGET_MEASURE column)')
   if (!mapping.duration)              missing.push('Render / Network / Backend durations (needs a DURATION column)')
-  if (!mapping.renderTimestampStart || !mapping.renderTimestamp) {
+  const canDerivePhaseTimes = mapping.rowTimestamp && mapping.duration
+  if (!canDerivePhaseTimes && (!mapping.renderTimestampStart || !mapping.renderTimestamp)) {
     missing.push('Render start / end times (needs WIDGET_RENDER_TIMESTAMP_START + WIDGET_RENDER_TIMESTAMP)')
   }
-  if (!mapping.widgetTimestampStart || !mapping.widgetTimestamp) {
+  if (!canDerivePhaseTimes && (!mapping.widgetTimestampStart || !mapping.widgetTimestamp)) {
     missing.push('Network/Backend start / end times (needs WIDGET_TIMESTAMP_START + WIDGET_TIMESTAMP)')
   }
 
@@ -341,6 +342,13 @@ function findActionTimestampKey(headers) {
   for (const h of headers) {
     const n = norm(h)
     if (n.includes('actiontimestamp') && !n.includes('end')) return h
+  }
+  for (const h of headers) {
+    if (norm(h) === 'timestamp') return h
+  }
+  for (const h of headers) {
+    const n = norm(h)
+    if (n.includes('timestamp') && !n.includes('end')) return h
   }
   return ''
 }

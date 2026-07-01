@@ -114,7 +114,7 @@ function distinctCount(rows, key) {
  */
 function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTargets) {
   if (!durationKey || !measureKey) return ''
-  const wanted = new Set(targets.map((t) => t.toLowerCase()))
+  const wanted = targets.map((t) => t.toLowerCase())
   const subWanted = subTargets && subTargets.length
     ? new Set(subTargets.map((t) => t.toLowerCase()))
     : null
@@ -127,7 +127,7 @@ function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTarg
   for (const r of rows) {
     const m = r?.[measureKey]
     if (m === undefined || m === null) continue
-    if (!wanted.has(String(m).toLowerCase())) continue
+    if (!measureMatches(String(m).toLowerCase(), wanted)) continue
     if (subWanted) {
       const s = r?.[subKey]
       if (s === undefined || s === null) continue
@@ -140,6 +140,18 @@ function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTarg
     }
   }
   return found ? max : ''
+}
+
+// Match measure values against target names, accepting either exact equality
+// or a `<target>_<suffix>` form where the suffix names a submeasure folded
+// into the measure column (e.g. WIDGET_MEASURE = 'network_ttfb' should match
+// target 'network').
+function measureMatches(value, targets) {
+  for (const t of targets) {
+    if (value === t) return true
+    if (value.startsWith(`${t}_`)) return true
+  }
+  return false
 }
 
 function detectMapping(headers) {
@@ -175,12 +187,15 @@ function detectMapping(headers) {
   })
 
   const actionTimestamp = find(
-    ['actiontimestamp'],
-    ['actiontimestamp'],
+    ['actiontimestamp', 'timestamp'],
+    ['actiontimestamp', 'timestamp'],
     (h) => norm(h).includes('end'),
   )
 
-  const widgetId = find(['widgetid'], ['widgetid'])
+  const widgetId = find(
+    ['widgetid', 'instanceid'],
+    ['widgetid', 'instanceid'],
+  )
 
   // WIDGET_MEASURE is the flag that distinguishes render / backend / network.
   const measure = find(

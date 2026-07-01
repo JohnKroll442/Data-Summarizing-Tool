@@ -76,14 +76,14 @@ export function aggregateByWidget(rows, headers) {
       widget_id:     widgetId,
       widget_name:   firstNonEmpty(groupRows, mapping.widgetName),
       render:        renderPick.value,
-      render_start:  cellValue(renderPick.row, mapping.renderTimestampStart),
-      render_end:    cellValue(renderPick.row, mapping.renderTimestamp),
+      render_start:  phaseStart(renderPick, mapping, 'render'),
+      render_end:    phaseEnd(renderPick, mapping, 'render'),
       network:       networkPick.value,
-      network_start: cellValue(networkPick.row, mapping.widgetTimestampStart),
-      network_end:   cellValue(networkPick.row, mapping.widgetTimestamp),
+      network_start: phaseStart(networkPick, mapping, 'widget'),
+      network_end:   phaseEnd(networkPick, mapping, 'widget'),
       backend:       backendPick.value,
-      backend_start: cellValue(backendPick.row, mapping.widgetTimestampStart),
-      backend_end:   cellValue(backendPick.row, mapping.widgetTimestamp),
+      backend_start: phaseStart(backendPick, mapping, 'widget'),
+      backend_end:   phaseEnd(backendPick, mapping, 'widget'),
       offset:        offsetPick.value,
     })
   }
@@ -110,6 +110,36 @@ function cellValue(row, key) {
 }
 
 /**
+ * Phase end timestamp. Prefers the dedicated column
+ * (WIDGET_RENDER_TIMESTAMP for render, WIDGET_TIMESTAMP for network/backend);
+ * falls back to the row's generic TIMESTAMP if the dedicated one is missing.
+ */
+function phaseEnd(pick, mapping, phase) {
+  if (!pick?.row) return ''
+  const endKey = phase === 'render' ? mapping.renderTimestamp : mapping.widgetTimestamp
+  if (endKey) return cellValue(pick.row, endKey)
+  return cellValue(pick.row, mapping.rowTimestamp)
+}
+
+/**
+ * Phase start timestamp. Prefers the dedicated *_START column; falls back to
+ * (row TIMESTAMP − DURATION) when the CSV doesn't carry a start column.
+ * Returns '' if the row timestamp isn't a parseable date or duration isn't
+ * finite — better to leave the cell blank than show garbage.
+ */
+function phaseStart(pick, mapping, phase) {
+  if (!pick?.row) return ''
+  const startKey = phase === 'render' ? mapping.renderTimestampStart : mapping.widgetTimestampStart
+  if (startKey) return cellValue(pick.row, startKey)
+  const endStr = cellValue(pick.row, mapping.rowTimestamp)
+  if (!endStr) return ''
+  const endMs = Date.parse(endStr)
+  const duration = Number(pick.value)
+  if (!Number.isFinite(endMs) || !Number.isFinite(duration)) return ''
+  return new Date(endMs - duration).toISOString()
+}
+
+/**
  * Pick the row with the maximum `durationKey` value among rows whose
  * measure (and optional sub-measure) match. Returns `{ row, value }` —
  * `row` is the winning source row (so callers can pull timestamps off
@@ -118,7 +148,7 @@ function cellValue(row, key) {
  */
 function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) {
   if (!durationKey || !measureKey) return { row: null, value: '' }
-  const wanted = new Set(targets.map((t) => t.toLowerCase()))
+  const wanted = targets.map((t) => t.toLowerCase())
   const subWanted = subTargets && subTargets.length
     ? new Set(subTargets.map((t) => t.toLowerCase()))
     : null
@@ -128,7 +158,7 @@ function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) 
   for (const r of rows) {
     const m = r?.[measureKey]
     if (m === undefined || m === null) continue
-    if (!wanted.has(String(m).toLowerCase())) continue
+    if (!measureMatches(String(m).toLowerCase(), wanted)) continue
     if (subWanted) {
       const s = r?.[subKey]
       if (s === undefined || s === null) continue
@@ -141,6 +171,18 @@ function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) 
     }
   }
   return pick ? { row: pick, value: max } : { row: null, value: '' }
+}
+
+// Match measure values against target names, accepting either exact equality
+// or a `<target>_<suffix>` form where the suffix names a submeasure folded
+// into the measure column (e.g. WIDGET_MEASURE = 'network_ttfb' should match
+// target 'network').
+function measureMatches(value, targets) {
+  for (const t of targets) {
+    if (value === t) return true
+    if (value.startsWith(`${t}_`)) return true
+  }
+  return false
 }
 
 function detectMapping(headers) {
@@ -159,12 +201,17 @@ function detectMapping(headers) {
     return ''
   }
 
-  const widgetId = find(['widgetid'], ['widgetid'])
+  const widgetId = find(
+    ['widgetid', 'instanceid'],
+    ['widgetid', 'instanceid'],
+  )
 
   // `widgetname` is an unambiguous exact match — no need for substring
   // rejection (and the previous reject('id') accidentally caught
   // "widgetname" because "wIDgetname" literally contains the letters "id").
-  const widgetName = find(['widgetname'], ['widgetname'])
+  // Falls back to WIDGET_TYPE when no dedicated name column exists.
+  const widgetName = find(['widgetname'], ['widgetname']) ||
+                     find(['widgettype'], ['widgettype'])
 
   const measure = find(
     ['widgetmeasure', 'measure'],
@@ -215,6 +262,19 @@ function detectMapping(headers) {
     (h) => norm(h).includes('render'),
   )
 
+  // Generic per-row timestamp (e.g. `TIMESTAMP`). Used to synthesize phase
+  // start/end when the CSV has no dedicated WIDGET_RENDER_TIMESTAMP* /
+  // WIDGET_TIMESTAMP* columns: end = row timestamp, start = end − duration.
+  const rowTimestamp = find(
+    ['timestamp'],
+    ['timestamp'],
+    (h) => {
+      const n = norm(h)
+      return n.includes('render') || n.includes('start') || n.includes('end') ||
+             n.includes('widget') || n.includes('action')
+    },
+  )
+
   return {
     widgetId,
     widgetName,
@@ -225,5 +285,6 @@ function detectMapping(headers) {
     renderTimestampStart,
     widgetTimestamp,
     widgetTimestampStart,
+    rowTimestamp,
   }
 }
