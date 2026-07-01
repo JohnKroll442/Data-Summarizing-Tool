@@ -36,7 +36,7 @@ function RawDataView() {
       <h2 className="view-heading">Raw Data View</h2>
       <p className="view-subheading">Every row and column from your CSV.</p>
       <div className="summary-filters">
-        <span className="summary-filter-count">
+        <span className="summary-filter-count" style={{ marginLeft: 0, marginRight: 'auto' }}>
           {rows.length.toLocaleString()} row{rows.length === 1 ? '' : 's'}
         </span>
         <button

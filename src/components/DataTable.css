@@ -29,8 +29,8 @@
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--sap-blue-darker);
-  background: var(--sap-blue-light);
+  color: #ffffff;
+  background: var(--sap-blue-dark);
   padding: 0.65rem 0.85rem;
   border-bottom: 1px solid #000;
   border-right: 1px solid #000;
@@ -60,18 +60,19 @@
 }
 
 .data-table-sort:hover {
-  color: #000;
+  color: #ffffff;
+  opacity: 0.85;
 }
 
 .data-table-sort.is-active {
-  color: #000;
+  color: #ffffff;
 }
 
 .data-table-sort-indicator {
   display: inline-block;
   min-width: 0.75em;
   font-size: 0.7rem;
-  color: var(--sap-blue-darker);
+  color: #ffffff;
 }
 
 .data-table tbody td {

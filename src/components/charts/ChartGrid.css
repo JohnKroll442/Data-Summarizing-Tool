@@ -37,22 +37,21 @@
 
 .chart-grid-count {
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  color: var(--sap-text-muted);
 }
 
 .chart-grid-empty {
   padding: 1.5rem 1.25rem;
   text-align: center;
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px dashed rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+  color: var(--sap-blue-darker);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px dashed var(--sap-blue-darker);
   border-radius: 12px;
   margin-bottom: 1rem;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
 .chart-grid-empty strong {
-  color: var(--sap-gold-light);
+  color: var(--sap-blue-darker);
 }

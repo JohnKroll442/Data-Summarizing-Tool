@@ -4,6 +4,7 @@ import FileUpload from '../components/FileUpload'
 import { parseCsvFile } from '../lib/parseCsv'
 import { formatFileSize } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
+import sapLogo from '../assets/sap-logo.png'
 
 /**
  * UploadPage — the landing screen. Asks for the user's name, accepts a CSV,
@@ -77,7 +78,7 @@ function UploadPage() {
   return (
     <>
       <header className="app-header">
-        <div className="app-header-logo" aria-hidden="true">SAP</div>
+        <img src={sapLogo} alt="SAP" className="app-header-logo" />
         <div className="app-header-text">
           {showNameForm ? (
             <form className="app-name-form" onSubmit={saveName}>
@@ -126,9 +127,11 @@ function UploadPage() {
         {parseError && (
           <p className="app-error" role="alert">{parseError}</p>
         )}
-        {recentFiles.length > 0 && (
-          <section className="recent-files" aria-label="Recently uploaded files">
-            <h2 className="recent-files-heading">Recent files</h2>
+        <section className="recent-files" aria-label="Recently uploaded files">
+          <h2 className="recent-files-heading">Recent files</h2>
+          {recentFiles.length === 0 ? (
+            <p className="recent-files-empty">No files uploaded yet.</p>
+          ) : (
             <ul className="recent-files-list">
               {recentFiles.map((file) => (
                 <li key={file.id} className="recent-files-item">
@@ -157,8 +160,8 @@ function UploadPage() {
                 </li>
               ))}
             </ul>
-          </section>
-        )}
+          )}
+        </section>
       </main>
     </>
   )

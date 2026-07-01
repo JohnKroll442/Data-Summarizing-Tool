@@ -1,4 +1,4 @@
-import { Navigate, NavLink, Outlet } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet } from 'react-router-dom'
 import { useCsvData } from '../context/useCsvData'
 import './SummaryPage.css'
 
@@ -22,6 +22,9 @@ function SummaryPage() {
   return (
     <div className="summary-page">
       <div className="summary-file-banner" aria-label="Loaded file">
+        <Link to="/" className="summary-home-link" aria-label="Back to upload page">
+          <span aria-hidden="true">←</span> Home
+        </Link>
         {canSwitch ? (
           <select
             className="summary-file-select"

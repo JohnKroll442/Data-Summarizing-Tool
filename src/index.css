@@ -28,10 +28,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(240, 171, 0, 0.18) 0%, transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(0, 64, 176, 0.28) 0%, transparent 50%),
-    linear-gradient(135deg, #0070f2 0%, #0040b0 45%, #00295c 100%);
+  background: linear-gradient(135deg, #eaf3ff 0%, #d1e8ff 50%, #b8dcff 100%);
   background-attachment: fixed;
   color: var(--sap-text);
 }

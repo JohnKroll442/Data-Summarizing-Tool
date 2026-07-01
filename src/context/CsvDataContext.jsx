@@ -1,4 +1,4 @@
-import { createContext, useCallback, useMemo, useState } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { profileColumns } from '../lib/chartData'
 
 /**
@@ -7,8 +7,13 @@ import { profileColumns } from '../lib/chartData'
  *
  * Lives at the router level so navigation between `/` and `/summary/*`
  * retains the parsed rows, the user's chart selections, and any drill-down
- * the user clicked into. A hard reload clears everything (no backend
- * persistence).
+ * the user clicked into.
+ *
+ * Persistence: the active file and the recent-files ring are cached to
+ * localStorage under STORAGE_KEY so a hard refresh restores the last
+ * upload. Charts and drill-down filters are NOT persisted — they reset
+ * on file swap anyway. Cache is skipped for payloads >MAX_CACHE_BYTES to
+ * avoid QuotaExceededError; `clear()` wipes the cache.
  *
  * Drill-down state:
  *   sessionFilter — when set, ActionView only aggregates rows whose
@@ -19,10 +24,9 @@ import { profileColumns } from '../lib/chartData'
  * Charts are stored per view as `{ [viewId]: ChartDef[] }` where ChartDef is
  *   { uid: string, typeId: string, config: Record<string, any> }
  *
- * Recent files: a small in-memory ring of recently-parsed CSVs so the user
- * can swap between files without re-uploading from disk. Deduped by
- * (fileName, fileSize); capped at MAX_RECENT_FILES; cleared on `clear()`.
- * Deliberately NOT persisted — survives navigation, lost on hard refresh.
+ * Recent files: a small ring of recently-parsed CSVs so the user can swap
+ * between files without re-uploading. Deduped by (fileName, fileSize);
+ * capped at MAX_RECENT_FILES; cleared on `clear()`.
  *
  * The `useCsvData` hook is exported from a sibling file so this module only
  * exports components (keeps Vite Fast Refresh happy).
@@ -32,19 +36,60 @@ import { profileColumns } from '../lib/chartData'
 export const CsvDataContext = createContext(null)
 
 const MAX_RECENT_FILES = 5
+const STORAGE_KEY = 'csvDataCache.v1'
+const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
+
+// Cache write is skipped if the serialized payload exceeds this. localStorage
+// is typically capped at ~5MB per origin; going over throws QuotaExceededError
+// and would take out the whole save. 4MB leaves headroom for the userName key
+// and future additions.
+const MAX_CACHE_BYTES = 4 * 1024 * 1024
+
+function loadCache() {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveCache(payload) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const serialized = JSON.stringify(payload)
+    if (serialized.length > MAX_CACHE_BYTES) {
+      // Too big to cache safely — drop any stale entry so we don't restore
+      // a mismatched file next load.
+      localStorage.removeItem(STORAGE_KEY)
+      return
+    }
+    localStorage.setItem(STORAGE_KEY, serialized)
+  } catch {
+    // Quota exceeded or storage disabled — silently drop the cache.
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* noop */ }
+  }
+}
+
+function clearCache() {
+  if (typeof localStorage === 'undefined') return
+  try { localStorage.removeItem(STORAGE_KEY) } catch { /* noop */ }
+}
 
 let nextUid = 1
 
 export function CsvDataProvider({ children }) {
-  const [data, setData] = useState({
-    id: '',
-    headers: [],
-    rows: [],
-    fileName: '',
-    fileSize: 0,
-  })
+  // Hydrate synchronously from localStorage so the first render already has
+  // the cached file — avoids a flash of the empty upload screen.
+  const cached = typeof window !== 'undefined' ? loadCache() : null
 
-  const [recentFiles, setRecentFiles] = useState([])
+  const [data, setData] = useState(cached?.data ?? EMPTY_DATA)
+
+  const [recentFiles, setRecentFiles] = useState(cached?.recentFiles ?? [])
 
   const [chartsByView, setChartsByView] = useState({
     session: [],
@@ -103,9 +148,10 @@ export function CsvDataProvider({ children }) {
   }, [])
 
   const clear = useCallback(() => {
-    setData({ id: '', headers: [], rows: [], fileName: '', fileSize: 0 })
+    setData(EMPTY_DATA)
     setRecentFiles([])
     resetDerivedState()
+    clearCache()
   }, [resetDerivedState])
 
   const addChart = useCallback((viewId, typeId, config) => {
@@ -122,6 +168,17 @@ export function CsvDataProvider({ children }) {
       [viewId]: (prev[viewId] ?? []).filter((c) => c.uid !== uid),
     }))
   }, [])
+
+  // Persist the active file + recent-files ring to localStorage whenever
+  // they change. Charts/filters intentionally stay in-memory — they reset
+  // on file swap anyway.
+  useEffect(() => {
+    if (!data.id && recentFiles.length === 0) {
+      clearCache()
+      return
+    }
+    saveCache({ data, recentFiles })
+  }, [data, recentFiles])
 
   const value = useMemo(
     () => ({
