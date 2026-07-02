@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import './DataTable.css'
 
 /**
@@ -31,6 +32,11 @@ function DataTable({ rows, columns, emptyMessage = 'No rows to display.', sort =
         ? Object.keys(rows[0]).map((key) => ({ key, label: key }))
         : []
 
+  const numericMeta = useMemo(
+    () => computeNumericMeta(rows, resolvedColumns),
+    [rows, resolvedColumns],
+  )
+
   if (rows.length === 0 || resolvedColumns.length === 0) {
     return <div className="data-table-empty">{emptyMessage}</div>
   }
@@ -58,8 +64,13 @@ function DataTable({ rows, columns, emptyMessage = 'No rows to display.', sort =
               const active = sort?.key === col.key
               const dir = active ? sort.dir : null
               const ariaSort = !active ? 'none' : dir === 'asc' ? 'ascending' : 'descending'
+              const isNumeric = !!numericMeta[col.key]?.numeric
               return (
-                <th key={col.key} aria-sort={canSort ? ariaSort : undefined}>
+                <th
+                  key={col.key}
+                  aria-sort={canSort ? ariaSort : undefined}
+                  className={isNumeric ? 'is-numeric' : undefined}
+                >
                   {canSort ? (
                     <button
                       type="button"
@@ -84,9 +95,27 @@ function DataTable({ rows, columns, emptyMessage = 'No rows to display.', sort =
             <tr key={rowIndex}>
               {resolvedColumns.map((col) => {
                 const value = row[col.key]
+                const meta = numericMeta[col.key]
+                const isNumeric = !!meta?.numeric
+                let cellStyle
+                if (isNumeric) {
+                  const n = toNumber(value)
+                  const max = meta.max
+                  let pct = 0
+                  if (Number.isFinite(n) && Number.isFinite(max) && max > 0) {
+                    pct = Math.max(0, Math.min(100, (n / max) * 100))
+                  }
+                  cellStyle = { '--bar-pct': `${pct}%` }
+                }
                 return (
-                  <td key={col.key}>
-                    {col.render ? col.render(value, row) : formatCell(value)}
+                  <td
+                    key={col.key}
+                    className={isNumeric ? 'is-numeric' : undefined}
+                    style={cellStyle}
+                  >
+                    <span className="data-table-cell-content">
+                      {col.render ? col.render(value, row) : formatCell(value)}
+                    </span>
                   </td>
                 )
               })}
@@ -105,6 +134,50 @@ function formatCell(value) {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+function toNumber(value) {
+  if (typeof value === 'number') return value
+  if (value === null || value === undefined || value === '') return NaN
+  const n = Number(value)
+  return Number.isFinite(n) ? n : NaN
+}
+
+// Sample up to 20 non-null values per column to decide if the column is
+// numeric, then track the max for bar-width scaling. sortType overrides
+// the sampled inference in either direction.
+function computeNumericMeta(rows, cols) {
+  const meta = {}
+  for (const col of cols) {
+    if (col.sortType === 'string') {
+      meta[col.key] = { numeric: false, max: 0 }
+      continue
+    }
+    const forceNumeric = col.sortType === 'number'
+    let sampled = 0
+    let numericCount = 0
+    let nonNullCount = 0
+    let max = -Infinity
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i]?.[col.key]
+      if (v === null || v === undefined || v === '') continue
+      nonNullCount++
+      if (sampled < 20) {
+        sampled++
+        const n = toNumber(v)
+        if (Number.isFinite(n)) numericCount++
+      }
+      const n = toNumber(v)
+      if (Number.isFinite(n) && n > max) max = n
+    }
+    const inferredNumeric = sampled > 0 && numericCount === sampled
+    const numeric = forceNumeric || (nonNullCount > 0 && inferredNumeric)
+    meta[col.key] = {
+      numeric,
+      max: Number.isFinite(max) ? max : 0,
+    }
+  }
+  return meta
 }
 
 export default DataTable

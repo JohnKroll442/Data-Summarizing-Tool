@@ -1,4 +1,5 @@
 import ActionSummaryTable from '../../components/ActionSummaryTable'
+import KpiStrip from '../../components/KpiStrip'
 import ChartGrid from '../../components/charts/ChartGrid'
 import { useCsvData } from '../../context/useCsvData'
 
@@ -14,6 +15,7 @@ function ActionView() {
       <p className="view-subheading">
         One row per action — search or filter to narrow the list.
       </p>
+      <KpiStrip variant="action" rows={rows} headers={headers} />
       <ActionSummaryTable rows={rows} headers={headers} />
 
       <h3 className="view-section-heading">Charts</h3>

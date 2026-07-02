@@ -1,0 +1,196 @@
+.csv-validation-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+
+.csv-validation-modal {
+  width: min(720px, 100%);
+  max-height: 88vh;
+  background: var(--sap-surface);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--sap-text);
+}
+
+.csv-validation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--sap-border);
+  background: linear-gradient(135deg, var(--sap-blue) 0%, var(--sap-blue-dark) 100%);
+  color: #fff;
+}
+
+.csv-validation-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.csv-validation-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.csv-validation-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.csv-validation-body {
+  padding: 1rem 1.1rem;
+  overflow-y: auto;
+  background: var(--sap-surface);
+}
+
+.csv-validation-file {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--sap-text-muted, var(--sap-text));
+}
+
+.csv-validation-file-label {
+  font-weight: 600;
+}
+
+.csv-validation-file-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+
+.csv-validation-fatal {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  background: rgba(191, 41, 41, 0.08);
+  border: 1px solid rgba(191, 41, 41, 0.35);
+  color: #7a1e1e;
+  font-size: 0.875rem;
+}
+
+.csv-validation-section {
+  margin-bottom: 0.85rem;
+}
+
+.csv-validation-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sap-text-muted, var(--sap-text));
+}
+
+.csv-validation-affected {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}
+
+.csv-validation-affected li {
+  margin-bottom: 0.15rem;
+}
+
+.csv-validation-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 560px) {
+  .csv-validation-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.csv-validation-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.csv-validation-list li {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--sap-border);
+  background: var(--sap-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.csv-validation-list-missing li {
+  border-color: rgba(191, 41, 41, 0.45);
+  background: rgba(191, 41, 41, 0.08);
+  color: #7a1e1e;
+}
+
+.csv-validation-list-available li {
+  border-color: rgba(23, 114, 69, 0.45);
+  background: rgba(23, 114, 69, 0.08);
+  color: #135a37;
+}
+
+.csv-validation-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--sap-text-muted, var(--sap-text));
+  opacity: 0.75;
+}
+
+.csv-validation-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid var(--sap-border);
+  background: var(--sap-surface);
+}
+
+.csv-validation-btn {
+  border: 1px solid var(--sap-border);
+  background: var(--sap-surface);
+  color: var(--sap-text);
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.csv-validation-btn:hover {
+  background: var(--sap-surface-alt, rgba(0, 0, 0, 0.04));
+}
+
+.csv-validation-btn-primary {
+  background: var(--sap-blue);
+  border-color: var(--sap-blue);
+  color: #fff;
+}
+
+.csv-validation-btn-primary:hover {
+  background: var(--sap-blue-dark, var(--sap-blue));
+  border-color: var(--sap-blue-dark, var(--sap-blue));
+}
+
+.csv-validation-btn:focus-visible {
+  outline: 2px solid var(--sap-blue);
+  outline-offset: 2px;
+}

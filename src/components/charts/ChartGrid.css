@@ -46,8 +46,8 @@
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--sap-blue-darker);
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px dashed var(--sap-blue-darker);
+  background: var(--color-surface);
+  border: 1px dashed var(--sap-border);
   border-radius: 12px;
   margin-bottom: 1rem;
 }

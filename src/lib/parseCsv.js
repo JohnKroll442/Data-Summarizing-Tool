@@ -67,6 +67,74 @@ export function parseCsvFile(file) {
   )
 }
 
+import { aggregateBySession } from './sessionAggregate'
+import { aggregateByAction } from './actionAggregate'
+import { aggregateByWidget } from './widgetAggregate'
+
+// Each view's required fields expressed as (label shown to the user) → (key on
+// the mapping object each aggregator returns). Validation runs the aggregator,
+// then reports as "missing" any field whose mapping entry came back empty.
+// This keeps the dialog aligned with what the aggregators can actually detect
+// — no separate alias list to drift out of sync.
+const VIEW_REQUIREMENTS = {
+  'Session view': {
+    aggregate: aggregateBySession,
+    fields: [
+      { label: 'SESSION_ID', key: 'session' },
+      { label: 'USER_NAME',  key: 'user' },
+      { label: 'STORY_NAME', key: 'story' },
+      { label: 'DURATION',   key: 'duration' },
+    ],
+  },
+  'Action view': {
+    aggregate: aggregateByAction,
+    fields: [
+      { label: 'USER_ACTION',      key: 'actionName' },
+      { label: 'ACTION_TIMESTAMP', key: 'actionTimestamp' },
+      { label: 'WIDGET_ID',        key: 'widgetId' },
+      { label: 'WIDGET_MEASURE',   key: 'measure' },
+      { label: 'DURATION',         key: 'duration' },
+      { label: 'USER_NAME',        key: 'user' },
+    ],
+  },
+  'Widget view': {
+    aggregate: aggregateByWidget,
+    fields: [
+      { label: 'WIDGET_ID',      key: 'widgetId' },
+      { label: 'WIDGET_NAME',    key: 'widgetName' },
+      { label: 'WIDGET_MEASURE', key: 'measure' },
+      { label: 'DURATION',       key: 'duration' },
+    ],
+  },
+}
+
+export function validateSchema(headers, rows) {
+  const availableSet = new Set()
+  const missingSet = new Set()
+  const affectedViews = []
+
+  for (const [viewName, { aggregate, fields }] of Object.entries(VIEW_REQUIREMENTS)) {
+    const { mapping } = aggregate(rows ?? [], headers ?? [])
+    let viewMissing = 0
+    for (const field of fields) {
+      if (mapping?.[field.key]) {
+        availableSet.add(field.label)
+      } else {
+        missingSet.add(field.label)
+        viewMissing++
+      }
+    }
+    if (viewMissing > 0) affectedViews.push(viewName)
+  }
+
+  return {
+    available: Array.from(availableSet),
+    missing: Array.from(missingSet),
+    affectedViews,
+    canProceed: availableSet.size > 0,
+  }
+}
+
 // Read the File as UTF-8 text. Uses FileReader so we can normalize line
 // endings before parsing — Papa's own `File` input path skips this step.
 function readFileAsText(file) {

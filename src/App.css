@@ -152,17 +152,16 @@
   border-radius: 8px;
   font-size: 0.88rem;
   text-align: center;
-  backdrop-filter: blur(8px);
 }
 
 .app-status {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--color-surface);
   color: var(--sap-blue-darker);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .app-error {
-  background: rgba(255, 230, 230, 0.95);
+  background: #ffe6e6;
   color: var(--sap-danger);
   border: 1px solid rgba(187, 0, 0, 0.25);
 }
@@ -170,11 +169,10 @@
 .recent-files {
   margin-top: 0.5rem;
   padding: 0.75rem 0.85rem 0.85rem;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-md);
   text-align: left;
 }
 
@@ -264,4 +262,108 @@
   background: rgba(187, 0, 0, 0.08);
   border-color: rgba(187, 0, 0, 0.25);
   color: var(--sap-danger);
+}
+
+/* Compare-mode toggle sits inline with the "Recent files" heading. */
+.recent-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.recent-files-header .recent-files-heading {
+  margin: 0;
+}
+
+.recent-files-compare-toggle {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg);
+  border: 1px solid var(--sap-blue);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.recent-files-compare-toggle:hover {
+  background: var(--sap-blue);
+  color: #fff;
+}
+
+.recent-files-compare-toggle.is-exit {
+  background: transparent;
+  border-color: var(--color-border-subtle);
+  color: var(--sap-text-muted);
+}
+
+.recent-files-compare-toggle.is-exit:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--sap-text);
+}
+
+/* While compare mode is on we disable the pick-to-load behavior. Show that
+   visually so the user isn't confused about why clicks do nothing. */
+.recent-files-pick:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.compare-role-picker {
+  display: flex;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.compare-role-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  background: transparent;
+  color: var(--sap-text-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.compare-role-btn:hover {
+  background: var(--sap-blue-bg);
+  color: var(--sap-blue-darker);
+  border-color: var(--sap-blue);
+}
+
+.compare-role-btn.is-active {
+  background: var(--sap-blue);
+  color: #fff;
+  border-color: var(--sap-blue);
+}
+
+.recent-files-compare-submit {
+  margin-top: 0.6rem;
+  align-self: flex-end;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sap-blue-darker);
+  background: var(--sap-gold);
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.recent-files-compare-submit:hover {
+  background: var(--sap-gold-light);
+}
+
+.recent-files-compare-submit:active {
+  transform: translateY(1px);
 }

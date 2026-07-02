@@ -1,5 +1,6 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { profileColumns } from '../lib/chartData'
+import { buildDefaultCharts } from '../lib/defaultCharts'
 
 /**
  * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
@@ -101,6 +102,15 @@ export function CsvDataProvider({ children }) {
   const [sessionFilter, setSessionFilter] = useState(null)
   const [actionFilter, setActionFilter] = useState(null)
 
+  // Compare selection — ephemeral, not persisted to localStorage.
+  const [baselineId, setBaselineIdState] = useState(null)
+  const [currentId, setCurrentIdState] = useState(null)
+
+  // Tracks the last data.id we auto-seeded default charts for. Prevents
+  // re-seeding if the user has deleted the defaults, and prevents seeding
+  // twice for the same file across re-mounts.
+  const seededForIdRef = useRef(null)
+
   const resetDerivedState = useCallback(() => {
     setChartsByView({ session: [], action: [], widget: [] })
     setSessionFilter(null)
@@ -169,6 +179,26 @@ export function CsvDataProvider({ children }) {
     }))
   }, [])
 
+  // Compare selection setters — only accept ids that reference an actual
+  // file (either the active `data` or one of the recent-files entries).
+  const idExists = useCallback(
+    (id) => Boolean(id) && (data.id === id || recentFiles.some((f) => f.id === id)),
+    [data.id, recentFiles]
+  )
+
+  const setBaselineId = useCallback((id) => {
+    if (idExists(id)) setBaselineIdState(id)
+  }, [idExists])
+
+  const setCurrentId = useCallback((id) => {
+    if (idExists(id)) setCurrentIdState(id)
+  }, [idExists])
+
+  const clearComparison = useCallback(() => {
+    setBaselineIdState(null)
+    setCurrentIdState(null)
+  }, [])
+
   // Persist the active file + recent-files ring to localStorage whenever
   // they change. Charts/filters intentionally stay in-memory — they reset
   // on file swap anyway.
@@ -180,25 +210,68 @@ export function CsvDataProvider({ children }) {
     saveCache({ data, recentFiles })
   }, [data, recentFiles])
 
+  // Seed default charts once per file so users see visualizations
+  // immediately on first load. Only fires when the id changes, so if the
+  // user deletes the defaults they stay deleted.
+  useEffect(() => {
+    if (!data.id) {
+      seededForIdRef.current = null
+      return
+    }
+    if (seededForIdRef.current === data.id) return
+    if (!data.rows || data.rows.length === 0) return
+    seededForIdRef.current = data.id
+    let uid = nextUid
+    const seed = (viewId) => {
+      const defs = buildDefaultCharts(viewId, data.rows, data.headers)
+      return defs.map((d) => ({ uid: `c${uid++}`, typeId: d.typeId, config: d.config }))
+    }
+    const seeded = {
+      session: seed('session'),
+      action: seed('action'),
+      widget: seed('widget'),
+    }
+    nextUid = uid
+    setChartsByView(seeded)
+  }, [data.id, data.rows, data.headers])
+
   const value = useMemo(
-    () => ({
-      ...data,
-      hasData: data.rows.length > 0,
-      columnProfile: profileColumns(data.rows, data.headers),
-      setCsvData,
-      clear,
-      recentFiles,
-      selectRecentFile,
-      removeRecentFile,
-      activeFileId: data.id,
-      chartsByView,
-      addChart,
-      removeChart,
-      sessionFilter,
-      setSessionFilter,
-      actionFilter,
-      setActionFilter,
-    }),
+    () => {
+      // Resolve compare selections against recent-files first, then the
+      // active data. Returns null when the id doesn't match any known file.
+      const resolvePayload = (id) => {
+        if (!id) return null
+        const fromRecent = recentFiles.find((f) => f.id === id)
+        if (fromRecent) return fromRecent
+        if (data.id === id) return data
+        return null
+      }
+      return {
+        ...data,
+        hasData: data.rows.length > 0,
+        columnProfile: profileColumns(data.rows, data.headers),
+        setCsvData,
+        clear,
+        recentFiles,
+        selectRecentFile,
+        removeRecentFile,
+        activeFileId: data.id,
+        chartsByView,
+        addChart,
+        removeChart,
+        sessionFilter,
+        setSessionFilter,
+        actionFilter,
+        setActionFilter,
+        baselineId,
+        currentId,
+        setBaselineId,
+        setCurrentId,
+        clearComparison,
+        baselinePayload: resolvePayload(baselineId),
+        currentPayload: resolvePayload(currentId),
+      }
+    },
     [
       data,
       setCsvData,
@@ -211,6 +284,11 @@ export function CsvDataProvider({ children }) {
       removeChart,
       sessionFilter,
       actionFilter,
+      baselineId,
+      currentId,
+      setBaselineId,
+      setCurrentId,
+      clearComparison,
     ]
   )
 

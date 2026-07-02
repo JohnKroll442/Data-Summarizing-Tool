@@ -1,4 +1,5 @@
 import WidgetSummaryTable from '../../components/WidgetSummaryTable'
+import KpiStrip from '../../components/KpiStrip'
 import ChartGrid from '../../components/charts/ChartGrid'
 import { useCsvData } from '../../context/useCsvData'
 
@@ -14,6 +15,7 @@ function WidgetView() {
       <p className="view-subheading">
         One row per widget — search or filter to narrow the list.
       </p>
+      <KpiStrip variant="widget" rows={rows} headers={headers} />
       <WidgetSummaryTable rows={rows} headers={headers} />
 
       <h3 className="view-section-heading">Charts</h3>

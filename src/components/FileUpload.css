@@ -4,12 +4,11 @@
   text-align: left;
   gap: 1rem;
   padding: 1rem 1.25rem;
-  border: 1.5px dashed rgba(255, 255, 255, 0.5);
+  border: 1.5px dashed #000;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
+  background: var(--color-surface);
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
   transition: border-color 0.18s ease, background-color 0.18s ease,
     box-shadow 0.18s ease, transform 0.18s ease;
 }

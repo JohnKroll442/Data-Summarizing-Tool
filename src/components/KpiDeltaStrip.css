@@ -1,0 +1,124 @@
+.kpi-delta-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.kpi-delta-card {
+  background: var(--sap-surface);
+  border: 1px solid #000;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 2px 6px rgba(0, 41, 92, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.kpi-delta-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-delta-values {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kpi-delta-baseline {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.kpi-delta-arrow {
+  font-size: 0.95rem;
+  color: var(--sap-text-muted);
+  flex: 0 0 auto;
+}
+
+.kpi-delta-current {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--sap-blue-darker);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.kpi-delta-indicator {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.kpi-delta-glyph {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.kpi-delta-pct {
+  letter-spacing: 0.01em;
+}
+
+.kpi-delta-bad {
+  color: var(--sap-danger);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.kpi-delta-good {
+  color: var(--sap-success);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.kpi-delta-neutral {
+  color: var(--sap-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.kpi-delta-muted {
+  color: var(--sap-text-muted);
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .kpi-delta-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .kpi-delta-strip {
+    grid-template-columns: 1fr;
+  }
+  .kpi-delta-current {
+    font-size: 1.35rem;
+  }
+}

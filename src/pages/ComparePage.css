@@ -1,0 +1,12 @@
+/* Compare-specific tweaks on top of SummaryPage.css. The banner needs to
+   fit two file names, so let it wrap on narrow viewports. */
+.compare-banner-label {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.compare-banner-label strong {
+  color: var(--sap-blue-darker);
+}

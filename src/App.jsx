@@ -5,6 +5,10 @@ import RawDataView from './pages/views/RawDataView'
 import SessionView from './pages/views/SessionView'
 import ActionView from './pages/views/ActionView'
 import WidgetView from './pages/views/WidgetView'
+import ComparePage from './pages/ComparePage'
+import SessionCompare from './pages/compare/SessionCompare'
+import ActionCompare from './pages/compare/ActionCompare'
+import WidgetCompare from './pages/compare/WidgetCompare'
 import './App.css'
 
 /**
@@ -22,6 +26,12 @@ function App() {
           <Route path="session" element={<SessionView />} />
           <Route path="action" element={<ActionView />} />
           <Route path="widget" element={<WidgetView />} />
+        </Route>
+        <Route path="/compare" element={<ComparePage />}>
+          <Route index element={<Navigate to="session" replace />} />
+          <Route path="session" element={<SessionCompare />} />
+          <Route path="action" element={<ActionCompare />} />
+          <Route path="widget" element={<WidgetCompare />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

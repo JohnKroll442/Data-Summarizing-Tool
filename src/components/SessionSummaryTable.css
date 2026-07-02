@@ -6,11 +6,10 @@
   gap: 0.5rem;
   margin-bottom: 0.6rem;
   padding: 0.55rem 0.75rem;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
+  border: 1px solid #000;
   border-radius: 12px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-md);
 }
 
 .summary-filter-search {
@@ -19,7 +18,7 @@
   font: inherit;
   font-size: 0.88rem;
   padding: 0.4rem 0.65rem;
-  border: 1px solid var(--sap-border);
+  border: 1px solid #000;
   border-radius: 6px;
   background: #fff;
   color: var(--sap-text);
@@ -36,7 +35,7 @@
   font: inherit;
   font-size: 0.85rem;
   padding: 0.4rem 0.55rem;
-  border: 1px solid var(--sap-border);
+  border: 1px solid #000;
   border-radius: 6px;
   background: #fff;
   color: var(--sap-text);
@@ -63,7 +62,7 @@
   font-weight: 500;
   color: var(--sap-blue-darker);
   background: var(--sap-blue-light);
-  border: none;
+  border: 1px solid #000;
   border-radius: 6px;
   padding: 0.35rem 0.7rem;
   cursor: pointer;
@@ -80,7 +79,7 @@
   font-weight: 500;
   color: var(--sap-blue-darker);
   background: var(--sap-blue-light);
-  border: none;
+  border: 1px solid #000;
   border-radius: 6px;
   padding: 0.35rem 0.7rem;
   cursor: pointer;
@@ -100,13 +99,12 @@
 .summary-note {
   margin-bottom: 0.6rem;
   padding: 0.55rem 0.85rem;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
   border-left: 3px solid var(--sap-gold);
   border-radius: 8px;
   font-size: 0.84rem;
   color: var(--sap-text);
-  backdrop-filter: blur(6px);
 }
 
 .summary-note code {
