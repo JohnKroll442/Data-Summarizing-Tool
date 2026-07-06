@@ -1,3 +1,4 @@
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -34,9 +35,23 @@ export function buildHeatmapOption(rows, { xKey, yKey, valueKey } = {}) {
     }
   }
 
+  const isDur = isDurationColumn(valueKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
+
   return {
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, position: 'top' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      position: 'top',
+      ...(isDur
+        ? {
+            formatter: (p) => {
+              const [xi, yi, v] = p.value
+              return `${xCats[xi]} · ${yCats[yi]}: ${fmt(v)}`
+            },
+          }
+        : {}),
+    },
     grid: { ...BASE_GRID, top: 16, bottom: 56 },
     xAxis: { type: 'category', data: xCats, splitArea: { show: true } },
     yAxis: { type: 'category', data: yCats, splitArea: { show: true } },
@@ -49,6 +64,7 @@ export function buildHeatmapOption(rows, { xKey, yKey, valueKey } = {}) {
       bottom: 4,
       inRange: { color: [SAP_BLUE_LIGHT, SAP_BLUE_DARKER] },
       textStyle: { color: '#1d2d3e' },
+      ...(isDur ? { formatter: fmt } : {}),
     },
     series: [
       {

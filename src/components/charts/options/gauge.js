@@ -1,3 +1,4 @@
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_TEXT_STYLE,
   BASE_TOOLTIP,
@@ -17,6 +18,10 @@ export function buildGaugeOption(rows, { valueKey, max = 100, numericKpi = false
   if (!nums.length) return { series: [] }
   const value = nums.reduce((a, b) => a + b, 0) / nums.length
   const computedMax = Math.max(max, Math.ceil(value * 1.2))
+  const isDur = isDurationColumn(valueKey)
+  const detailFmt = isDur
+    ? (v) => formatDurationMs(v)
+    : (v) => `${v.toFixed(1)}`
 
   if (numericKpi) {
     return {
@@ -36,7 +41,7 @@ export function buildGaugeOption(rows, { valueKey, max = 100, numericKpi = false
             fontSize: 36,
             fontWeight: 700,
             color: SAP_BLUE,
-            formatter: (v) => `${v.toFixed(1)}`,
+            formatter: detailFmt,
           },
           data: [{ value }],
         },
@@ -58,7 +63,10 @@ export function buildGaugeOption(rows, { valueKey, max = 100, numericKpi = false
         axisLine: { lineStyle: { width: 12 } },
         pointer: { width: 4, length: '60%' },
         anchor: { show: true, showAbove: true, size: 14, itemStyle: { color: SAP_BLUE } },
-        detail: { fontSize: 22, color: SAP_BLUE, formatter: (v) => `${v.toFixed(1)}` },
+        ...(isDur
+          ? { axisLabel: { formatter: (v) => formatDurationMs(v), fontSize: 10 } }
+          : {}),
+        detail: { fontSize: 22, color: SAP_BLUE, formatter: detailFmt },
         data: [{ value }],
       },
     ],

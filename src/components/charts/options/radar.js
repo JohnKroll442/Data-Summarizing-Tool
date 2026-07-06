@@ -1,4 +1,5 @@
 import { groupBy } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_TEXT_STYLE,
   BASE_TOOLTIP,
@@ -44,10 +45,29 @@ export function buildRadarOption(rows, { groupKey, indicatorKeys = [] } = {}) {
     },
   ]
 
+  const durFlags = indicatorKeys.map((k) => isDurationColumn(k))
+  const anyDur = durFlags.some(Boolean)
+
   return {
     color: [SAP_BLUE],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: BASE_TOOLTIP,
+    tooltip: {
+      ...BASE_TOOLTIP,
+      ...(anyDur
+        ? {
+            formatter: (p) => {
+              const lines = [p.name]
+              const values = Array.isArray(p.value) ? p.value : [p.value]
+              indicatorKeys.forEach((k, i) => {
+                const v = values[i]
+                const disp = durFlags[i] ? formatDurationMs(v) : String(v)
+                lines.push(`${k}: ${disp}`)
+              })
+              return lines.join('<br/>')
+            },
+          }
+        : {}),
+    },
     legend: { bottom: 0, textStyle: { color: '#fff' } },
     radar: { indicator, axisName: { color: '#1d2d3e', fontSize: 11 } },
     series,

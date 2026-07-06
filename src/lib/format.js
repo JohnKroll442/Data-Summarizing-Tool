@@ -50,6 +50,31 @@ export function formatCount(n) {
 }
 
 /**
+ * Detect whether a column key holds duration-in-milliseconds values, based on
+ * the column name. Mirrors the aggregate tables' DURATION_COLUMNS sets:
+ * "DURATION", "max_frontend/network/backend", "render/network/backend/offset"
+ * all resolve to true. Used by chart builders to switch numeric axes and
+ * tooltips over to formatDurationMs when the value being plotted is a
+ * duration.
+ */
+export function isDurationColumn(key) {
+  if (!key) return false
+  const n = String(key).toLowerCase().replace(/[\s_\-.]+/g, '')
+  return (
+    n === 'duration' ||
+    n.endsWith('duration') ||
+    n.includes('durationms') ||
+    n === 'render' || n === 'offset' || n === 'latency' ||
+    n === 'maxfrontend' || n === 'maxnetwork' || n === 'maxbackend' ||
+    n === 'network' || n === 'backend' || n === 'frontend' ||
+    n.includes('renderduration') ||
+    n.includes('backendduration') ||
+    n.includes('networkduration') ||
+    n.includes('frontendduration')
+  )
+}
+
+/**
  * Format a number-of-milliseconds value as a short, human-readable duration:
  *   < 1 ms       → "0.4 ms"
  *   < 1 s        → "847 ms"

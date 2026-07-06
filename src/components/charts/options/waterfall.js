@@ -1,4 +1,5 @@
 import { cumulativeDeltas } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -18,12 +19,23 @@ export function buildWaterfallOption(rows, { labelKey, valueKey } = {}) {
   const deltas = cumulativeDeltas(rows, labelKey, valueKey)
   if (!deltas.length) return { series: [] }
 
+  const isDur = isDurationColumn(valueKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
+
   return {
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis', axisPointer: { type: 'shadow' } },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      ...(isDur ? { valueFormatter: fmt } : {}),
+    },
     grid: BASE_GRID,
     xAxis: { type: 'category', data: deltas.map((d) => d.label) },
-    yAxis: { type: 'value' },
+    yAxis: {
+      type: 'value',
+      ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+    },
     series: [
       {
         name: 'Base',

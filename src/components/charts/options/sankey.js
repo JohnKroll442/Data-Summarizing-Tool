@@ -1,4 +1,5 @@
 import { toSankeyShape } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_TEXT_STYLE,
   BASE_TOOLTIP,
@@ -11,10 +12,26 @@ export function buildSankeyOption(rows, { sourceKey, targetKey, valueKey } = {})
   const { nodes, links } = toSankeyShape(rows, sourceKey, targetKey, valueKey)
   if (!nodes.length || !links.length) return { series: [] }
 
+  const isDur = isDurationColumn(valueKey)
+
   return {
     color: SAP_PALETTE,
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'item' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'item',
+      ...(isDur
+        ? {
+            formatter: (p) => {
+              if (p.dataType === 'edge') {
+                const d = p.data
+                return `${d.source} → ${d.target}: ${formatDurationMs(d.value)}`
+              }
+              return p.name
+            },
+          }
+        : {}),
+    },
     series: [
       {
         type: 'sankey',

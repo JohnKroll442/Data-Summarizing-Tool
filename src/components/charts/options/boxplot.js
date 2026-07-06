@@ -1,4 +1,5 @@
 import { groupBy } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -31,13 +32,22 @@ export function buildBoxplotOption(rows, { groupKey, valueKey } = {}) {
   }
   if (!categories.length) return { series: [] }
 
+  const isDur = isDurationColumn(valueKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
+
   return {
     color: [SAP_BLUE],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: BASE_TOOLTIP,
+    tooltip: {
+      ...BASE_TOOLTIP,
+      ...(isDur ? { valueFormatter: fmt } : {}),
+    },
     grid: BASE_GRID,
     xAxis: { type: 'category', data: categories },
-    yAxis: { type: 'value' },
+    yAxis: {
+      type: 'value',
+      ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+    },
     series: [{ type: 'boxplot', data, itemStyle: { borderColor: SAP_BLUE } }],
   }
 }

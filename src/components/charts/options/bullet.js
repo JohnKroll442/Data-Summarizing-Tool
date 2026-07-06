@@ -1,3 +1,4 @@
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -21,12 +22,21 @@ export function buildBulletOption(rows, { valueKey, target = 100, good = [60, 90
   if (!nums.length) return { series: [] }
   const actual = nums.reduce((a, b) => a + b, 0) / nums.length
   const max = Math.max(actual, target, good[1]) * 1.2
+  const isDur = isDurationColumn(valueKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
 
   return {
     textStyle: BASE_TEXT_STYLE,
-    tooltip: BASE_TOOLTIP,
+    tooltip: {
+      ...BASE_TOOLTIP,
+      ...(isDur ? { valueFormatter: fmt } : {}),
+    },
     grid: { ...BASE_GRID, top: 12, bottom: 24 },
-    xAxis: { type: 'value', max },
+    xAxis: {
+      type: 'value',
+      max,
+      ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+    },
     yAxis: { type: 'category', data: [label || valueKey] },
     series: [
       {
@@ -42,7 +52,10 @@ export function buildBulletOption(rows, { valueKey, target = 100, good = [60, 90
         markLine: {
           symbol: 'none',
           lineStyle: { color: SAP_GOLD, width: 3 },
-          label: { color: SAP_TEXT_MUTED, formatter: 'Target' },
+          label: {
+            color: SAP_TEXT_MUTED,
+            formatter: isDur ? `Target: ${fmt(target)}` : 'Target',
+          },
           data: [{ xAxis: target }],
         },
       },

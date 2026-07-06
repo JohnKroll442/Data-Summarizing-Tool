@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { profileColumns } from '../lib/chartData'
 import { buildDefaultCharts } from '../lib/defaultCharts'
+import { loadCache, saveCache, clearCache } from '../lib/csvCache'
 
 /**
  * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
@@ -11,10 +12,12 @@ import { buildDefaultCharts } from '../lib/defaultCharts'
  * the user clicked into.
  *
  * Persistence: the active file and the recent-files ring are cached to
- * localStorage under STORAGE_KEY so a hard refresh restores the last
- * upload. Charts and drill-down filters are NOT persisted — they reset
- * on file swap anyway. Cache is skipped for payloads >MAX_CACHE_BYTES to
- * avoid QuotaExceededError; `clear()` wipes the cache.
+ * IndexedDB (see ../lib/csvCache) so a hard refresh restores the last
+ * upload. IndexedDB is used instead of localStorage so uploads larger
+ * than a few MB can also survive refresh — the browser quota is measured
+ * in hundreds of MB rather than ~5 MB. Charts and drill-down filters are
+ * NOT persisted — they reset on file swap anyway. `clear()` wipes the
+ * cache.
  *
  * Drill-down state:
  *   sessionFilter — when set, ActionView only aggregates rows whose
@@ -37,60 +40,22 @@ import { buildDefaultCharts } from '../lib/defaultCharts'
 export const CsvDataContext = createContext(null)
 
 const MAX_RECENT_FILES = 5
-const STORAGE_KEY = 'csvDataCache.v1'
 const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
-
-// Cache write is skipped if the serialized payload exceeds this. localStorage
-// is typically capped at ~5MB per origin; going over throws QuotaExceededError
-// and would take out the whole save. 4MB leaves headroom for the userName key
-// and future additions.
-const MAX_CACHE_BYTES = 4 * 1024 * 1024
-
-function loadCache() {
-  if (typeof localStorage === 'undefined') return null
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function saveCache(payload) {
-  if (typeof localStorage === 'undefined') return
-  try {
-    const serialized = JSON.stringify(payload)
-    if (serialized.length > MAX_CACHE_BYTES) {
-      // Too big to cache safely — drop any stale entry so we don't restore
-      // a mismatched file next load.
-      localStorage.removeItem(STORAGE_KEY)
-      return
-    }
-    localStorage.setItem(STORAGE_KEY, serialized)
-  } catch {
-    // Quota exceeded or storage disabled — silently drop the cache.
-    try { localStorage.removeItem(STORAGE_KEY) } catch { /* noop */ }
-  }
-}
-
-function clearCache() {
-  if (typeof localStorage === 'undefined') return
-  try { localStorage.removeItem(STORAGE_KEY) } catch { /* noop */ }
-}
 
 let nextUid = 1
 
 export function CsvDataProvider({ children }) {
-  // Hydrate synchronously from localStorage so the first render already has
-  // the cached file — avoids a flash of the empty upload screen.
-  const cached = typeof window !== 'undefined' ? loadCache() : null
+  // Hydration is async — see the mount-only useEffect below. First render
+  // shows the empty state; the cached file (if any) appears one tick later
+  // once IndexedDB resolves. Every consumer already checks rows.length so
+  // this brief empty state is safe.
+  const [data, setData] = useState(EMPTY_DATA)
 
-  const [data, setData] = useState(cached?.data ?? EMPTY_DATA)
+  const [recentFiles, setRecentFiles] = useState([])
 
-  const [recentFiles, setRecentFiles] = useState(cached?.recentFiles ?? [])
+  // Skip the first persist effect so we don't overwrite the IndexedDB cache
+  // with an empty payload before hydration has a chance to run.
+  const hydratedRef = useRef(false)
 
   const [chartsByView, setChartsByView] = useState({
     session: [],
@@ -126,6 +91,9 @@ export function CsvDataProvider({ children }) {
       fileSize: fileSize ?? 0,
       uploadedAt: Date.now(),
     }
+    // A user upload supersedes anything the async hydration might restore,
+    // so mark hydrated to unblock the persist effect immediately.
+    hydratedRef.current = true
     setData(entry)
     setRecentFiles((prev) => {
       const dedupKey = `${entry.fileName}|${entry.fileSize}`
@@ -202,7 +170,23 @@ export function CsvDataProvider({ children }) {
   // Persist the active file + recent-files ring to localStorage whenever
   // they change. Charts/filters intentionally stay in-memory — they reset
   // on file swap anyway.
+  // One-shot async hydration from IndexedDB on mount. StrictMode double-
+  // invokes effects in dev — the mounted flag guards against setting state
+  // after the first invocation has already been torn down.
   useEffect(() => {
+    let mounted = true
+    loadCache().then((cached) => {
+      if (!mounted) return
+      if (cached?.data) setData(cached.data)
+      if (cached?.recentFiles) setRecentFiles(cached.recentFiles)
+      hydratedRef.current = true
+    })
+    return () => { mounted = false }
+  }, [])
+
+  useEffect(() => {
+    // Don't clobber a not-yet-hydrated cache with the initial empty state.
+    if (!hydratedRef.current) return
     if (!data.id && recentFiles.length === 0) {
       clearCache()
       return

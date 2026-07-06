@@ -1,3 +1,4 @@
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -64,7 +65,9 @@ export function buildMarimekkoOption(rows, { xKey, groupKey, valueKey } = {}) {
       trigger: 'item',
       formatter: (p) => {
         const [, , , , i, j] = p.value
-        return `${xCats[i]} · ${groups[j]}: ${matrix[i][j]}`
+        const v = matrix[i][j]
+        const disp = isDurationColumn(valueKey) ? formatDurationMs(v) : v
+        return `${xCats[i]} · ${groups[j]}: ${disp}`
       },
     },
     legend: {

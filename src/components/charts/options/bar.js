@@ -1,4 +1,5 @@
 import { countByColumn, sumByColumn } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -8,6 +9,12 @@ import {
   SAP_PALETTE,
 } from '../../../lib/chartColors'
 
+/** Format a duration value for axis/tooltip; passes non-finite through as ''. */
+function fmtDurTick(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? formatDurationMs(n) : ''
+}
+
 /**
  * Bar (column) chart. If `valueKey` is provided, sums it grouped by `xKey`;
  * otherwise counts rows per `xKey` value. Pass `stacked: true` for stacked
@@ -16,15 +23,28 @@ import {
 export function buildBarOption(rows, { xKey, yKey, groupKey, stacked = false } = {}) {
   if (!xKey) return emptyOption()
 
+  const yIsDuration = isDurationColumn(yKey)
+
   if (!stacked || !groupKey) {
     const data = yKey ? sumByColumn(rows, xKey, yKey) : countByColumn(rows, xKey)
     return {
       color: [SAP_BLUE],
       textStyle: BASE_TEXT_STYLE,
-      tooltip: { ...BASE_TOOLTIP, trigger: 'axis' },
+      tooltip: {
+        ...BASE_TOOLTIP,
+        trigger: 'axis',
+        ...(yIsDuration
+          ? { valueFormatter: (v) => fmtDurTick(v) }
+          : {}),
+      },
       grid: BASE_GRID,
       xAxis: { type: 'category', data: data.map((d) => d.name) },
-      yAxis: { type: 'value' },
+      yAxis: {
+        type: 'value',
+        ...(yIsDuration
+          ? { axisLabel: { formatter: (v) => fmtDurTick(v) } }
+          : {}),
+      },
       series: [
         {
           type: 'bar',
@@ -63,11 +83,19 @@ export function buildBarOption(rows, { xKey, yKey, groupKey, stacked = false } =
   return {
     color: SAP_PALETTE,
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis', axisPointer: { type: 'shadow' } },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      ...(yIsDuration ? { valueFormatter: (v) => fmtDurTick(v) } : {}),
+    },
     legend: { bottom: 0, textStyle: { color: '#fff' } },
     grid: { ...BASE_GRID, bottom: 56 },
     xAxis: { type: 'category', data: xCats },
-    yAxis: { type: 'value' },
+    yAxis: {
+      type: 'value',
+      ...(yIsDuration ? { axisLabel: { formatter: (v) => fmtDurTick(v) } } : {}),
+    },
     series,
   }
 }
@@ -93,14 +121,36 @@ export function buildComboOption(rows, { xKey, barKey, lineKey } = {}) {
         return Number.isFinite(n) ? s + n : s
       }, 0)
   )
+  const barIsDur = isDurationColumn(barKey)
+  const lineIsDur = isDurationColumn(lineKey)
   return {
     color: [SAP_BLUE, SAP_GOLD],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      ...(barIsDur || lineIsDur
+        ? {
+            valueFormatter: (v, idx) => {
+              const isDur = idx === 0 ? barIsDur : lineIsDur
+              return isDur ? fmtDurTick(v) : String(v)
+            },
+          }
+        : {}),
+    },
     legend: { bottom: 0, data: [barKey, lineKey], textStyle: { color: '#fff' } },
     grid: { ...BASE_GRID, bottom: 56 },
     xAxis: { type: 'category', data: xCats },
-    yAxis: [{ type: 'value' }, { type: 'value' }],
+    yAxis: [
+      {
+        type: 'value',
+        ...(barIsDur ? { axisLabel: { formatter: (v) => fmtDurTick(v) } } : {}),
+      },
+      {
+        type: 'value',
+        ...(lineIsDur ? { axisLabel: { formatter: (v) => fmtDurTick(v) } } : {}),
+      },
+    ],
     series: [
       { name: barKey, type: 'bar', data: bar, itemStyle: { borderRadius: [4, 4, 0, 0] } },
       { name: lineKey, type: 'line', yAxisIndex: 1, data: line, smooth: true, lineStyle: { width: 3 } },

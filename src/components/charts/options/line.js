@@ -1,4 +1,5 @@
 import { countByColumn, sumByColumn } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -14,13 +15,22 @@ import {
 export function buildLineOption(rows, { xKey, yKey, area = false } = {}) {
   if (!xKey) return { series: [] }
   const data = yKey ? sumByColumn(rows, xKey, yKey) : countByColumn(rows, xKey)
+  const isDur = isDurationColumn(yKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
   return {
     color: [SAP_BLUE],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      ...(isDur ? { valueFormatter: fmt } : {}),
+    },
     grid: BASE_GRID,
     xAxis: { type: 'category', data: data.map((d) => d.name), boundaryGap: false },
-    yAxis: { type: 'value' },
+    yAxis: {
+      type: 'value',
+      ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+    },
     series: [
       {
         type: 'line',

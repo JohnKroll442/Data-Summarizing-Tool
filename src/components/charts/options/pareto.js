@@ -1,4 +1,5 @@
 import { sumByColumn } from '../../../lib/chartData'
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -34,15 +35,29 @@ export function buildParetoOption(rows, { nameKey, valueKey } = {}) {
     return Number(((running / total) * 100).toFixed(1))
   })
 
+  const isDur = isDurationColumn(valueKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
+
   return {
     color: [SAP_BLUE, SAP_GOLD],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      ...(isDur
+        ? {
+            valueFormatter: (v, idx) => (idx === 0 ? fmt(v) : `${v}%`),
+          }
+        : {}),
+    },
     legend: { bottom: 0, data: ['Frequency', 'Cumulative %'], textStyle: { color: '#fff' } },
     grid: { ...BASE_GRID, bottom: 56 },
     xAxis: { type: 'category', data: sorted.map((d) => d.name) },
     yAxis: [
-      { type: 'value' },
+      {
+        type: 'value',
+        ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+      },
       { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
     ],
     series: [

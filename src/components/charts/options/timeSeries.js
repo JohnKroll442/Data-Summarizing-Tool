@@ -1,3 +1,4 @@
+import { formatDurationMs, isDurationColumn } from '../../../lib/format'
 import {
   BASE_GRID,
   BASE_TEXT_STYLE,
@@ -21,13 +22,23 @@ export function buildTimeSeriesOption(rows, { xKey, yKey } = {}) {
   if (!points.length) return { series: [] }
   points.sort((a, b) => a[0] - b[0])
 
+  const isDur = isDurationColumn(yKey)
+  const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
+
   return {
     color: [SAP_BLUE],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis' },
+    tooltip: {
+      ...BASE_TOOLTIP,
+      trigger: 'axis',
+      ...(isDur ? { valueFormatter: fmt } : {}),
+    },
     grid: BASE_GRID,
     xAxis: { type: 'time' },
-    yAxis: { type: 'value' },
+    yAxis: {
+      type: 'value',
+      ...(isDur ? { axisLabel: { formatter: fmt } } : {}),
+    },
     series: [
       {
         type: 'line',
