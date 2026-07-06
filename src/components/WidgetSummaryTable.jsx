@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
+import MultiFilterMenu from './MultiFilterMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
@@ -9,6 +10,7 @@ import { applySessionFilter, applyActionFilter } from '../lib/drillDown'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
+import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -55,11 +57,11 @@ function WidgetSummaryTable({ rows, headers }) {
     for (const col of FILTERABLE_COLUMNS) {
       const set = new Set()
       for (const row of summaryRows) {
-        const v = row?.[col]
+        const v = row?.[col.key]
         if (v === undefined || v === null || v === '') continue
         set.add(String(v))
       }
-      out[col] = Array.from(set).sort((a, b) => a.localeCompare(b))
+      out[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b))
     }
     return out
   }, [summaryRows])
@@ -67,10 +69,7 @@ function WidgetSummaryTable({ rows, headers }) {
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
-      for (const [col, val] of Object.entries(filters)) {
-        if (!val) continue
-        if (String(row[col] ?? '') !== val) return false
-      }
+      if (!matchesAllMultiFilters(row, filters)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -86,8 +85,7 @@ function WidgetSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount =
-    Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
+  const activeFilterCount = countActiveMultiFilters(filters, search)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -204,22 +202,19 @@ function WidgetSummaryTable({ rows, headers }) {
           onChange={(e) => setSearch(e.target.value)}
         />
         {FILTERABLE_COLUMNS.map((col) => {
-          const opts = optionsByColumn[col] ?? []
+          const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
+          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
           return (
-            <select
-              key={col}
-              className="summary-filter-select"
-              value={filters[col] ?? ''}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, [col]: e.target.value }))
+            <MultiFilterMenu
+              key={col.key}
+              label={col.label}
+              options={opts}
+              selected={selected}
+              onChange={(next) =>
+                setFilters((prev) => ({ ...prev, [col.key]: next }))
               }
-            >
-              <option value="">{COLUMN_LABEL[col]}: any</option>
-              {opts.map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
+            />
           )
         })}
         <span className="summary-filter-count">
@@ -322,8 +317,11 @@ function WidgetSummaryTable({ rows, headers }) {
   )
 }
 
-const FILTERABLE_COLUMNS = ['widget_name']
-const COLUMN_LABEL = { widget_name: 'Widget name' }
+const FILTERABLE_COLUMNS = [
+  { key: 'widget_id',   label: 'Widget ID' },
+  { key: 'widget_name', label: 'Widget name' },
+  { key: 'session_id',  label: 'Session' },
+]
 const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'offset'])
 const TIME_COLUMNS = new Set([
   'render_start', 'render_end',

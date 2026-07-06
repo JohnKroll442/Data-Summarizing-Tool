@@ -2,7 +2,7 @@
  * Widget-level aggregation for the Widget View summary table.
  *
  * One row per distinct WIDGET_ID. Columns:
- *   Widget ID · Widget name · Phases (inline bars) ·
+ *   Widget ID · Widget name · Session ID · Phases (inline bars) ·
  *   Render · Render start · Render end ·
  *   Network · Network start · Network end ·
  *   Backend · Backend start · Backend end · Offset
@@ -29,12 +29,19 @@
  * scoped set, so the Phases column can scale all rows to the same axis.
  */
 
+import { detectSessionKey } from './drillDown'
+
 export function aggregateByWidget(rows, headers) {
   const mapping = detectMapping(headers)
+  // Populated-column-aware session detection (SESSION_ID may exist but be
+  // empty while BROWSERSESSION_ID carries the real value — pick whichever
+  // has data). Attach onto the mapping so callers can see which column won.
+  mapping.session = detectSessionKey(headers, rows)
 
   const columns = [
     { key: 'widget_id',     label: 'Widget ID' },
     { key: 'widget_name',   label: 'Widget name' },
+    { key: 'session_id',    label: 'Session ID' },
     { key: 'render',        label: 'Render',        sortType: 'duration' },
     { key: 'render_start',  label: 'Render start' },
     { key: 'render_end',    label: 'Render end' },
@@ -75,6 +82,7 @@ export function aggregateByWidget(rows, headers) {
     outRows.push({
       widget_id:     widgetId,
       widget_name:   firstNonEmpty(groupRows, mapping.widgetName),
+      session_id:    firstNonEmpty(groupRows, mapping.session),
       render:        renderPick.value,
       render_start:  phaseStart(renderPick, mapping, 'render'),
       render_end:    phaseEnd(renderPick, mapping, 'render'),
@@ -177,10 +185,12 @@ function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) 
 // or a `<target>_<suffix>` form where the suffix names a submeasure folded
 // into the measure column (e.g. WIDGET_MEASURE = 'network_ttfb' should match
 // target 'network').
-function measureMatches(value, targets) {
+export function measureMatches(value, targets) {
+  const v = String(value ?? '').toLowerCase()
   for (const t of targets) {
-    if (value === t) return true
-    if (value.startsWith(`${t}_`)) return true
+    const tl = String(t).toLowerCase()
+    if (v === tl) return true
+    if (v.startsWith(`${tl}_`)) return true
   }
   return false
 }
@@ -287,4 +297,14 @@ function detectMapping(headers) {
     widgetTimestampStart,
     rowTimestamp,
   }
+}
+
+/**
+ * Lightweight mapping detector — returns just { measure, duration } for
+ * consumers that don't need the full widget-timing mapping (e.g. the
+ * synthetic-measure augmenter in src/lib/syntheticMeasures.js).
+ */
+export function detectMeasureMapping(headers) {
+  const m = detectMapping(headers || [])
+  return { measure: m.measure, duration: m.duration }
 }

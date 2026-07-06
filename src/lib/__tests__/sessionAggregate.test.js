@@ -18,7 +18,7 @@ describe('aggregateBySession', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'session', 'user', 'story', 'action_count', 'max_action_duration',
+      'session', 'user', 'story', 'timestamp_range', 'total_action_duration', 'action_count', 'max_action_duration',
     ])
   })
 

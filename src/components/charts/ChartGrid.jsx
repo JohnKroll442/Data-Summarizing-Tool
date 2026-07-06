@@ -14,8 +14,19 @@ import './ChartGrid.css'
  *   viewId: 'session' | 'action' | 'widget'
  */
 function ChartGrid({ viewId }) {
-  const { rows, headers, columnProfile, chartsByView, addChart, removeChart } = useCsvData()
+  const {
+    rows, headers, columnProfile,
+    widgetChartData,
+    chartsByView, addChart, removeChart,
+  } = useCsvData()
   const [pickerOpen, setPickerOpen] = useState(false)
+
+  // Widget view exposes synthetic per-row measure columns (Total Render /
+  // Frontend / Backend / Network) so the picker can offer phase totals that
+  // aren't native CSV columns. Other views use raw CSV rows unchanged.
+  const source = viewId === 'widget' && widgetChartData
+    ? widgetChartData
+    : { rows, headers, columnProfile }
 
   const charts = chartsByView[viewId] ?? []
 
@@ -52,7 +63,7 @@ function ChartGrid({ viewId }) {
           {charts.map((chart) => {
             const type = getChartType(chart.typeId)
             if (!type) return null
-            const option = type.build(rows, chart.config)
+            const option = type.build(source.rows, chart.config)
             const subtitle = describeConfig(type, chart.config)
             return (
               <EChartCard
@@ -71,9 +82,9 @@ function ChartGrid({ viewId }) {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onAdd={handleAdd}
-        headers={headers}
-        profile={columnProfile}
-        rows={rows}
+        headers={source.headers}
+        profile={source.columnProfile}
+        rows={source.rows}
       />
     </>
   )

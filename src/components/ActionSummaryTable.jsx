@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
+import MultiFilterMenu from './MultiFilterMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
+import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -52,11 +54,11 @@ function ActionSummaryTable({ rows, headers }) {
     for (const col of FILTERABLE_COLUMNS) {
       const set = new Set()
       for (const row of summaryRows) {
-        const v = row?.[col]
+        const v = row?.[col.key]
         if (v === undefined || v === null || v === '') continue
         set.add(String(v))
       }
-      out[col] = Array.from(set).sort((a, b) => a.localeCompare(b))
+      out[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b))
     }
     return out
   }, [summaryRows])
@@ -64,10 +66,7 @@ function ActionSummaryTable({ rows, headers }) {
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
-      for (const [col, val] of Object.entries(filters)) {
-        if (!val) continue
-        if (String(row[col] ?? '') !== val) return false
-      }
+      if (!matchesAllMultiFilters(row, filters)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -83,8 +82,7 @@ function ActionSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount =
-    Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0)
+  const activeFilterCount = countActiveMultiFilters(filters, search)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -188,22 +186,19 @@ function ActionSummaryTable({ rows, headers }) {
           onChange={(e) => setSearch(e.target.value)}
         />
         {FILTERABLE_COLUMNS.map((col) => {
-          const opts = optionsByColumn[col] ?? []
+          const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
+          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
           return (
-            <select
-              key={col}
-              className="summary-filter-select"
-              value={filters[col] ?? ''}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, [col]: e.target.value }))
+            <MultiFilterMenu
+              key={col.key}
+              label={col.label}
+              options={opts}
+              selected={selected}
+              onChange={(next) =>
+                setFilters((prev) => ({ ...prev, [col.key]: next }))
               }
-            >
-              <option value="">{COLUMN_LABEL[col]}: any</option>
-              {opts.map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
+            />
           )
         })}
         <span className="summary-filter-count">
@@ -271,11 +266,12 @@ function ActionSummaryTable({ rows, headers }) {
   )
 }
 
-const FILTERABLE_COLUMNS = ['user', 'action_name']
-const COLUMN_LABEL = {
-  user: 'User',
-  action_name: 'Action',
-}
+const FILTERABLE_COLUMNS = [
+  { key: 'user',        label: 'User' },
+  { key: 'action_name', label: 'Action' },
+  { key: 'story_name',  label: 'Story' },
+  { key: 'story_page',  label: 'Page' },
+]
 const DURATION_COLUMNS = new Set(['max_frontend', 'max_network', 'max_backend'])
 
 export default ActionSummaryTable

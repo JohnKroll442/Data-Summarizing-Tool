@@ -5,9 +5,10 @@
  * users almost never want "—" rows clustered at the top.
  *
  * `sortType` controls the comparator:
- *   'number'   — coerce both sides via Number()
- *   'duration' — same as number (timings are raw ms)
- *   'string'   — case-insensitive localeCompare (default)
+ *   'number'    — coerce both sides via Number()
+ *   'duration'  — same as number (timings are raw ms)
+ *   'timestamp' — Dates compared by getTime(); strings compared lexicographically
+ *   'string'    — case-insensitive localeCompare (default)
  *
  * `Array.prototype.sort` is stable in modern engines, so ties preserve the
  * caller's incoming order (i.e. the filtered order from the summary table).
@@ -31,6 +32,13 @@ export function compareValues(a, b, sortType = 'string') {
     if (aBad) return 1
     if (bBad) return -1
     return an - bn
+  }
+
+  if (sortType === 'timestamp') {
+    const at = a instanceof Date ? a.getTime() : null
+    const bt = b instanceof Date ? b.getTime() : null
+    if (at !== null && bt !== null) return at - bt
+    return String(a).localeCompare(String(b), undefined, { numeric: true })
   }
 
   return String(a).localeCompare(String(b), undefined, {

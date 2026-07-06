@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import { profileColumns } from '../lib/chartData'
 import { buildDefaultCharts } from '../lib/defaultCharts'
 import { loadCache, saveCache, clearCache } from '../lib/csvCache'
+import { augmentRowsWithSyntheticMeasures } from '../lib/syntheticMeasures'
 
 /**
  * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
@@ -230,10 +231,20 @@ export function CsvDataProvider({ children }) {
         if (data.id === id) return data
         return null
       }
+      // Widget-view charts see extra synthetic measure columns (Total
+      // Render / Frontend / Backend / Network) so the Add Chart picker can
+      // offer per-widget phase totals that aren't native CSV columns.
+      const augmented = augmentRowsWithSyntheticMeasures(data.rows, data.headers)
+      const widgetChartData = {
+        rows: augmented.rows,
+        headers: augmented.headers,
+        columnProfile: profileColumns(augmented.rows, augmented.headers),
+      }
       return {
         ...data,
         hasData: data.rows.length > 0,
         columnProfile: profileColumns(data.rows, data.headers),
+        widgetChartData,
         setCsvData,
         clear,
         recentFiles,

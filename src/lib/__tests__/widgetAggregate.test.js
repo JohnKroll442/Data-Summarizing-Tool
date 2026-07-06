@@ -141,4 +141,33 @@ describe('aggregateByWidget', () => {
     const { rows: out } = aggregateByWidget(rows, HEADERS)
     expect(out.map((r) => r.widget_id).sort()).toEqual(['w1', 'w2'])
   })
+
+  it('surfaces session_id from SESSION_ID when the column is populated', () => {
+    const headers = [...HEADERS, 'SESSION_ID']
+    const rows = [
+      row({ WIDGET_ID: 'w1', SESSION_ID: 's-42' }),
+      row({ WIDGET_ID: 'w1', SESSION_ID: 's-42' }),
+    ]
+    const { rows: out, mapping } = aggregateByWidget(rows, headers)
+    expect(mapping.session).toBe('SESSION_ID')
+    expect(out[0].session_id).toBe('s-42')
+  })
+
+  it('falls back to BROWSERSESSION_ID when SESSION_ID is empty', () => {
+    const headers = [...HEADERS, 'SESSION_ID', 'BROWSERSESSION_ID']
+    const rows = [
+      row({ WIDGET_ID: 'w1', SESSION_ID: '', BROWSERSESSION_ID: 'bs-1' }),
+      row({ WIDGET_ID: 'w1', SESSION_ID: '', BROWSERSESSION_ID: 'bs-1' }),
+    ]
+    const { rows: out, mapping } = aggregateByWidget(rows, headers)
+    expect(mapping.session).toBe('BROWSERSESSION_ID')
+    expect(out[0].session_id).toBe('bs-1')
+  })
+
+  it('leaves session_id blank when no session column exists', () => {
+    const rows = [row({ WIDGET_ID: 'w1' })]
+    const { rows: out, mapping } = aggregateByWidget(rows, HEADERS)
+    expect(mapping.session).toBe('')
+    expect(out[0].session_id).toBe('')
+  })
 })

@@ -35,6 +35,8 @@ export function aggregateByAction(rows, headers) {
   const columns = [
     { key: 'user',         label: 'User' },
     { key: 'action_name',  label: 'Action name' },
+    { key: 'story_name',   label: 'Story name' },
+    { key: 'story_page',   label: 'Story page' },
     { key: 'widget_count', label: 'Widget count', sortType: 'number' },
     { key: 'max_frontend', label: 'Max frontend', sortType: 'duration' },
     { key: 'max_network',  label: 'Max network',  sortType: 'duration' },
@@ -73,6 +75,8 @@ export function aggregateByAction(rows, headers) {
         : '',
       user:         firstNonEmpty(groupRows, mapping.user),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
+      story_name:   firstNonEmpty(groupRows, mapping.storyName),
+      story_page:   firstNonEmpty(groupRows, mapping.storyPage),
       widget_count: distinctCount(groupRows, mapping.widgetId),
       max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
       max_network:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network']),
@@ -225,6 +229,11 @@ function detectMapping(headers) {
     },
   ) || find(['duration'], ['duration'])
 
+  // Story context — surfaces which story/page an action belongs to so users
+  // can navigate the summary without cross-referencing the raw CSV.
+  const storyName = find(['storyname'], ['storyname'])
+  const storyPage = find(['storypage'], ['storypage'])
+
   return {
     user: find(['username', 'user'], ['user']),
     actionName,
@@ -233,5 +242,7 @@ function detectMapping(headers) {
     measure,
     submeasure,
     duration,
+    storyName,
+    storyPage,
   }
 }

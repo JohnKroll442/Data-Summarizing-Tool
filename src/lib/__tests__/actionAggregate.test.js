@@ -28,7 +28,7 @@ describe('aggregateByAction', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'user', 'action_name', 'widget_count',
+      'user', 'action_name', 'story_name', 'story_page', 'widget_count',
       'max_frontend', 'max_network', 'max_backend',
     ])
   })
@@ -137,5 +137,27 @@ describe('aggregateByAction', () => {
     }]
     const { mapping } = aggregateByAction(rows, headers)
     expect(mapping.actionTimestamp).toBe('ACTION_TIMESTAMP')
+  })
+
+  it('surfaces story_name and story_page from the CSV when the columns exist', () => {
+    const headers = [...HEADERS, 'STORY_NAME', 'STORY_PAGE']
+    const rows = [
+      row({ USER_ACTION: 'A', STORY_NAME: 'Sales Overview', STORY_PAGE: 'Page 1' }),
+      row({ USER_ACTION: 'A', STORY_NAME: 'Sales Overview', STORY_PAGE: 'Page 1' }),
+    ]
+    const { rows: out, mapping } = aggregateByAction(rows, headers)
+    expect(mapping.storyName).toBe('STORY_NAME')
+    expect(mapping.storyPage).toBe('STORY_PAGE')
+    expect(out[0].story_name).toBe('Sales Overview')
+    expect(out[0].story_page).toBe('Page 1')
+  })
+
+  it('leaves story columns blank when the CSV has no story columns', () => {
+    const rows = [row()]
+    const { rows: out, mapping } = aggregateByAction(rows, HEADERS)
+    expect(mapping.storyName).toBe('')
+    expect(mapping.storyPage).toBe('')
+    expect(out[0].story_name).toBe('')
+    expect(out[0].story_page).toBe('')
   })
 })
