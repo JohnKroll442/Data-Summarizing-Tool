@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
+import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
@@ -201,6 +202,7 @@ function ActionSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>

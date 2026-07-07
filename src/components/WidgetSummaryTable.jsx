@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
+import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
@@ -217,6 +218,7 @@ function WidgetSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>

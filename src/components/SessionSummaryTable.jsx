@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import MultiFilterMenu from './MultiFilterMenu'
+import SortMenu from './SortMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
@@ -136,6 +137,7 @@ function SessionSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
