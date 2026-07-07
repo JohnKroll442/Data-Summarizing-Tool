@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react'
 import './SortMenu.css'
 
 /**
@@ -47,9 +48,9 @@ function SortMenu({ columns, sort, onSortChange }) {
         title="Sort table"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="sort-menu-gear" aria-hidden="true">⚙</span>
+        <span className="sort-menu-trigger-icon" aria-hidden="true"><ArrowUpDown size={14} /></span>
         <span>Sort</span>
-        <span className="sort-menu-caret" aria-hidden="true">▾</span>
+        <span className="sort-menu-caret" aria-hidden="true"><ChevronDown size={12} /></span>
       </button>
 
       {open && (
@@ -71,7 +72,7 @@ function SortMenu({ columns, sort, onSortChange }) {
                       title="Ascending"
                       onClick={() => pick(col.key, 'asc')}
                     >
-                      ▲
+                      <ChevronUp size={13} />
                     </button>
                     <button
                       type="button"
@@ -80,7 +81,7 @@ function SortMenu({ columns, sort, onSortChange }) {
                       title="Descending"
                       onClick={() => pick(col.key, 'desc')}
                     >
-                      ▼
+                      <ChevronDown size={13} />
                     </button>
                   </div>
                 </div>

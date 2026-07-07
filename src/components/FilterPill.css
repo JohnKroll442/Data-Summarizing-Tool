@@ -2,22 +2,22 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.6rem;
-  padding: 0.45rem 0.5rem 0.45rem 0.85rem;
-  background: var(--sap-gold);
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+  background: var(--sap-blue-bg);
   color: var(--sap-blue-darker);
-  font-size: 0.85rem;
-  font-weight: 500;
-  border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
+  border: 1px solid var(--sap-blue-light);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  border-radius: var(--radius-pill);
 }
 
 .filter-pill-label {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
-  opacity: 0.8;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--sap-text-muted);
 }
 
 .filter-pill-value {
@@ -33,22 +33,18 @@
   width: 22px;
   height: 22px;
   border: none;
-  border-radius: 999px;
-  background: rgba(0, 41, 92, 0.15);
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--sap-blue-darker);
-  font-size: 0.8rem;
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .filter-pill-clear:hover {
-  background: rgba(0, 41, 92, 0.3);
+  background: var(--sap-blue-light);
 }
 
-/* Cells you can click to drill down. Bold black text inside a
-   transparent button that fills its td so the whole cell is the hit target.
-   Negative margins match the td's padding (0.55rem 0.85rem) so the button
-   covers exactly one cell — no more, no less. */
+/* Cells you can click to drill down. */
 .cell-link {
   display: block;
   width: calc(100% + 1.7rem);
@@ -58,8 +54,8 @@
   padding: 0.55rem 0.85rem;
   margin: -0.55rem -0.85rem;
   font: inherit;
-  font-weight: 700;
-  color: #000;
+  font-weight: var(--weight-semibold);
+  color: var(--sap-blue);
   text-decoration: none;
   cursor: pointer;
   text-align: left;
@@ -67,6 +63,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .cell-link:hover {

@@ -1,4 +1,5 @@
 import { Link, Navigate, NavLink, Outlet } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { useCsvData } from '../context/useCsvData'
 import './SummaryPage.css'
 
@@ -23,7 +24,7 @@ function SummaryPage() {
     <div className="summary-page">
       <div className="summary-file-banner" aria-label="Loaded file">
         <Link to="/" className="summary-home-link" aria-label="Back to upload page">
-          <span aria-hidden="true">←</span> Home
+          <ArrowLeft size={14} aria-hidden="true" /> Home
         </Link>
         {canSwitch ? (
           <select

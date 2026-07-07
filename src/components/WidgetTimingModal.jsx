@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { X } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { buildWidgetTimingOption } from './charts/options/widgetTiming'
 import './WidgetTimingModal.css'
@@ -46,7 +47,7 @@ function WidgetTimingModal({ open, onClose, widgetName, widgetRows, actionRows }
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <X size={16} />
           </button>
         </header>
         <div className="widget-timing-body">

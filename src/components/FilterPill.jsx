@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import './FilterPill.css'
 
 /**
@@ -21,7 +22,7 @@ function FilterPill({ label, value, onClear }) {
         aria-label="Clear filter"
         title="Clear filter"
       >
-        ✕
+        <X size={14} />
       </button>
     </div>
   )

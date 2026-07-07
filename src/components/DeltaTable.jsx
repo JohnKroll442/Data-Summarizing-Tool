@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 import './DeltaTable.css'
 
 /**
@@ -201,7 +202,7 @@ function SortHeader({ label, colKey, sort, onSort, numeric = false }) {
       >
         <span>{label}</span>
         <span className="delta-sort-indicator" aria-hidden="true">
-          {dir === 'asc' ? '▲' : dir === 'desc' ? '▼' : ''}
+          {dir === 'asc' ? <ChevronUp size={12} /> : dir === 'desc' ? <ChevronDown size={12} /> : null}
         </span>
       </button>
     </th>

@@ -1,3 +1,4 @@
+import { ArrowRight, ChevronUp, ChevronDown } from 'lucide-react'
 import './KpiDeltaStrip.css'
 
 /**
@@ -30,7 +31,7 @@ function KpiDeltaStrip({ kpis }) {
               {k.baseline}
             </span>
             <span className="kpi-delta-arrow" aria-hidden="true">
-              {'→'}
+              <ArrowRight size={14} />
             </span>
             <span
               className="kpi-delta-current"
@@ -59,7 +60,7 @@ function renderDelta(k) {
     return <span className="kpi-delta-muted">{'—'}</span>
   }
 
-  const glyph = direction === 'up' ? '▲' : '▼'
+  const Glyph = direction === 'up' ? ChevronUp : ChevronDown
   const formatted = formatPct(deltaPct)
 
   let colorClass = 'kpi-delta-neutral'
@@ -70,7 +71,7 @@ function renderDelta(k) {
 
   return (
     <span className={colorClass}>
-      <span className="kpi-delta-glyph" aria-hidden="true">{glyph}</span>
+      <span className="kpi-delta-glyph" aria-hidden="true"><Glyph size={12} /></span>
       <span className="kpi-delta-pct">{formatted}</span>
     </span>
   )

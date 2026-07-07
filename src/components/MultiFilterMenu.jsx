@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import './MultiFilterMenu.css'
 
 /**
@@ -63,7 +64,7 @@ function MultiFilterMenu({ label, options, selected, onChange }) {
         onClick={() => setOpen((v) => !v)}
       >
         {triggerText}
-        <span className="multi-filter-caret" aria-hidden="true">▾</span>
+        <span className="multi-filter-caret" aria-hidden="true"><ChevronDown size={12} /></span>
       </button>
 
       {open && (

@@ -1,4 +1,5 @@
 import { Link, Navigate, NavLink, Outlet } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { useCsvData } from '../context/useCsvData'
 import './SummaryPage.css'
 import './ComparePage.css'
@@ -21,7 +22,7 @@ function ComparePage() {
     <div className="summary-page">
       <div className="summary-file-banner" aria-label="Comparison files">
         <Link to="/" className="summary-home-link" aria-label="Back to upload page">
-          <span aria-hidden="true">←</span> Home
+          <ArrowLeft size={14} aria-hidden="true" /> Home
         </Link>
         <span className="summary-file-name compare-banner-label">
           Compare:{' '}

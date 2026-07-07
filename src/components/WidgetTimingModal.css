@@ -12,7 +12,7 @@
   width: min(1200px, 100%);
   max-height: 88vh;
   background: var(--sap-surface);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
@@ -26,14 +26,15 @@
   justify-content: space-between;
   padding: 0.9rem 1.1rem;
   border-bottom: 1px solid var(--sap-border);
-  background: linear-gradient(135deg, var(--sap-blue) 0%, var(--sap-blue-dark) 100%);
+  background: var(--sap-blue);
   color: #fff;
 }
 
 .widget-timing-header h2 {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
 }
 
 .widget-timing-close {
@@ -42,9 +43,10 @@
   color: #fff;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
+  display: grid;
+  place-items: center;
   line-height: 1;
 }
 

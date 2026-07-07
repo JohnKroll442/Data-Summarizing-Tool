@@ -1,9 +1,16 @@
 .summary-page {
   width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 1.75rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   text-align: left;
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Centered banner showing just the uploaded CSV file name, sits between
@@ -30,23 +37,24 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.85rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
   text-decoration: none;
   background: var(--color-surface);
-  border: 1px solid #000;
-  border-radius: 999px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-pill);
   transition: background-color 0.15s ease;
 }
 
 .summary-home-link:hover {
   background: var(--sap-blue-bg);
+  color: var(--sap-blue-darker);
 }
 
 .summary-home-link:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(240, 171, 0, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.25);
 }
 
 .summary-file-name {
@@ -54,12 +62,12 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.85rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
   background: var(--color-surface);
-  border: 1px solid #000;
-  border-radius: 999px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-pill);
 }
 
 /* Same look as .summary-file-name, but a native select so the user can
@@ -69,19 +77,19 @@
   align-items: center;
   padding: 0.35rem 2rem 0.35rem 0.85rem;
   font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
   background-color: var(--color-surface);
-  background-image: linear-gradient(45deg, transparent 50%, var(--sap-blue-darker) 50%),
-                    linear-gradient(135deg, var(--sap-blue-darker) 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, var(--sap-text-muted) 50%),
+                    linear-gradient(135deg, var(--sap-text-muted) 50%, transparent 50%);
   background-position:
     calc(100% - 18px) 50%,
     calc(100% - 12px) 50%;
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
-  border: 1px solid #000;
-  border-radius: 999px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -91,7 +99,8 @@
 }
 
 .summary-file-select:focus {
-  box-shadow: 0 0 0 3px rgba(240, 171, 0, 0.45);
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
 }
 
 .summary-file-select option {
@@ -104,8 +113,8 @@
   gap: 0.25rem;
   padding: 0.35rem;
   background: var(--color-surface);
-  border: 1px solid #000;
-  border-radius: 12px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
 }
 
@@ -113,10 +122,10 @@
   flex: 1;
   text-align: center;
   padding: 0.6rem 1rem;
-  border: 1px solid #000;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--sap-text-muted);
   text-decoration: none;
   transition: background-color 0.15s ease, color 0.15s ease;
@@ -131,18 +140,7 @@
 .summary-tab.active {
   background: var(--sap-blue);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(0, 64, 176, 0.25);
-}
-
-.summary-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 16%;
-  right: 16%;
-  bottom: -4px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--sap-gold);
+  border-color: var(--sap-blue);
 }
 
 .summary-content {
@@ -159,25 +157,29 @@
 }
 
 .view-heading {
-  margin: 0 0 0.5rem;
-  color: var(--sap-blue-darker);
-  font-size: 1.15rem;
-  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--sap-text);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-heading);
 }
 
 .view-subheading {
-  margin: 0 0 0.85rem;
-  font-size: 0.85rem;
-  color: var(--sap-text);
+  margin: 0 0 1rem;
+  font-size: var(--text-base);
+  color: var(--sap-text-muted);
 }
 
 /* Section heading used by views that have more than one section (e.g.
    "Charts" below the SessionSummaryTable). */
 .view-section-heading {
-  margin: 1.25rem 0 0.6rem;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  margin: 1.5rem 0 0.75rem;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+  letter-spacing: var(--tracking-heading);
+  color: var(--sap-text);
 }
 
 @media (max-width: 600px) {

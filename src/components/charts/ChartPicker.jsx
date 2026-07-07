@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { CHART_TYPES, getChartType, groupedChartTypes } from './registry'
 import { validOptionsFor } from './validate'
 import './ChartPicker.css'
@@ -110,7 +111,7 @@ function ChartPicker({ open, onClose, onAdd, headers, profile, rows }) {
         <header className="chart-picker-header">
           <h2 id="chart-picker-title">Add chart</h2>
           <button type="button" className="chart-picker-close" onClick={onClose} aria-label="Close">
-            ✕
+            <X size={16} />
           </button>
         </header>
 

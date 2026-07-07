@@ -1,4 +1,5 @@
 import ReactECharts from 'echarts-for-react'
+import { X } from 'lucide-react'
 import './EChartCard.css'
 
 /**
@@ -31,7 +32,7 @@ function EChartCard({ title, subtitle, option, height = 280, onRemove }) {
             aria-label="Remove chart"
             title="Remove chart"
           >
-            ✕
+            <X size={16} />
           </button>
         )}
       </header>

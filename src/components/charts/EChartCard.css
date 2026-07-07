@@ -1,9 +1,9 @@
 .echart-card {
   background: var(--color-surface);
-  border: 1px solid #000;
-  border-radius: 12px;
-  box-shadow: var(--shadow-md);
-  padding: 0.85rem 1rem 1rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1rem 1rem;
   min-width: 0;
 }
 
@@ -27,11 +27,10 @@
   color: var(--sap-text-muted);
   width: 26px;
   height: 26px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: grid;
   place-items: center;
-  font-size: 0.85rem;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
@@ -42,14 +41,15 @@
 
 .echart-card-title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
+  line-height: 1.25;
 }
 
 .echart-card-subtitle {
   margin: 2px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   color: var(--sap-text-muted);
 }
 
@@ -57,9 +57,9 @@
   display: grid;
   place-items: center;
   color: var(--sap-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   background: var(--sap-surface-alt);
   border: 1px dashed var(--sap-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 1rem;
 }

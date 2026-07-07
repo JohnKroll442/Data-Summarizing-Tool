@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 import './DataTable.css'
 
 /**
@@ -79,7 +80,7 @@ function DataTable({ rows, columns, emptyMessage = 'No rows to display.', sort =
                     >
                       <span>{col.label ?? col.key}</span>
                       <span className="data-table-sort-indicator" aria-hidden="true">
-                        {dir === 'asc' ? '▲' : dir === 'desc' ? '▼' : ''}
+                        {dir === 'asc' ? <ChevronUp size={12} /> : dir === 'desc' ? <ChevronDown size={12} /> : null}
                       </span>
                     </button>
                   ) : (

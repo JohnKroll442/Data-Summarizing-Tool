@@ -1,10 +1,10 @@
 .file-list {
   background: var(--color-surface);
-  border: 1px solid #000;
-  border-radius: 12px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
   padding: 1rem 1.25rem 1.1rem;
   text-align: left;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .file-list-header {
@@ -16,9 +16,9 @@
 
 .file-list-title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
 }
 
 .file-list-count {
@@ -28,11 +28,11 @@
   min-width: 22px;
   height: 22px;
   padding: 0 7px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   color: var(--sap-blue-dark);
   background: var(--sap-blue-light);
-  border-radius: 11px;
+  border-radius: var(--radius-pill);
 }
 
 .file-list-items {
@@ -50,13 +50,13 @@
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
   background: var(--sap-surface-alt);
-  border: 1px solid #000;
-  border-radius: 8px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .file-list-item:hover {
-  background: #eef5fc;
+  background: var(--sap-blue-bg);
   border-color: var(--sap-blue-light);
 }
 
@@ -64,7 +64,7 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--sap-blue-light);
   color: var(--sap-blue-dark);
   display: grid;
@@ -85,8 +85,8 @@
 }
 
 .file-name {
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--sap-text);
   white-space: nowrap;
   overflow: hidden;
@@ -94,7 +94,7 @@
 }
 
 .file-size {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--sap-text-muted);
 }
 
@@ -105,7 +105,7 @@
   color: var(--sap-text-muted);
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: grid;
   place-items: center;

@@ -14,8 +14,9 @@
 
 .multi-filter-caret {
   margin-left: auto;
-  font-size: 0.7rem;
-  opacity: 0.65;
+  display: inline-flex;
+  align-items: center;
+  color: var(--sap-text-muted);
 }
 
 .multi-filter-panel {
@@ -27,20 +28,20 @@
   max-height: 340px;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid #000;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   padding: 0.5rem;
   gap: 0.4rem;
 }
 
 .multi-filter-search {
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 0.35rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -58,17 +59,17 @@
 .multi-filter-action {
   flex: 1;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   padding: 0.3rem 0.4rem;
-  border: 1px solid #bbb;
-  border-radius: 6px;
-  background: #f7f7f7;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface-alt);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .multi-filter-action:hover:not(:disabled) {
-  background: #ececec;
+  background: var(--sap-blue-bg);
 }
 
 .multi-filter-action:disabled {
@@ -80,7 +81,7 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-border-subtle);
   padding-top: 0.25rem;
 }
 
@@ -88,14 +89,14 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
-  padding: 0.28rem 0.35rem;
-  border-radius: 4px;
+  font-size: var(--text-sm);
+  padding: 0.3rem 0.35rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
 .multi-filter-item:hover {
-  background: #f2f6fb;
+  background: var(--sap-blue-bg);
 }
 
 .multi-filter-item span {
@@ -107,7 +108,7 @@
 .multi-filter-empty {
   margin: 0;
   padding: 0.5rem 0.35rem;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--sap-text-muted);
   font-style: italic;
 }

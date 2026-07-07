@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { X, ArrowRight } from 'lucide-react'
 import FileUpload from '../components/FileUpload'
 import CsvValidationDialog from '../components/CsvValidationDialog'
 import { parseCsvFile, validateSchema } from '../lib/parseCsv'
@@ -267,7 +268,7 @@ function UploadPage() {
                         aria-label={`Remove ${file.fileName} from recent files`}
                         onClick={() => removeRecentFile(file.id)}
                       >
-                        ×
+                        <X size={16} />
                       </button>
                     )}
                   </li>
@@ -284,7 +285,7 @@ function UploadPage() {
                 className="recent-files-compare-submit"
                 onClick={submitCompare}
               >
-                Compare →
+                Compare <ArrowRight size={14} aria-hidden="true" />
               </button>
             )}
         </section>

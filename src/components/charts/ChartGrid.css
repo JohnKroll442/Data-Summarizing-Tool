@@ -9,21 +9,20 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.55rem 1.05rem;
+  padding: 0.5rem 1rem;
   font: inherit;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--sap-blue-darker);
-  background: var(--sap-gold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: #fff;
+  background: var(--sap-blue);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
   transition: background-color 0.15s ease, transform 0.08s ease;
 }
 
 .chart-grid-add:hover {
-  background: var(--sap-gold-light);
+  background: var(--sap-blue-dark);
 }
 
 .chart-grid-add:active {
@@ -31,27 +30,28 @@
 }
 
 .chart-grid-add-icon {
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
   line-height: 1;
 }
 
 .chart-grid-count {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--sap-text-muted);
 }
 
 .chart-grid-empty {
   padding: 1.5rem 1.25rem;
   text-align: center;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--sap-blue-darker);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--sap-text);
   background: var(--color-surface);
   border: 1px dashed var(--sap-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   margin-bottom: 1rem;
 }
 
 .chart-grid-empty strong {
-  color: var(--sap-blue-darker);
+  color: var(--sap-text);
 }

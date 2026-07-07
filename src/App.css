@@ -35,16 +35,17 @@
 
 .app-header-text h1 {
   margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
-  letter-spacing: -0.01em;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-tight);
+  color: var(--sap-text);
 }
 
 .app-header-text p {
-  margin: 2px 0 0;
-  font-size: 1rem;
-  color: var(--sap-text);
+  margin: 0.25rem 0 0;
+  font-size: var(--text-md);
+  color: var(--sap-text-muted);
 }
 
 /* The name in "Hello, <name>" — styled as a subtle inline button so the
@@ -54,15 +55,15 @@
   border: none;
   padding: 0;
   font: inherit;
-  color: var(--sap-gold-light);
+  color: var(--sap-blue);
   cursor: pointer;
   border-bottom: 1px dashed transparent;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .app-header-name:hover {
-  color: var(--sap-gold);
-  border-bottom-color: var(--sap-gold);
+  color: var(--sap-blue-dark);
+  border-bottom-color: var(--sap-blue-dark);
 }
 
 /* Inline "what's your name" form, shown before the user has set a name */
@@ -74,10 +75,11 @@
 }
 
 .app-name-label {
-  font-size: 1.4rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
-  letter-spacing: -0.01em;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-heading);
+  color: var(--sap-text);
 }
 
 .app-name-row {
@@ -91,38 +93,36 @@
   flex: 1;
   min-width: 0;
   padding: 0.55rem 0.85rem;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--sap-text);
   background: #fff;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
   outline: none;
   text-align: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-  transition: box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .app-name-input:focus {
-  box-shadow: 0 0 0 3px rgba(240, 171, 0, 0.45),
-              0 4px 14px rgba(0, 0, 0, 0.12);
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
 }
 
 .app-name-submit {
   padding: 0.55rem 1.1rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
-  background: var(--sap-gold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: #fff;
+  background: var(--sap-blue);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
   transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
 .app-name-submit:hover {
-  background: var(--sap-gold-light);
+  background: var(--sap-blue-dark);
 }
 
 .app-name-submit:active {
@@ -141,16 +141,16 @@
 .app-card {
   background: var(--sap-surface);
   border: 1px solid var(--sap-border);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 41, 92, 0.04);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .app-status,
 .app-error {
   margin: 0;
   padding: 0.6rem 0.9rem;
-  border-radius: 8px;
-  font-size: 0.88rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -171,18 +171,18 @@
   padding: 0.75rem 0.85rem 0.85rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 12px;
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   text-align: left;
 }
 
 .recent-files-heading {
   margin: 0 0 0.5rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  color: var(--sap-blue-darker);
+  color: var(--sap-text-muted);
 }
 
 .recent-files-list {
@@ -206,24 +206,25 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.1rem;
-  background: var(--sap-blue-light);
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
+  background: var(--sap-blue-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.75rem;
   font: inherit;
   color: var(--sap-text);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .recent-files-pick:hover {
-  background: var(--sap-blue-bg);
+  background: var(--sap-blue-light);
+  border-color: var(--sap-blue-light);
 }
 
 .recent-files-name {
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--sap-blue-darker);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  color: var(--sap-text);
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
@@ -231,13 +232,13 @@
 }
 
 .recent-files-meta {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--sap-text-muted);
 }
 
 .recent-files-empty {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--sap-text-muted);
   font-style: italic;
 }
@@ -250,9 +251,8 @@
   place-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--sap-text-muted);
-  font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -279,12 +279,12 @@
 
 .recent-files-compare-toggle {
   font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   color: var(--sap-blue-darker);
   background: var(--sap-blue-bg);
   border: 1px solid var(--sap-blue);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.25rem 0.75rem;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
@@ -321,13 +321,13 @@
 
 .compare-role-btn {
   font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   padding: 0.3rem 0.65rem;
   background: transparent;
   color: var(--sap-text-muted);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -348,20 +348,19 @@
   margin-top: 0.6rem;
   align-self: flex-end;
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--sap-blue-darker);
-  background: var(--sap-gold);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: #fff;
+  background: var(--sap-blue);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.45rem 0.9rem;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(240, 171, 0, 0.35);
   transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
 .recent-files-compare-submit:hover {
-  background: var(--sap-gold-light);
+  background: var(--sap-blue-dark);
 }
 
 .recent-files-compare-submit:active {
