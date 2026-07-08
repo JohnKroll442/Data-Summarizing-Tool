@@ -23,12 +23,13 @@
   border: 1px solid var(--sap-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md, 0 2px 8px rgba(15, 23, 42, 0.06));
+  padding: 0.6rem;
 }
 
 .delta-table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0;
+  border-spacing: 0.10rem;
   font-size: var(--text-sm);
   color: var(--sap-text);
 }
@@ -36,17 +37,18 @@
 .delta-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   text-align: left;
   font-weight: var(--weight-semibold);
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  color: var(--sap-text-muted, #556b82);
-  background: var(--sap-surface-alt, #f6f8fb);
-  padding: 0.7rem 0.85rem;
-  border-bottom: 1px solid var(--sap-border);
+  color: #fff;
+  background: var(--sap-blue);
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-lg);
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .delta-table thead th.is-numeric {
@@ -76,7 +78,7 @@
 }
 
 .delta-sort.is-active {
-  color: var(--sap-text, #1a2733);
+  color: #fff;
 }
 
 .delta-sort-indicator {
@@ -87,21 +89,18 @@
 }
 
 .delta-table tbody td {
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0.65rem 0.9rem;
   white-space: nowrap;
   max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
   background: #fff;
-}
-
-.delta-table tbody tr:last-child td {
-  border-bottom: none;
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
 }
 
 .delta-table tbody tr:hover td {
-  background: rgba(0, 82, 217, 0.04);
+  background: var(--sap-blue-bg, #f5faff);
 }
 
 .delta-table td.is-numeric,

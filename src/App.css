@@ -2,20 +2,19 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
   padding: 2.5rem 1.25rem 3rem;
-  text-align: center;
 }
 
 .app-header {
   width: 100%;
-  max-width: 720px;
-  margin-bottom: 1.75rem;
+  max-width: 960px;
+  margin: 0 auto 1.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
+  text-align: center;
 }
 
 .app-header-logo {
@@ -48,90 +47,10 @@
   color: var(--sap-text-muted);
 }
 
-/* The name in "Hello, <name>" — styled as a subtle inline button so the
-   user can click it to change their name. */
-.app-header-name {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: var(--sap-blue);
-  cursor: pointer;
-  border-bottom: 1px dashed transparent;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.app-header-name:hover {
-  color: var(--sap-blue-dark);
-  border-bottom-color: var(--sap-blue-dark);
-}
-
-/* Inline "what's your name" form, shown before the user has set a name */
-.app-name-form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-name-label {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  line-height: 1.15;
-  letter-spacing: var(--tracking-heading);
-  color: var(--sap-text);
-}
-
-.app-name-row {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  max-width: 360px;
-}
-
-.app-name-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0.55rem 0.85rem;
-  font-size: var(--text-base);
-  font-family: inherit;
-  color: var(--sap-text);
-  background: #fff;
-  border: 1px solid var(--sap-border);
-  border-radius: var(--radius-md);
-  outline: none;
-  text-align: center;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.app-name-input:focus {
-  border-color: var(--sap-blue);
-  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
-}
-
-.app-name-submit {
-  padding: 0.55rem 1.1rem;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: #fff;
-  background: var(--sap-blue);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.1s ease;
-}
-
-.app-name-submit:hover {
-  background: var(--sap-blue-dark);
-}
-
-.app-name-submit:active {
-  transform: translateY(1px);
-}
-
 .app-main {
   width: 100%;
-  max-width: 560px;
+  max-width: 880px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;

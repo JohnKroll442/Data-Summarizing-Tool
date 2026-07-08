@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
 import FilterPill from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
@@ -25,7 +26,7 @@ import './SessionSummaryTable.css'
  * Clicking the Action name cell sets the `actionFilter` (name + timestamp)
  * and routes to Widget View for the next level of drill-down.
  */
-function ActionSummaryTable({ rows, headers }) {
+function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const navigate = useNavigate()
   const {
     sessionFilter,
@@ -243,20 +244,39 @@ function ActionSummaryTable({ rows, headers }) {
             if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
             if (c.key === 'action_name') {
               return (
-                <button
-                  type="button"
-                  className="cell-link"
-                  title={`Show widgets for "${row.action_name}"`}
-                  onClick={() => {
-                    setActionFilter({
-                      name: row.action_name,
-                      timestamp: row._action_timestamp ?? '',
-                    })
-                    navigate('/summary/widget')
-                  }}
-                >
-                  {String(v)}
-                </button>
+                <div className="cell-link-row">
+                  <button
+                    type="button"
+                    className="cell-link"
+                    title={`Show widgets for "${row.action_name}"`}
+                    onClick={() => {
+                      setActionFilter({
+                        name: row.action_name,
+                        timestamp: row._action_timestamp ?? '',
+                      })
+                      navigate('/summary/widget')
+                    }}
+                  >
+                    {String(v)}
+                  </button>
+                  {onOpenWaterfall && (
+                    <button
+                      type="button"
+                      className="cell-icon-btn"
+                      title="Open Action Waterfall Chart for this action"
+                      aria-label={`Open Action Waterfall Chart for ${row.action_name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenWaterfall({
+                          name: row.action_name,
+                          timestamp: row._action_timestamp ?? '',
+                        })
+                      }}
+                    >
+                      <WaterfallIcon size={24} />
+                    </button>
+                  )}
+                </div>
               )
             }
             return String(v)

@@ -8,10 +8,6 @@ import { formatFileSize } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import sapLogo from '../assets/sap-logo.png'
 
-/**
- * UploadPage — the landing screen. Asks for the user's name, accepts a CSV,
- * parses it client-side, and routes the user to the summary view.
- */
 function UploadPage() {
   const navigate = useNavigate()
   const {
@@ -23,26 +19,12 @@ function UploadPage() {
     setCurrentId,
   } = useCsvData()
 
-  // Persisted user name (so we can say "Hello, <name>"). Loaded from localStorage.
-  const [userName, setUserName] = useState(
-    () => localStorage.getItem('userName') || ''
-  )
-
-  // Controlled input for the name form / edit field
-  const [nameDraft, setNameDraft] = useState('')
-  const [isEditingName, setIsEditingName] = useState(false)
-
-  // Tracks whether a CSV parse is in flight + any error to surface
   const [isParsing, setIsParsing] = useState(false)
   const [parseError, setParseError] = useState('')
 
-  // When a parsed CSV is missing expected columns, we stash it here and open
-  // a confirmation dialog instead of navigating immediately.
   const [pendingCsv, setPendingCsv] = useState(null)
   const [validation, setValidation] = useState(null)
 
-  // Compare mode selection lives locally until the user hits "Compare →" —
-  // that way toggling on/off doesn't leak into the shared context.
   const [compareMode, setCompareMode] = useState(false)
   const [compareBaselineId, setCompareBaselineId] = useState(null)
   const [compareCurrentId, setCompareCurrentId] = useState(null)
@@ -55,8 +37,6 @@ function UploadPage() {
     setCompareCurrentId(null)
   }
 
-  // Assign a role (baseline/current) to a file, clearing that role from the
-  // other file if it happened to hold it — a single file can't play both.
   const pickBaseline = (id) => {
     setCompareBaselineId(id)
     if (compareCurrentId === id) setCompareCurrentId(null)
@@ -87,23 +67,6 @@ function UploadPage() {
     navigate('/summary/raw')
   }
 
-  const saveName = (event) => {
-    event.preventDefault()
-    const trimmed = nameDraft.trim()
-    if (!trimmed) return
-    setUserName(trimmed)
-    localStorage.setItem('userName', trimmed)
-    setNameDraft('')
-    setIsEditingName(false)
-  }
-
-  const startEditing = () => {
-    setNameDraft(userName)
-    setIsEditingName(true)
-  }
-
-  // Called by FileUpload after the user selects/drops one or more files.
-  // For this flow we only care about the first CSV.
   const handleFilesAdded = async (newFiles) => {
     const file = newFiles[0]
     if (!file) return
@@ -140,49 +103,12 @@ function UploadPage() {
     }
   }
 
-  const showNameForm = !userName || isEditingName
-
   return (
     <>
       <header className="app-header">
         <img src={sapLogo} alt="SAP" className="app-header-logo" />
         <div className="app-header-text">
-          {showNameForm ? (
-            <form className="app-name-form" onSubmit={saveName}>
-              <label htmlFor="user-name-input" className="app-name-label">
-                What's your name?
-              </label>
-              <div className="app-name-row">
-                <input
-                  id="user-name-input"
-                  type="text"
-                  className="app-name-input"
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
-                  placeholder="Enter your name"
-                  autoFocus
-                />
-                <button type="submit" className="app-name-submit">
-                  Continue
-                </button>
-              </div>
-            </form>
-          ) : (
-            <>
-              <h1>
-                Hello,{' '}
-                <button
-                  type="button"
-                  className="app-header-name"
-                  onClick={startEditing}
-                  title="Click to change name"
-                >
-                  {userName}
-                </button>
-              </h1>
-              <p>Upload file to summarize</p>
-            </>
-          )}
+          <p>Upload file to summarize</p>
         </div>
       </header>
 

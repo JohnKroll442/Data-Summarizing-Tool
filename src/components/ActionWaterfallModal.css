@@ -1,0 +1,90 @@
+.action-waterfall-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+
+.action-waterfall-modal {
+  width: min(1400px, 100%);
+  max-height: 92vh;
+  background: var(--sap-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--sap-text);
+}
+
+.action-waterfall-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--sap-border);
+  background: var(--sap-blue);
+  color: #fff;
+}
+
+.action-waterfall-header h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+.action-waterfall-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.action-waterfall-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.action-waterfall-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--sap-border);
+  background: var(--sap-surface-muted, #f7f9fb);
+  flex-wrap: wrap;
+}
+
+.action-waterfall-toolbar label {
+  font-size: var(--text-sm);
+  color: var(--sap-text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.action-waterfall-select {
+  flex: 1;
+  min-width: 240px;
+  max-width: 640px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+  font-size: var(--text-sm);
+}
+
+.action-waterfall-body {
+  padding: 0.75rem 1rem 1rem;
+  background: var(--sap-surface);
+  overflow: auto;
+  flex: 1;
+}

@@ -70,3 +70,47 @@
   color: #fff;
   background: var(--sap-blue);
 }
+
+/* Wraps a .cell-link plus a small trailing icon button (e.g. the Action
+   Waterfall Chart shortcut on the Action name cell). The link still fills
+   most of the cell for click-target size; the icon sits at the right edge. */
+.cell-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: -0.55rem -0.85rem;
+}
+
+.cell-link-row .cell-link {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+.cell-icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 0.35rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--sap-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cell-icon-btn:hover {
+  background: var(--sap-blue-bg, rgba(0, 112, 242, 0.08));
+  color: var(--sap-blue-darker);
+  border-color: var(--sap-blue-darker);
+  box-shadow: inset 0 0 0 2px var(--sap-blue-darker);
+}
+
+.cell-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.25);
+}
