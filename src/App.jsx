@@ -9,6 +9,7 @@ import ComparePage from './pages/ComparePage'
 import SessionCompare from './pages/compare/SessionCompare'
 import ActionCompare from './pages/compare/ActionCompare'
 import WidgetCompare from './pages/compare/WidgetCompare'
+import CopilotDrawer from './components/copilot/CopilotDrawer'
 import './App.css'
 
 /**
@@ -35,6 +36,7 @@ function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <CopilotDrawer />
     </div>
   )
 }
