@@ -23,7 +23,7 @@
   border: 1px solid var(--sap-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md, 0 2px 8px rgba(15, 23, 42, 0.06));
-  padding: 0.6rem;
+  padding: 0 0.6rem 0.6rem;
 }
 
 .delta-table {
@@ -34,10 +34,19 @@
   color: var(--sap-text);
 }
 
+.delta-table thead {
+  position: relative;
+  z-index: 10;
+}
+
+.delta-table thead tr {
+  background: var(--color-surface, #fff);
+}
+
 .delta-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 10;
   text-align: left;
   font-weight: var(--weight-semibold);
   font-size: var(--text-xs);
@@ -86,6 +95,11 @@
   align-items: center;
   min-width: 0.75em;
   color: inherit;
+}
+
+.delta-table tbody {
+  position: relative;
+  z-index: 1;
 }
 
 .delta-table tbody td {
