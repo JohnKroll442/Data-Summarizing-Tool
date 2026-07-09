@@ -1,4 +1,5 @@
 import ToolCallBadge from './ToolCallBadge'
+import MarkdownMessage from './MarkdownMessage'
 
 function MessageList({ messages, hasData }) {
   if (messages.length === 0) {
@@ -7,12 +8,12 @@ function MessageList({ messages, hasData }) {
         <p className="copilot-empty-title">Ask me about your data.</p>
         {hasData ? (
           <ul className="copilot-empty-examples">
-            <li>“Which actions got slower between the two files?”</li>
-            <li>“Break down the top regression by phase.”</li>
-            <li>“Show me slow backend actions over 500ms.”</li>
+            <li>&ldquo;Which actions got slower between the two files?&rdquo;</li>
+            <li>&ldquo;Break down the top regression by phase.&rdquo;</li>
+            <li>&ldquo;Show me slow backend actions over 500ms.&rdquo;</li>
           </ul>
         ) : (
-          <p className="copilot-empty-hint">Upload a CSV first — then I can query it.</p>
+          <p className="copilot-empty-hint">Upload a CSV first &mdash; then I can query it.</p>
         )}
       </div>
     )
@@ -26,8 +27,14 @@ function MessageList({ messages, hasData }) {
               {m.toolCalls.map((tc) => <ToolCallBadge key={tc.id} call={tc} />)}
             </div>
           ) : null}
-          {m.content && <div className="copilot-msg-content">{m.content}</div>}
-          {m.pending && !m.content && <div className="copilot-thinking">Thinking…</div>}
+          {m.content && (
+            <div className="copilot-msg-content">
+              {m.role === 'assistant'
+                ? <MarkdownMessage content={m.content} />
+                : m.content}
+            </div>
+          )}
+          {m.pending && !m.content && <div className="copilot-thinking">Thinking...</div>}
         </div>
       ))}
     </div>

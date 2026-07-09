@@ -26,9 +26,15 @@ function requirePayload(payload, label) {
   }
 }
 
-function requireCompare(ctx) {
-  if (!ctx.baselinePayload) throw new Error('No baseline file selected. Ask the user to pick one on /compare.')
-  if (!ctx.currentPayload) throw new Error('No current file selected. Ask the user to pick one on /compare.')
+// When the user has only selected a baseline (via the copilot file selector),
+// treat the active file as "current" so compare tools work without needing
+// the full /compare page flow.
+function resolveComparePayloads(ctx) {
+  const baseline = ctx.baselinePayload
+  const current = ctx.currentPayload ?? ctx.activePayload
+  if (!baseline) throw new Error('No baseline file selected. Use the file selector at the top of the copilot drawer to pick a baseline.')
+  if (!current) throw new Error('No active file loaded to compare against.')
+  return { baseline, current }
 }
 
 /* ——— tool implementations ——— */
@@ -52,8 +58,8 @@ function describeDataset(_input, ctx) {
 }
 
 function topRegressions({ kind, n = 10, minPct = 0 }, ctx) {
-  requireCompare(ctx)
-  const { matched } = compareEntities(kind, ctx.baselinePayload, ctx.currentPayload)
+  const { baseline, current } = resolveComparePayloads(ctx)
+  const { matched } = compareEntities(kind, baseline, current)
   const ranked = matched
     .filter((r) => r.deltaPct !== null && r.deltaPct >= minPct)
     .sort((a, b) => (b.deltaPct ?? 0) - (a.deltaPct ?? 0))
@@ -66,9 +72,9 @@ function topRegressions({ kind, n = 10, minPct = 0 }, ctx) {
 }
 
 function compareEntity({ kind, name }, ctx) {
-  requireCompare(ctx)
+  const { baseline, current } = resolveComparePayloads(ctx)
   const { matched, newInCurrent, droppedFromBaseline } = compareEntities(
-    kind, ctx.baselinePayload, ctx.currentPayload,
+    kind, baseline, current,
   )
   const needle = String(name).toLowerCase()
   const hit = matched.find((r) => String(r.name).toLowerCase() === needle)
@@ -80,9 +86,18 @@ function compareEntity({ kind, name }, ctx) {
   return { status: 'not_found', name }
 }
 
-function listSlow({ kind, phase = 'total', threshold = 0, limit = 20 }, ctx) {
+function resolveFilePayload(file, ctx) {
+  if (file === 'baseline') {
+    if (!ctx.baselinePayload) throw new Error('No baseline file selected.')
+    return ctx.baselinePayload
+  }
   requirePayload(ctx.activePayload, 'active')
-  const { rows, headers } = ctx.activePayload
+  return ctx.activePayload
+}
+
+function listSlow({ kind, phase = 'total', threshold = 0, limit = 20, file = 'active' }, ctx) {
+  const payload = resolveFilePayload(file, ctx)
+  const { rows, headers } = payload
   let entities
   if (kind === 'action') {
     const { rows: agg } = aggregateByAction(rows, headers)
@@ -160,9 +175,9 @@ function getSessionActions({ sessionId, limit = 20 }, ctx) {
   }
 }
 
-function filterRows({ kind, where = [], limit = 20 }, ctx) {
-  requirePayload(ctx.activePayload, 'active')
-  const { rows, headers } = ctx.activePayload
+function filterRows({ kind, where = [], limit = 20, file = 'active' }, ctx) {
+  const payload = resolveFilePayload(file, ctx)
+  const { rows, headers } = payload
   let source
   if (kind === 'action') source = aggregateByAction(rows, headers).rows
   else if (kind === 'widget') source = aggregateByWidget(rows, headers).rows
@@ -176,9 +191,9 @@ function filterRows({ kind, where = [], limit = 20 }, ctx) {
   return { rows: capped, total: filtered.length, truncated: filtered.length > effectiveLimit }
 }
 
-function phaseBreakdown({ kind, name }, ctx) {
-  requirePayload(ctx.activePayload, 'active')
-  const { rows, headers } = ctx.activePayload
+function phaseBreakdown({ kind, name, file = 'active' }, ctx) {
+  const payload = resolveFilePayload(file, ctx)
+  const { rows, headers } = payload
   const needle = String(name).toLowerCase()
   if (kind === 'action') {
     const { rows: agg } = aggregateByAction(rows, headers)
@@ -256,7 +271,7 @@ export const tools = [
   },
   {
     name: 'top_regressions',
-    description: 'Returns the top N entities whose duration got worse between baseline and current. Only usable when both baseline and current files are selected. Use for questions like "which actions got slower?".',
+    description: 'Returns the top N entities whose duration got worse between baseline and current (or active when no dedicated current file is set). Requires a baseline file to be selected.',
     input_schema: {
       type: 'object',
       properties: {
@@ -271,7 +286,7 @@ export const tools = [
   },
   {
     name: 'compare_entity',
-    description: 'Returns baseline/current/delta for a single named entity across the two loaded files. Case-insensitive name match.',
+    description: 'Returns baseline/current/delta for a single named entity across the two files. Uses active as "current" when no dedicated current file is selected. Requires a baseline file. Case-insensitive name match.',
     input_schema: {
       type: 'object',
       properties: {
@@ -285,7 +300,7 @@ export const tools = [
   },
   {
     name: 'list_slow',
-    description: 'Returns the slowest entities in the ACTIVE file (not comparison). Filter by phase to find e.g. slow backend actions.',
+    description: 'Returns the slowest entities in a file. Use file="active" (default) for the active file or file="baseline" to query the baseline. Filter by phase to find e.g. slow backend actions.',
     input_schema: {
       type: 'object',
       properties: {
@@ -293,6 +308,7 @@ export const tools = [
         phase: { type: 'string', enum: ['frontend', 'network', 'backend', 'render', 'total'] },
         threshold: { type: 'number', description: 'Minimum duration (ms) to include.' },
         limit: { type: 'number' },
+        file: { type: 'string', enum: ['active', 'baseline'], description: 'Which file to query. Defaults to "active".' },
       },
       required: ['kind'],
       additionalProperties: false,
@@ -315,7 +331,7 @@ export const tools = [
   },
   {
     name: 'filter_rows',
-    description: 'Generic filter over aggregated entities of a given kind (action|widget|session) or raw rows. Each `where` clause is {col, op, value} where op is =, !=, contains, >, >=, <, <=. Use column names from describe_dataset. Prefer this for open-ended predicates like "actions for user alice with duration > 500ms".',
+    description: 'Generic filter over aggregated entities of a given kind (action|widget|session) or raw rows. Each `where` clause is {col, op, value} where op is =, !=, contains, >, >=, <, <=. Use column names from describe_dataset. Use file="baseline" to query the baseline file instead of active.',
     input_schema: {
       type: 'object',
       properties: {
@@ -333,6 +349,7 @@ export const tools = [
           },
         },
         limit: { type: 'number' },
+        file: { type: 'string', enum: ['active', 'baseline'], description: 'Which file to query. Defaults to "active".' },
       },
       required: ['kind'],
       additionalProperties: false,
@@ -341,12 +358,13 @@ export const tools = [
   },
   {
     name: 'phase_breakdown',
-    description: 'Returns the frontend/network/backend (and render/offset for widgets) split for a single named entity in the active file. Use to explain WHY something is slow.',
+    description: 'Returns the frontend/network/backend (and render/offset for widgets) split for a single named entity. Use file="baseline" to look up the entity in the baseline file.',
     input_schema: {
       type: 'object',
       properties: {
         kind: { type: 'string', enum: ['action', 'widget'] },
         name: { type: 'string' },
+        file: { type: 'string', enum: ['active', 'baseline'], description: 'Which file to query. Defaults to "active".' },
       },
       required: ['kind', 'name'],
       additionalProperties: false,
