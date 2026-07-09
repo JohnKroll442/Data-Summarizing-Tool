@@ -6,7 +6,7 @@
  * events) stay separate.
  *
  * Columns:
- *   User · Action name · Widget count (distinct WIDGET_IDs) ·
+ *   Session ID · User · Action name · Widget count (distinct WIDGET_IDs) ·
  *   Max frontend · Max network · Max backend
  *
  * In this CSV shape each row carries a WIDGET_MEASURE flag of
@@ -29,10 +29,17 @@
  */
 export const RECOGNIZED_MEASURES = ['render', 'frontend', 'network', 'backend', 'offset']
 
+import { detectSessionKey } from './drillDown'
+
 export function aggregateByAction(rows, headers) {
   const mapping = detectMapping(headers)
+  // Populated-column-aware session detection (SESSION_ID may exist but be
+  // empty while BROWSERSESSION_ID carries the real value — pick whichever
+  // has data). Attach onto the mapping so callers can see which column won.
+  mapping.session = detectSessionKey(headers, rows)
 
   const columns = [
+    { key: 'session_id',   label: 'Session ID' },
     { key: 'user',         label: 'User' },
     { key: 'action_name',  label: 'Action name' },
     { key: 'story_name',   label: 'Story name' },
@@ -73,6 +80,7 @@ export function aggregateByAction(rows, headers) {
       _action_timestamp: mapping.actionTimestamp
         ? firstNonEmpty(groupRows, mapping.actionTimestamp)
         : '',
+      session_id:   firstNonEmpty(groupRows, mapping.session),
       user:         firstNonEmpty(groupRows, mapping.user),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),

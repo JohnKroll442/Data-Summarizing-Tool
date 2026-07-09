@@ -28,7 +28,7 @@ describe('aggregateByAction', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'user', 'action_name', 'story_name', 'story_page', 'widget_count',
+      'session_id', 'user', 'action_name', 'story_name', 'story_page', 'widget_count',
       'max_frontend', 'max_network', 'max_backend',
     ])
   })

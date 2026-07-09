@@ -2,7 +2,7 @@
  * Widget-level aggregation for the Widget View summary table.
  *
  * One row per distinct WIDGET_ID. Columns:
- *   Widget ID · Widget name · Session ID · Phases (inline bars) ·
+ *   Session ID · Widget ID · Widget name · Phases (inline bars) ·
  *   Render · Render start · Render end ·
  *   Network · Network start · Network end ·
  *   Backend · Backend start · Backend end · Offset
@@ -39,9 +39,9 @@ export function aggregateByWidget(rows, headers) {
   mapping.session = detectSessionKey(headers, rows)
 
   const columns = [
+    { key: 'session_id',    label: 'Session ID' },
     { key: 'widget_id',     label: 'Widget ID' },
     { key: 'widget_name',   label: 'Widget name' },
-    { key: 'session_id',    label: 'Session ID' },
     { key: 'render',        label: 'Render',        sortType: 'duration' },
     { key: 'render_start',  label: 'Render start' },
     { key: 'render_end',    label: 'Render end' },
