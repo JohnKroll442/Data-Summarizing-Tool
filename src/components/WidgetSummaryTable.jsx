@@ -7,7 +7,14 @@ import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
-import { applySessionFilter, applyActionFilter } from '../lib/drillDown'
+import {
+  applySessionFilter,
+  applySessionMultiFilter,
+  applyActionFilter,
+  applyActionMultiFilter,
+  detectSessionKey,
+  findActionNameKey,
+} from '../lib/drillDown'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
@@ -31,14 +38,52 @@ function WidgetSummaryTable({ rows, headers }) {
     setSessionFilter,
     actionFilter,
     setActionFilter,
+    sessionMultiFilter,
+    setSessionMultiFilter,
+    actionMultiFilter,
+    setActionMultiFilter,
     fileName,
   } = useCsvData()
 
-  // Apply session filter first (broader), then action filter (narrower).
+  // Scope rows BEFORE aggregating. Each multiselect filter, when active, takes
+  // over its dimension's row scope (letting the user pick any set of sessions
+  // /actions from the whole file); otherwise the single drill-down from the
+  // Session/Action views applies. Session and action scoping compose.
   const scopedRows = useMemo(() => {
-    const afterSession = applySessionFilter(rows, headers, sessionFilter)
-    return applyActionFilter(afterSession, headers, actionFilter)
-  }, [rows, headers, sessionFilter, actionFilter])
+    let out = sessionMultiFilter.length > 0
+      ? applySessionMultiFilter(rows, headers, sessionMultiFilter)
+      : applySessionFilter(rows, headers, sessionFilter)
+    out = actionMultiFilter.length > 0
+      ? applyActionMultiFilter(out, headers, actionMultiFilter)
+      : applyActionFilter(out, headers, actionFilter)
+    return out
+  }, [rows, headers, sessionFilter, actionFilter, sessionMultiFilter, actionMultiFilter])
+
+  // Dropdown options — ALL sessions / actions in the file, so the user can
+  // pick any value regardless of how they drilled in.
+  const sessionOptions = useMemo(() => {
+    const key = detectSessionKey(headers, rows)
+    if (!key) return []
+    const set = new Set()
+    for (const r of rows) {
+      const v = r?.[key]
+      if (v === undefined || v === null || v === '') continue
+      set.add(String(v))
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [rows, headers])
+
+  const actionOptions = useMemo(() => {
+    const key = findActionNameKey(headers)
+    if (!key) return []
+    const set = new Set()
+    for (const r of rows) {
+      const v = r?.[key]
+      if (v === undefined || v === null || v === '') continue
+      set.add(String(v))
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [rows, headers])
 
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByWidget(scopedRows, headers),
@@ -86,7 +131,10 @@ function WidgetSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const activeFilterCount =
+    countActiveMultiFilters(filters, search) +
+    (sessionMultiFilter.length > 0 ? 1 : 0) +
+    (actionMultiFilter.length > 0 ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -141,11 +189,26 @@ function WidgetSummaryTable({ rows, headers }) {
   }
 
   if (summaryRows.length === 0) {
+    const multiActive = sessionMultiFilter.length > 0 || actionMultiFilter.length > 0
     return (
       <>
         {pills}
         <div className="summary-note">
-          {actionFilter || sessionFilter ? (
+          {multiActive ? (
+            <>
+              <strong>No widgets match the selected sessions/actions.</strong>{' '}
+              <button
+                type="button"
+                className="summary-filter-clear"
+                onClick={() => {
+                  setSessionMultiFilter([])
+                  setActionMultiFilter([])
+                }}
+              >
+                Clear session/action filters
+              </button>
+            </>
+          ) : actionFilter || sessionFilter ? (
             <>
               <strong>No widgets found for the active filter{actionFilter && sessionFilter ? 's' : ''}.</strong>{' '}
               Clear the pill{actionFilter && sessionFilter ? 's' : ''} above to broaden the view.
@@ -202,6 +265,22 @@ function WidgetSummaryTable({ rows, headers }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {sessionOptions.length > 0 && (
+          <MultiFilterMenu
+            label="Sessions"
+            options={sessionOptions}
+            selected={sessionMultiFilter}
+            onChange={setSessionMultiFilter}
+          />
+        )}
+        {actionOptions.length > 0 && (
+          <MultiFilterMenu
+            label="Actions"
+            options={actionOptions}
+            selected={actionMultiFilter}
+            onChange={setActionMultiFilter}
+          />
+        )}
         {FILTERABLE_COLUMNS.map((col) => {
           const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
@@ -241,6 +320,8 @@ function WidgetSummaryTable({ rows, headers }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionMultiFilter([])
+              setActionMultiFilter([])
             }}
           >
             Clear

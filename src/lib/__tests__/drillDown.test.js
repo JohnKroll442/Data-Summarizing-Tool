@@ -3,6 +3,8 @@ import {
   detectSessionKey,
   applySessionFilter,
   applyActionFilter,
+  applySessionMultiFilter,
+  applyActionMultiFilter,
 } from '../drillDown'
 
 describe('detectSessionKey', () => {
@@ -82,5 +84,74 @@ describe('applyActionFilter', () => {
     const noNameRows = [{ FOO: 1 }]
     expect(applyActionFilter(noNameRows, ['FOO'], { name: 'A', timestamp: '' }))
       .toBe(noNameRows)
+  })
+})
+
+describe('applySessionMultiFilter', () => {
+  const rows = [
+    { SESSION_ID: 's1', X: 1 },
+    { SESSION_ID: 's2', X: 2 },
+    { SESSION_ID: 's3', X: 3 },
+  ]
+  const headers = ['SESSION_ID', 'X']
+
+  it('is a no-op when the id list is empty', () => {
+    expect(applySessionMultiFilter(rows, headers, [])).toBe(rows)
+  })
+
+  it('is a no-op when the id list is not an array', () => {
+    expect(applySessionMultiFilter(rows, headers, null)).toBe(rows)
+  })
+
+  it('keeps rows whose session id is in the selected set', () => {
+    const filtered = applySessionMultiFilter(rows, headers, ['s1', 's3'])
+    expect(filtered).toHaveLength(2)
+    expect(filtered.map((r) => r.X)).toEqual([1, 3])
+  })
+
+  it('coerces numeric ids to strings when matching', () => {
+    const numRows = [{ SESSION_ID: 1 }, { SESSION_ID: 2 }]
+    const filtered = applySessionMultiFilter(numRows, ['SESSION_ID'], ['1'])
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].SESSION_ID).toBe(1)
+  })
+
+  it('returns original rows when no session column can be detected', () => {
+    const noSessionRows = [{ FOO: 1 }]
+    expect(applySessionMultiFilter(noSessionRows, ['FOO'], ['s1'])).toBe(noSessionRows)
+  })
+})
+
+describe('applyActionMultiFilter', () => {
+  const rows = [
+    { USER_ACTION: 'A', X: 1 },
+    { USER_ACTION: 'B', X: 2 },
+    { USER_ACTION: 'C', X: 3 },
+  ]
+  const headers = ['USER_ACTION', 'X']
+
+  it('is a no-op when the name list is empty', () => {
+    expect(applyActionMultiFilter(rows, headers, [])).toBe(rows)
+  })
+
+  it('keeps rows whose action name is in the selected set (every invocation)', () => {
+    const multiRows = [
+      { USER_ACTION: 'A', X: 1 },
+      { USER_ACTION: 'A', X: 2 },
+      { USER_ACTION: 'B', X: 3 },
+    ]
+    const filtered = applyActionMultiFilter(multiRows, headers, ['A'])
+    expect(filtered).toHaveLength(2)
+    expect(filtered.every((r) => r.USER_ACTION === 'A')).toBe(true)
+  })
+
+  it('matches multiple selected names', () => {
+    const filtered = applyActionMultiFilter(rows, headers, ['A', 'C'])
+    expect(filtered.map((r) => r.X)).toEqual([1, 3])
+  })
+
+  it('returns original rows when no action-name column can be found', () => {
+    const noNameRows = [{ FOO: 1 }]
+    expect(applyActionMultiFilter(noNameRows, ['FOO'], ['A'])).toBe(noNameRows)
   })
 })

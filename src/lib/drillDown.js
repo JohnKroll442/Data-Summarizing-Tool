@@ -47,15 +47,24 @@ export function applySessionFilter(rows, headers, sessionFilter) {
 }
 
 /**
+ * Pick the CSV column that holds the action name. Shared by applyActionFilter
+ * and applyActionMultiFilter so both agree on which column is the action name.
+ */
+export function findActionNameKey(headers) {
+  return headers.find((h) => norm(h) === 'useraction') ||
+         headers.find((h) => norm(h).includes('useraction')) ||
+         headers.find((h) => norm(h) === 'action') ||
+         ''
+}
+
+/**
  * Filter rows to those belonging to one specific action invocation.
  * actionFilter is { name, timestamp } where timestamp may be '' if the
  * source row lacked one.
  */
 export function applyActionFilter(rows, headers, actionFilter) {
   if (!actionFilter) return rows
-  const nameKey = headers.find((h) => norm(h) === 'useraction') ||
-                  headers.find((h) => norm(h).includes('useraction')) ||
-                  headers.find((h) => norm(h) === 'action')
+  const nameKey = findActionNameKey(headers)
   if (!nameKey) return rows
   const tsKey = headers.find((h) => norm(h) === 'actiontimestamp') ||
                 headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end')) ||
@@ -68,4 +77,30 @@ export function applyActionFilter(rows, headers, actionFilter) {
     }
     return true
   })
+}
+
+/**
+ * Scope rows to a set of session ids. No-op when sessionIds is empty or the
+ * session column can't be detected. Complements applySessionFilter (single
+ * drill-down) — callers compose them, applying the single filter first.
+ */
+export function applySessionMultiFilter(rows, headers, sessionIds) {
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) return rows
+  const key = detectSessionKey(headers, rows)
+  if (!key) return rows
+  const set = new Set(sessionIds.map((s) => String(s)))
+  return rows.filter((r) => set.has(String(r?.[key] ?? '')))
+}
+
+/**
+ * Scope rows to a set of action names. No-op when actionNames is empty or the
+ * action-name column can't be detected. Matches on name only (no timestamp),
+ * so it selects every invocation of each chosen action.
+ */
+export function applyActionMultiFilter(rows, headers, actionNames) {
+  if (!Array.isArray(actionNames) || actionNames.length === 0) return rows
+  const nameKey = findActionNameKey(headers)
+  if (!nameKey) return rows
+  const set = new Set(actionNames.map((s) => String(s)))
+  return rows.filter((r) => set.has(String(r?.[nameKey] ?? '')))
 }

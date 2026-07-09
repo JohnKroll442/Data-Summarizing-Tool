@@ -22,7 +22,7 @@ import './SessionSummaryTable.css'
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, fileName } = useCsvData()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, fileName } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -30,7 +30,11 @@ function SessionSummaryTable({ rows, headers }) {
   )
 
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({})
+  // Seed the Session column filter from the shared sessionMultiFilter so a
+  // selection made elsewhere (drill-down or Action View) shows here too.
+  const [filters, setFilters] = useState(() =>
+    sessionMultiFilter.length > 0 ? { session: sessionMultiFilter } : {}
+  )
   const [sort, setSort] = useState(null)
 
   const optionsByColumn = useMemo(() => {
@@ -131,9 +135,13 @@ function SessionSummaryTable({ rows, headers }) {
               label={col.label}
               options={opts}
               selected={selected}
-              onChange={(next) =>
+              onChange={(next) => {
                 setFilters((prev) => ({ ...prev, [col.key]: next }))
-              }
+                // Mirror the Session column filter into the shared filter that
+                // Action View reads, so filtering here carries over on tab
+                // switch — matching the click-a-session drill-down behavior.
+                if (col.key === 'session') setSessionMultiFilter(next)
+              }}
             />
           )
         })}
@@ -160,6 +168,7 @@ function SessionSummaryTable({ rows, headers }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionMultiFilter([])
             }}
           >
             Clear
@@ -192,6 +201,9 @@ function SessionSummaryTable({ rows, headers }) {
                   title={`Show actions for session ${row.session}`}
                   onClick={() => {
                     setSessionFilter(String(row.session))
+                    // Preselect this session in Action View's Sessions filter
+                    // so the dropdown reflects the drill-down ("1 selected").
+                    setSessionMultiFilter([String(row.session)])
                     // Clear any deeper drill-down so Action View shows
                     // a fresh, unfiltered set of actions for this session.
                     setActionFilter(null)

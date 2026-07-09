@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import EChartCard from './EChartCard'
 import ChartPicker from './ChartPicker'
 import { getChartType } from './registry'
+import { profileColumns } from '../../lib/chartData'
 import { useCsvData } from '../../context/useCsvData'
 import './ChartGrid.css'
 
@@ -12,21 +13,38 @@ import './ChartGrid.css'
  *
  * Props:
  *   viewId: 'session' | 'action' | 'widget'
+ *   rows / headers (optional): scoped rows/headers to chart instead of the
+ *     full context dataset. Views pass these so charts honor the active
+ *     session/action scoping filters. When provided, the column profile is
+ *     recomputed from them. For the widget view the caller must pass rows
+ *     already augmented with synthetic measure columns.
  */
-function ChartGrid({ viewId }) {
+function ChartGrid({ viewId, rows: rowsProp, headers: headersProp }) {
   const {
-    rows, headers, columnProfile,
+    rows: ctxRows, headers: ctxHeaders, columnProfile: ctxProfile,
     widgetChartData,
     chartsByView, addChart, removeChart,
   } = useCsvData()
   const [pickerOpen, setPickerOpen] = useState(false)
 
+  const scoped = rowsProp !== undefined
+
   // Widget view exposes synthetic per-row measure columns (Total Render /
   // Frontend / Backend / Network) so the picker can offer phase totals that
   // aren't native CSV columns. Other views use raw CSV rows unchanged.
-  const source = viewId === 'widget' && widgetChartData
-    ? widgetChartData
-    : { rows, headers, columnProfile }
+  // When scoped rows are passed in, chart from those (recomputing the profile);
+  // the widget-view caller passes rows already augmented with the synthetic
+  // measures so the picker still sees the phase-total columns.
+  const scopedProfile = useMemo(
+    () => (scoped ? profileColumns(rowsProp, headersProp) : null),
+    [scoped, rowsProp, headersProp]
+  )
+
+  const source = scoped
+    ? { rows: rowsProp, headers: headersProp, columnProfile: scopedProfile }
+    : viewId === 'widget' && widgetChartData
+      ? widgetChartData
+      : { rows: ctxRows, headers: ctxHeaders, columnProfile: ctxProfile }
 
   const charts = chartsByView[viewId] ?? []
 

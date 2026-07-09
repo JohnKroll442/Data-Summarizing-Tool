@@ -4,7 +4,7 @@ import KpiStrip from '../../components/KpiStrip'
 import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
-import { applySessionFilter } from '../../lib/drillDown'
+import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 import { aggregateByAction } from '../../lib/actionAggregate'
 
 /**
@@ -12,13 +12,17 @@ import { aggregateByAction } from '../../lib/actionAggregate'
  * charts. Use Raw Data View for the underlying detail rows.
  */
 function ActionView() {
-  const { rows, headers, sessionFilter } = useCsvData()
-  // Scope KPIs to the same session filter the table already applies, so the
-  // KPI totals match the table's aggregate row count.
-  const scopedRows = useMemo(
-    () => applySessionFilter(rows, headers, sessionFilter),
-    [rows, headers, sessionFilter]
-  )
+  const { rows, headers, sessionFilter, sessionMultiFilter } = useCsvData()
+
+  // Scope KPIs + charts to match the table. The multiselect Sessions filter,
+  // when active, takes over the row scope; otherwise the single-session
+  // drill-down from Session View applies.
+  const scopedRows = useMemo(() => {
+    if (sessionMultiFilter.length > 0) {
+      return applySessionMultiFilter(rows, headers, sessionMultiFilter)
+    }
+    return applySessionFilter(rows, headers, sessionFilter)
+  }, [rows, headers, sessionFilter, sessionMultiFilter])
 
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
@@ -75,7 +79,7 @@ function ActionView() {
       </div>
 
       <h3 className="view-section-heading">Charts</h3>
-      <ChartGrid viewId="action" />
+      <ChartGrid viewId="action" rows={scopedRows} headers={headers} />
 
       <ActionWaterfallModal
         open={waterfallOpen}

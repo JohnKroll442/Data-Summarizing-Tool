@@ -6,7 +6,7 @@ import FilterPill from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
-import { applySessionFilter } from '../lib/drillDown'
+import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
@@ -32,15 +32,36 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     sessionFilter,
     setSessionFilter,
     setActionFilter,
+    setActionMultiFilter,
+    sessionMultiFilter,
+    setSessionMultiFilter,
     fileName,
   } = useCsvData()
 
-  // Scope the input rows to the active session BEFORE aggregating, so
-  // counts and maxes only reflect that session's data.
-  const scopedRows = useMemo(
-    () => applySessionFilter(rows, headers, sessionFilter),
-    [rows, headers, sessionFilter]
-  )
+  // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
+  // when active, takes over the row scope (letting the user pick any set of
+  // sessions from the whole file); otherwise the single-session drill-down
+  // from Session View applies.
+  const scopedRows = useMemo(() => {
+    if (sessionMultiFilter.length > 0) {
+      return applySessionMultiFilter(rows, headers, sessionMultiFilter)
+    }
+    return applySessionFilter(rows, headers, sessionFilter)
+  }, [rows, headers, sessionFilter, sessionMultiFilter])
+
+  // Session ids for the dropdown — ALL sessions in the file, so the user can
+  // pick any session regardless of how they drilled in.
+  const sessionOptions = useMemo(() => {
+    const key = detectSessionKey(headers, rows)
+    if (!key) return []
+    const set = new Set()
+    for (const r of rows) {
+      const v = r?.[key]
+      if (v === undefined || v === null || v === '') continue
+      set.add(String(v))
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [rows, headers])
 
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByAction(scopedRows, headers),
@@ -84,7 +105,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const activeFilterCount =
+    countActiveMultiFilters(filters, search) + (sessionMultiFilter.length > 0 ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -135,7 +157,18 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
       <>
         {pill}
         <div className="summary-note">
-          {sessionFilter ? (
+          {sessionMultiFilter.length > 0 ? (
+            <>
+              <strong>No actions match the selected sessions.</strong>{' '}
+              <button
+                type="button"
+                className="summary-filter-clear"
+                onClick={() => setSessionMultiFilter([])}
+              >
+                Clear session filter
+              </button>
+            </>
+          ) : sessionFilter ? (
             <>
               <strong>No actions found for this session.</strong> Clear the
               filter above to see actions across every session.
@@ -187,6 +220,14 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {sessionOptions.length > 0 && (
+          <MultiFilterMenu
+            label="Sessions"
+            options={sessionOptions}
+            selected={sessionMultiFilter}
+            onChange={setSessionMultiFilter}
+          />
+        )}
         {FILTERABLE_COLUMNS.map((col) => {
           const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
@@ -226,6 +267,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionMultiFilter([])
             }}
           >
             Clear
@@ -254,6 +296,10 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
                         name: row.action_name,
                         timestamp: row._action_timestamp ?? '',
                       })
+                      // Preselect this action in Widget View's Actions filter
+                      // so the dropdown reflects the drill-down ("1 selected").
+                      // The Sessions scope carries over automatically.
+                      setActionMultiFilter([String(row.action_name)])
                       navigate('/summary/widget')
                     }}
                   >

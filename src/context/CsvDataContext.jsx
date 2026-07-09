@@ -25,6 +25,11 @@ import { augmentRowsWithSyntheticMeasures } from '../lib/syntheticMeasures'
  *                   session-id column equals this value
  *   actionFilter  — { name, timestamp } — when set, WidgetView only
  *                   aggregates rows from a specific action invocation
+ *   sessionMultiFilter / actionMultiFilter — string[] view-scoping filters
+ *                   that compose after the single filters above. Empty array
+ *                   means no constraint. sessionMultiFilter scopes Action +
+ *                   Widget views to a set of sessions; actionMultiFilter
+ *                   scopes Widget view to a set of action names.
  *
  * Charts are stored per view as `{ [viewId]: ChartDef[] }` where ChartDef is
  *   { uid: string, typeId: string, config: Record<string, any> }
@@ -68,6 +73,14 @@ export function CsvDataProvider({ children }) {
   const [sessionFilter, setSessionFilter] = useState(null)
   const [actionFilter, setActionFilter] = useState(null)
 
+  // Multiselect scoping filters — string[] where an empty array means "no
+  // constraint". Compose AFTER the single drill-down filters above:
+  //   sessionMultiFilter scopes Action View and Widget View to a chosen set
+  //   of sessions; actionMultiFilter scopes Widget View to a chosen set of
+  //   action names. Reset on file swap like the single filters.
+  const [sessionMultiFilter, setSessionMultiFilter] = useState([])
+  const [actionMultiFilter, setActionMultiFilter] = useState([])
+
   // Compare selection — ephemeral, not persisted to localStorage.
   const [baselineId, setBaselineIdState] = useState(null)
   const [currentId, setCurrentIdState] = useState(null)
@@ -81,6 +94,8 @@ export function CsvDataProvider({ children }) {
     setChartsByView({ session: [], action: [], widget: [] })
     setSessionFilter(null)
     setActionFilter(null)
+    setSessionMultiFilter([])
+    setActionMultiFilter([])
   }, [])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
@@ -258,6 +273,10 @@ export function CsvDataProvider({ children }) {
         setSessionFilter,
         actionFilter,
         setActionFilter,
+        sessionMultiFilter,
+        setSessionMultiFilter,
+        actionMultiFilter,
+        setActionMultiFilter,
         baselineId,
         currentId,
         setBaselineId,
@@ -279,6 +298,8 @@ export function CsvDataProvider({ children }) {
       removeChart,
       sessionFilter,
       actionFilter,
+      sessionMultiFilter,
+      actionMultiFilter,
       baselineId,
       currentId,
       setBaselineId,
