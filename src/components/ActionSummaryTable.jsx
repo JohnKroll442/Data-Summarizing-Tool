@@ -32,6 +32,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     sessionFilter,
     setSessionFilter,
     setActionFilter,
+    actionMultiFilter,
     setActionMultiFilter,
     sessionMultiFilter,
     setSessionMultiFilter,
@@ -69,7 +70,12 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   )
 
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({})
+  // Seed the Action column filter from the shared actionMultiFilter so a
+  // selection made elsewhere (drill-down or Widget View) shows here too —
+  // matching how the Session column filter carries over.
+  const [filters, setFilters] = useState(() =>
+    actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {}
+  )
   const [sort, setSort] = useState(null)
 
   const optionsByColumn = useMemo(() => {
@@ -238,9 +244,13 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               label={col.label}
               options={opts}
               selected={selected}
-              onChange={(next) =>
+              onChange={(next) => {
                 setFilters((prev) => ({ ...prev, [col.key]: next }))
-              }
+                // Mirror the Action column filter into the shared filter that
+                // Widget View reads, so filtering here carries over on tab
+                // switch — matching the click-an-action drill-down behavior.
+                if (col.key === 'action_name') setActionMultiFilter(next)
+              }}
             />
           )
         })}
@@ -268,6 +278,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               setSearch('')
               setFilters({})
               setSessionMultiFilter([])
+              setActionMultiFilter([])
             }}
           >
             Clear
