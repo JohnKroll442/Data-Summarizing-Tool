@@ -2,6 +2,8 @@ import { aggregateBySession } from '../sessionAggregate'
 import { aggregateByAction } from '../actionAggregate'
 import { aggregateByWidget } from '../widgetAggregate'
 import { compareEntities } from '../compare'
+import { rowsToCsv, downloadCsv, buildExportFilename } from '../exportCsv'
+import { getChartType, CHART_TYPES } from '../../components/charts/registry'
 
 export const MAX_ROWS_PER_TOOL = 50
 
@@ -224,6 +226,121 @@ function phaseBreakdown({ kind, name, file = 'active' }, ctx) {
   throw new Error(`phase_breakdown does not support kind: ${kind}`)
 }
 
+/* ——— action tools (mutate the app; ctx carries the callbacks) ——— */
+
+const CHART_VIEWS = ['session', 'action', 'widget']
+const NAV_ROUTES = {
+  session: '/summary/session',
+  action: '/summary/action',
+  widget: '/summary/widget',
+  raw: '/summary/raw',
+}
+
+function fieldSig(f) {
+  return `${f.key}${f.required ? '*' : ''}(${f.role})`
+}
+
+// Build a chart in a view's ChartGrid. Chart configs reference RAW CSV column
+// names (the same ones describe_dataset returns), because charts render off the
+// raw rows. Validates the type + required fields + that referenced columns
+// exist, so a wrong guess comes back as a fixable error rather than an empty
+// chart.
+function createChart({ view, typeId, config = {} }, ctx) {
+  if (!CHART_VIEWS.includes(view)) {
+    throw new Error(`Unknown view "${view}". Use one of: ${CHART_VIEWS.join(', ')}`)
+  }
+  const type = getChartType(typeId)
+  if (!type) {
+    throw new Error(`Unknown chart typeId "${typeId}". Valid ids: ${CHART_TYPES.map((t) => t.id).join(', ')}`)
+  }
+  const headers = ctx.chartHeadersByView?.[view] || ctx.activePayload?.headers || []
+  const cfg = { ...config }
+
+  const missing = []
+  const badCols = []
+  for (const f of type.fields) {
+    if (f.role === 'number') {
+      if (cfg[f.key] === undefined || cfg[f.key] === '') cfg[f.key] = f.defaultValue
+      continue
+    }
+    const val = cfg[f.key]
+    const empty = val === undefined || val === '' || (Array.isArray(val) && val.length === 0)
+    if (empty) {
+      if (f.required) missing.push(f.key)
+      continue
+    }
+    for (const v of Array.isArray(val) ? val : [val]) {
+      if (!headers.includes(v)) badCols.push(`${f.key}="${v}"`)
+    }
+  }
+  if (missing.length) {
+    throw new Error(`Missing required field(s) for "${typeId}": ${missing.join(', ')}. This chart's fields are: ${type.fields.map(fieldSig).join(', ')} (* = required).`)
+  }
+  if (badCols.length) {
+    throw new Error(`These config values are not columns in the ${view} view: ${badCols.join(', ')}. Available columns: ${headers.join(', ')}`)
+  }
+  if (!ctx.addChart) throw new Error('Chart creation is not available in this context.')
+
+  ctx.addChart(view, typeId, cfg)
+  return { status: 'created', view, typeId, config: cfg }
+}
+
+// Drill-down: scope Action/Widget views to one session. Reversible view state.
+function setSessionFilterTool({ sessionId }, ctx) {
+  if (!ctx.setSessionFilter) throw new Error('Session filter is not available in this context.')
+  const value = sessionId === undefined || sessionId === null || sessionId === '' ? null : String(sessionId)
+  ctx.setSessionFilter(value)
+  // Mirror the drill-down into the shared "Session" dropdown selection so the
+  // summary-table filter dropdowns visibly reflect what the copilot scoped to
+  // (the pill alone doesn't tick the dropdown). Empty selection == "any".
+  ctx.setSessionSelection?.(value ? [value] : [])
+  return { status: value ? 'set' : 'cleared', sessionFilter: value }
+}
+
+// Drill-down: scope the Widget view to one action invocation. Reversible.
+function setActionFilterTool({ name, timestamp = '' }, ctx) {
+  if (!ctx.setActionFilter) throw new Error('Action filter is not available in this context.')
+  if (name === undefined || name === null || name === '') {
+    ctx.setActionFilter(null)
+    ctx.setActionSelection?.([])
+    return { status: 'cleared' }
+  }
+  const filter = { name: String(name), timestamp: String(timestamp || '') }
+  ctx.setActionFilter(filter)
+  // Mirror into the shared "Action" dropdown selection so the dropdowns show
+  // the focused action as selected, matching the widgets being shown.
+  ctx.setActionSelection?.([filter.name])
+  return { status: 'set', actionFilter: filter }
+}
+
+// Route the user to a summary view.
+function navigateTool({ view }, ctx) {
+  const path = NAV_ROUTES[view]
+  if (!path) throw new Error(`Unknown view "${view}". Use one of: ${Object.keys(NAV_ROUTES).join(', ')}`)
+  if (!ctx.navigate) throw new Error('Navigation is not available in this context.')
+  ctx.navigate(path)
+  return { status: 'navigated', view }
+}
+
+// Download aggregated (or raw) rows as CSV. Side-effecting (writes a file).
+function exportCsvTool({ kind = 'action', file = 'active' }, ctx) {
+  const payload = file === 'baseline' ? ctx.baselinePayload : ctx.activePayload
+  requirePayload(payload, file)
+  const { rows, headers } = payload
+  let outRows
+  let columns
+  if (kind === 'session') { const a = aggregateBySession(rows, headers); outRows = a.rows; columns = a.columns }
+  else if (kind === 'action') { const a = aggregateByAction(rows, headers); outRows = a.rows; columns = a.columns }
+  else if (kind === 'widget') { const a = aggregateByWidget(rows, headers); outRows = a.rows; columns = a.columns }
+  else if (kind === 'raw') { outRows = rows; columns = headers.map((h) => ({ key: h, label: h })) }
+  else throw new Error(`Unknown kind "${kind}". Use action|widget|session|raw`)
+
+  const csv = rowsToCsv(outRows.map(redactRow), columns)
+  const filename = buildExportFilename(ctx.fileName || (payload.fileName ?? 'data'), kind)
+  downloadCsv(filename, csv)
+  return { status: 'exported', kind, file, rowCount: outRows.length, filename }
+}
+
 /* ——— helpers ——— */
 
 function numOrNull(v) {
@@ -370,6 +487,73 @@ export const tools = [
       additionalProperties: false,
     },
     run: phaseBreakdown,
+  },
+  {
+    name: 'create_chart',
+    description: 'Adds a chart to a view\'s chart grid (session|action|widget). Chart configs use RAW CSV column names from describe_dataset. Common typeIds and their config keys: bar {xKey, yKey?}, line {xKey, yKey?}, pie/donut {nameKey, valueKey?}, histogram {key, binCount?}, pareto {nameKey, valueKey?}, boxplot {groupKey, valueKey}, scatter {xKey, yKey}, treemap {nameKey, valueKey?}, timeSeries {xKey(date), yKey}. Measure/value fields may be "" to plot row COUNT. Requires user confirmation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string', enum: ['session', 'action', 'widget'] },
+        typeId: { type: 'string', description: 'Chart type id, e.g. bar, line, pie, donut, histogram, pareto, boxplot, scatter, treemap, timeSeries.' },
+        config: { type: 'object', description: 'Maps this chart type\'s field keys to CSV column names, e.g. {"xKey":"USER_ACTION","yKey":""}. Number fields (binCount, max, target) take numbers.', additionalProperties: true },
+      },
+      required: ['view', 'typeId', 'config'],
+      additionalProperties: false,
+    },
+    requiresConfirm: true,
+    run: createChart,
+  },
+  {
+    name: 'set_session_filter',
+    description: 'Drill-down: scope the Action and Widget views to a single session id (pair with navigate). Pass an empty sessionId to clear the filter.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string', description: 'Session id to focus, or "" to clear.' } },
+      required: ['sessionId'],
+      additionalProperties: false,
+    },
+    run: setSessionFilterTool,
+  },
+  {
+    name: 'set_action_filter',
+    description: 'Drill-down: scope the Widget view to a single action invocation by name (optionally a specific timestamp). Pass an empty name to clear.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Action name to focus, or "" to clear.' },
+        timestamp: { type: 'string', description: 'Optional ACTION_TIMESTAMP to disambiguate two fires of the same action.' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    run: setActionFilterTool,
+  },
+  {
+    name: 'navigate',
+    description: 'Route the user to a summary view so they see the result of a filter or a new chart.',
+    input_schema: {
+      type: 'object',
+      properties: { view: { type: 'string', enum: ['session', 'action', 'widget', 'raw'] } },
+      required: ['view'],
+      additionalProperties: false,
+    },
+    run: navigateTool,
+  },
+  {
+    name: 'export_csv',
+    description: 'Download the aggregated (or raw) rows of a file as a CSV. Requires user confirmation because it writes a file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['action', 'widget', 'session', 'raw'] },
+        file: { type: 'string', enum: ['active', 'baseline'], description: 'Which file to export. Defaults to "active".' },
+      },
+      required: ['kind'],
+      additionalProperties: false,
+    },
+    requiresConfirm: true,
+    run: exportCsvTool,
   },
 ]
 

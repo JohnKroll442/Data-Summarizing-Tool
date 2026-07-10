@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 const MODEL = 'claude-sonnet-4-6'
-const MAX_TOKENS = 2048
+const MAX_TOKENS = 8192
 
 let cachedClient = null
 let warnedOnce = false
@@ -45,6 +45,11 @@ export async function sendMessage({ system, messages, tools, signal }) {
   const payload = {
     model: MODEL,
     max_tokens: MAX_TOKENS,
+    // Adaptive thinking lets Claude plan multi-step tool sequences (e.g. "why
+    // did checkout regress" → describe → list_slow → phase_breakdown → answer)
+    // instead of one-shotting. Sonnet 4.6 supports adaptive thinking + effort.
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
     system,
     messages,
     tools,

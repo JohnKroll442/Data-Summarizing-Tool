@@ -2,7 +2,7 @@ import { sendMessage } from './client'
 import { toolsForClaude, findTool } from './tools'
 import { buildSystemBlocks } from './systemPrompt'
 
-const MAX_ITERATIONS = 8
+const MAX_ITERATIONS = 12
 
 export async function runAgent({ userText, contextBlock, schemaSummary, history, ctx, onEvent, signal }) {
   const system = buildSystemBlocks(schemaSummary)
@@ -49,9 +49,24 @@ export async function runAgent({ userText, contextBlock, schemaSummary, history,
       if (!tool) {
         result = `Unknown tool: ${use.name}`
         isError = true
+      } else if (tool.requiresConfirm && ctx?.requestConfirmation) {
+        // Side-effecting tool — pause the loop and ask the UI before running.
+        const approved = await ctx.requestConfirmation({ name: use.name, input: use.input || {} })
+        if (!approved) {
+          result = JSON.stringify({ status: 'declined', message: 'The user declined this action. Do not retry it; acknowledge and continue.' })
+          onEvent?.({ type: 'tool_result', name: use.name, id: use.id, isError: false, declined: true, result })
+          toolResults.push({ type: 'tool_result', tool_use_id: use.id, content: result })
+          continue
+        }
+        try {
+          result = JSON.stringify(await tool.run(use.input || {}, ctx))
+        } catch (err) {
+          result = err?.message || String(err)
+          isError = true
+        }
       } else {
         try {
-          const value = tool.run(use.input || {}, ctx)
+          const value = await tool.run(use.input || {}, ctx)
           result = JSON.stringify(value)
         } catch (err) {
           result = err?.message || String(err)

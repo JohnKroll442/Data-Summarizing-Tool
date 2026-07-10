@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { MessageSquare, X, PictureInPicture2, PanelRightClose } from 'lucide-react'
 import { useCsvData } from '../../context/useCsvData'
 import { runAgent } from '../../lib/copilot/agent'
@@ -49,14 +49,23 @@ function CopilotDrawer() {
     rows, headers, fileName, fileSize,
     activeFileId,
     baselinePayload, currentPayload, baselineId, currentId,
+    addChart, setSessionFilter, setActionFilter, widgetChartData,
+    setSessionSelection, setActionSelection,
   } = useCsvData()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
+
+  // Pending action-tool confirmation. `requestConfirmation` (passed into the
+  // agent via ctx) parks a resolver here and shows the confirm bar; the
+  // Allow/Deny buttons resolve the promise so the agent loop continues.
+  const [pendingConfirm, setPendingConfirm] = useState(null)
+  const confirmResolveRef = useRef(null)
 
   // Docked width (right-anchored drawer).
   const [width, setWidth] = useState(() => clampDockWidth(Number(localStorage.getItem('copilot-width'))))
@@ -205,9 +214,45 @@ function CopilotDrawer() {
     [rows, headers, fileName, fileSize],
   )
 
+  const requestConfirmation = useCallback(
+    (info) => new Promise((resolve) => {
+      confirmResolveRef.current = resolve
+      setPendingConfirm(info)
+    }),
+    [],
+  )
+
+  const answerConfirm = useCallback((approved) => {
+    const resolve = confirmResolveRef.current
+    confirmResolveRef.current = null
+    setPendingConfirm(null)
+    if (resolve) resolve(approved)
+  }, [])
+
   const ctx = useMemo(
-    () => ({ activePayload, baselinePayload, currentPayload }),
-    [activePayload, baselinePayload, currentPayload],
+    () => ({
+      activePayload, baselinePayload, currentPayload,
+      // Action-tool callbacks — let the agent operate the dashboard.
+      addChart, setSessionFilter, setActionFilter, navigate,
+      // Keep the shared filter-dropdown selections in sync with the copilot's
+      // drill-down filters, so the Session/Action dropdowns show what it scoped to.
+      setSessionSelection, setActionSelection,
+      requestConfirmation,
+      fileName,
+      // Charts render off raw rows (widget view adds synthetic measure cols),
+      // so create_chart validates config columns against these per-view lists.
+      chartHeadersByView: {
+        session: headers,
+        action: headers,
+        widget: widgetChartData?.headers ?? headers,
+      },
+    }),
+    [
+      activePayload, baselinePayload, currentPayload,
+      addChart, setSessionFilter, setActionFilter, navigate,
+      setSessionSelection, setActionSelection,
+      requestConfirmation, fileName, headers, widgetChartData,
+    ],
   )
 
   const schemaSummary = useMemo(
@@ -228,6 +273,12 @@ function CopilotDrawer() {
   const cancel = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    // Unblock a parked confirmation so the awaiting agent loop resolves.
+    if (confirmResolveRef.current) {
+      confirmResolveRef.current(false)
+      confirmResolveRef.current = null
+    }
+    setPendingConfirm(null)
     setBusy(false)
   }, [])
 
@@ -337,7 +388,7 @@ function CopilotDrawer() {
         <header className="copilot-header" onPointerDown={floating ? startMove : undefined}>
           <div className="copilot-title">
             <MessageSquare size={16} />
-            <span>John's Brain</span>
+            <span>Chatbot</span>
           </div>
           <div className="copilot-header-actions">
             <button
@@ -362,6 +413,21 @@ function CopilotDrawer() {
         <FileContextPanel />
         <MessageList messages={messages} hasData={Boolean(rows?.length)} />
         {error && <div className="copilot-error">{error}</div>}
+        {pendingConfirm && (
+          <div className="copilot-confirm">
+            <div className="copilot-confirm-text">
+              Allow the copilot to <strong>{confirmLabel(pendingConfirm)}</strong>?
+            </div>
+            <div className="copilot-confirm-actions">
+              <button type="button" className="copilot-confirm-deny" onClick={() => answerConfirm(false)}>
+                Deny
+              </button>
+              <button type="button" className="copilot-confirm-allow" onClick={() => answerConfirm(true)}>
+                Allow
+              </button>
+            </div>
+          </div>
+        )}
         <ChatInput onSend={send} busy={busy} onCancel={cancel} />
       </aside>
     </>
@@ -369,3 +435,14 @@ function CopilotDrawer() {
 }
 
 export default CopilotDrawer
+
+// Human-readable phrase for an action-tool confirmation prompt.
+function confirmLabel({ name, input } = {}) {
+  if (name === 'create_chart') {
+    return `add a ${input?.typeId || 'chart'} chart to the ${input?.view || ''} view`.replace(/\s+/g, ' ').trim()
+  }
+  if (name === 'export_csv') {
+    return `export the ${input?.kind || ''} data as a CSV file`.replace(/\s+/g, ' ').trim()
+  }
+  return name || 'run this action'
+}
