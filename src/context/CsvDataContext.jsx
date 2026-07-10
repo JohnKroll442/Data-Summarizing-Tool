@@ -68,6 +68,17 @@ export function CsvDataProvider({ children }) {
   const [sessionFilter, setSessionFilter] = useState(null)
   const [actionFilter, setActionFilter] = useState(null)
 
+  // Shared Session multiselect selection — an array of session ids chosen in
+  // any summary table's "Session" dropdown. Lives in context (not per-table
+  // local state) so the same selection follows the user across Session /
+  // Action / Widget views. Empty array means "no session dropdown filter".
+  const [sessionSelection, setSessionSelection] = useState([])
+
+  // Shared Action multiselect selection — array of action names chosen in the
+  // Action / Widget views' "Action" dropdown. Follows the user across those
+  // views the same way sessionSelection does. Empty array means "no filter".
+  const [actionSelection, setActionSelection] = useState([])
+
   // Compare selection — ephemeral, not persisted to localStorage.
   const [baselineId, setBaselineIdState] = useState(null)
   const [currentId, setCurrentIdState] = useState(null)
@@ -81,6 +92,8 @@ export function CsvDataProvider({ children }) {
     setChartsByView({ session: [], action: [], widget: [] })
     setSessionFilter(null)
     setActionFilter(null)
+    setSessionSelection([])
+    setActionSelection([])
   }, [])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
@@ -258,6 +271,10 @@ export function CsvDataProvider({ children }) {
         setSessionFilter,
         actionFilter,
         setActionFilter,
+        sessionSelection,
+        setSessionSelection,
+        actionSelection,
+        setActionSelection,
         baselineId,
         currentId,
         setBaselineId,
@@ -279,6 +296,8 @@ export function CsvDataProvider({ children }) {
       removeChart,
       sessionFilter,
       actionFilter,
+      sessionSelection,
+      actionSelection,
       baselineId,
       currentId,
       setBaselineId,

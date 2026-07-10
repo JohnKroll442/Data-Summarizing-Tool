@@ -2,7 +2,7 @@
  * Widget-level aggregation for the Widget View summary table.
  *
  * One row per distinct WIDGET_ID. Columns:
- *   Widget ID · Widget name · Session ID · Phases (inline bars) ·
+ *   Session ID · Action · Widget ID · Widget name · Phases (inline bars) ·
  *   Render · Render start · Render end ·
  *   Network · Network start · Network end ·
  *   Backend · Backend start · Backend end · Offset
@@ -39,9 +39,10 @@ export function aggregateByWidget(rows, headers) {
   mapping.session = detectSessionKey(headers, rows)
 
   const columns = [
+    { key: 'session_id',    label: 'Session ID' },
+    { key: 'action_name',   label: 'Action' },
     { key: 'widget_id',     label: 'Widget ID' },
     { key: 'widget_name',   label: 'Widget name' },
-    { key: 'session_id',    label: 'Session ID' },
     { key: 'render',        label: 'Render',        sortType: 'duration' },
     { key: 'render_start',  label: 'Render start' },
     { key: 'render_end',    label: 'Render end' },
@@ -83,6 +84,7 @@ export function aggregateByWidget(rows, headers) {
       widget_id:     widgetId,
       widget_name:   firstNonEmpty(groupRows, mapping.widgetName),
       session_id:    firstNonEmpty(groupRows, mapping.session),
+      action_name:   firstNonEmpty(groupRows, mapping.actionName),
       render:        renderPick.value,
       render_start:  phaseStart(renderPick, mapping, 'render'),
       render_end:    phaseEnd(renderPick, mapping, 'render'),
@@ -216,6 +218,24 @@ function detectMapping(headers) {
     ['widgetid', 'instanceid'],
   )
 
+  // Action name — surfaced so the Widget view can offer an Action filter and
+  // show which action a widget belongs to. Mirrors actionAggregate's detector:
+  // prefer USER_ACTION / ACTION_NAME (rejecting id/timestamp/details/end
+  // columns), then fall back to a bare ACTION column.
+  const actionName = find(
+    ['useraction', 'actionname'],
+    ['useraction'],
+    (h) => {
+      const n = norm(h)
+      return n.includes('id') || n.includes('timestamp') ||
+             n.includes('details') || n.includes('end')
+    },
+  ) || find(['action'], ['action'], (h) => {
+    const n = norm(h)
+    return n.includes('id') || n.includes('timestamp') ||
+           n.includes('details') || n.includes('count') || n.includes('end')
+  })
+
   // `widgetname` is an unambiguous exact match — no need for substring
   // rejection (and the previous reject('id') accidentally caught
   // "widgetname" because "wIDgetname" literally contains the letters "id").
@@ -288,6 +308,7 @@ function detectMapping(headers) {
   return {
     widgetId,
     widgetName,
+    actionName,
     measure,
     submeasure,
     duration,

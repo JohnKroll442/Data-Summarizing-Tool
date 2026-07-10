@@ -33,6 +33,10 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     setSessionFilter,
     setActionFilter,
     fileName,
+    sessionSelection,
+    setSessionSelection,
+    actionSelection,
+    setActionSelection,
   } = useCsvData()
 
   // Scope the input rows to the active session BEFORE aggregating, so
@@ -65,10 +69,22 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return out
   }, [summaryRows])
 
+  // The Session and Action dropdown selections live in context (shared across
+  // views), so merge them into the per-column filters under their column keys
+  // before matching. Other columns stay in local `filters` state.
+  const effectiveFilters = useMemo(
+    () => ({
+      ...filters,
+      [SESSION_COL_KEY]: sessionSelection,
+      [ACTION_COL_KEY]: actionSelection,
+    }),
+    [filters, sessionSelection, actionSelection]
+  )
+
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesAllMultiFilters(row, effectiveFilters)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -76,7 +92,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, effectiveFilters, columns])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -84,7 +100,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const activeFilterCount = countActiveMultiFilters(effectiveFilters, search)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -190,7 +206,13 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         {FILTERABLE_COLUMNS.map((col) => {
           const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
-          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+          const isSession = col.key === SESSION_COL_KEY
+          const isAction = col.key === ACTION_COL_KEY
+          const selected = isSession
+            ? sessionSelection
+            : isAction
+              ? actionSelection
+              : (Array.isArray(filters[col.key]) ? filters[col.key] : [])
           return (
             <MultiFilterMenu
               key={col.key}
@@ -198,7 +220,11 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               options={opts}
               selected={selected}
               onChange={(next) =>
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
+                isSession
+                  ? setSessionSelection(next)
+                  : isAction
+                    ? setActionSelection(next)
+                    : setFilters((prev) => ({ ...prev, [col.key]: next }))
               }
             />
           )
@@ -226,6 +252,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionSelection([])
+              setActionSelection([])
             }}
           >
             Clear
@@ -289,11 +317,15 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
 }
 
 const FILTERABLE_COLUMNS = [
-  { key: 'user',        label: 'User' },
+  { key: 'session_id',  label: 'Session' },
   { key: 'action_name', label: 'Action' },
+  { key: 'user',        label: 'User' },
   { key: 'story_name',  label: 'Story' },
   { key: 'story_page',  label: 'Page' },
 ]
 const DURATION_COLUMNS = new Set(['max_frontend', 'max_network', 'max_backend'])
+// Column keys whose dropdown selection is shared across views via context.
+const SESSION_COL_KEY = 'session_id'
+const ACTION_COL_KEY = 'action_name'
 
 export default ActionSummaryTable

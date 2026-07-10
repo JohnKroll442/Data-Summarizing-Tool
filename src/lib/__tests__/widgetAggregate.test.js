@@ -170,4 +170,22 @@ describe('aggregateByWidget', () => {
     expect(mapping.session).toBe('')
     expect(out[0].session_id).toBe('')
   })
+
+  it('surfaces action_name from USER_ACTION when the column is present', () => {
+    const headers = [...HEADERS, 'USER_ACTION']
+    const rows = [
+      row({ WIDGET_ID: 'w1', USER_ACTION: 'Open story' }),
+      row({ WIDGET_ID: 'w1', USER_ACTION: 'Open story' }),
+    ]
+    const { rows: out, mapping } = aggregateByWidget(rows, headers)
+    expect(mapping.actionName).toBe('USER_ACTION')
+    expect(out[0].action_name).toBe('Open story')
+  })
+
+  it('leaves action_name blank when no action column exists', () => {
+    const rows = [row({ WIDGET_ID: 'w1' })]
+    const { rows: out, mapping } = aggregateByWidget(rows, HEADERS)
+    expect(mapping.actionName).toBe('')
+    expect(out[0].action_name).toBe('')
+  })
 })

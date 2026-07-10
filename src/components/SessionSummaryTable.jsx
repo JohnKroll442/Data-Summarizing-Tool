@@ -22,7 +22,13 @@ import './SessionSummaryTable.css'
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, fileName } = useCsvData()
+  const {
+    setSessionFilter,
+    setActionFilter,
+    fileName,
+    sessionSelection,
+    setSessionSelection,
+  } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -47,10 +53,18 @@ function SessionSummaryTable({ rows, headers }) {
     return out
   }, [summaryRows])
 
+  // The Session dropdown selection lives in context (shared across views), so
+  // merge it into the per-column filters under the session column key before
+  // matching. Other columns stay in local `filters` state.
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, [SESSION_COL_KEY]: sessionSelection }),
+    [filters, sessionSelection]
+  )
+
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesAllMultiFilters(row, effectiveFilters)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -58,7 +72,7 @@ function SessionSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, effectiveFilters, columns])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -66,7 +80,7 @@ function SessionSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const activeFilterCount = countActiveMultiFilters(effectiveFilters, search)
 
   if (!sessionKey) {
     return (
@@ -124,7 +138,10 @@ function SessionSummaryTable({ rows, headers }) {
         {FILTERABLE_COLUMNS.map((col) => {
           const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
-          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+          const isSession = col.key === SESSION_COL_KEY
+          const selected = isSession
+            ? sessionSelection
+            : (Array.isArray(filters[col.key]) ? filters[col.key] : [])
           return (
             <MultiFilterMenu
               key={col.key}
@@ -132,7 +149,9 @@ function SessionSummaryTable({ rows, headers }) {
               options={opts}
               selected={selected}
               onChange={(next) =>
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
+                isSession
+                  ? setSessionSelection(next)
+                  : setFilters((prev) => ({ ...prev, [col.key]: next }))
               }
             />
           )
@@ -160,6 +179,7 @@ function SessionSummaryTable({ rows, headers }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionSelection([])
             }}
           >
             Clear
@@ -220,5 +240,7 @@ const FILTERABLE_COLUMNS = [
   { key: 'user',    label: 'User' },
   { key: 'story',   label: 'Story' },
 ]
+// Column key whose dropdown selection is shared across views via context.
+const SESSION_COL_KEY = 'session'
 
 export default SessionSummaryTable

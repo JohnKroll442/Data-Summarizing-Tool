@@ -17,12 +17,16 @@ import './SessionSummaryTable.css'
 
 /**
  * WidgetSummaryTable — one row per distinct widget, columns:
- *   Widget ID · Widget name · Render · Network · Backend
+ *   Session ID · Action · Widget ID · Widget name · Render · Network · Backend
  *
  * Honors BOTH the active sessionFilter and actionFilter from the CSV
  * context. Filtering happens BEFORE aggregation, so the maxes reflect only
  * widgets that ran in the chosen scope. Two pills at the top show the
  * active filters; clicking the × on either clears just that filter.
+ *
+ * On top of the drill-down pills, the filter bar offers Session and Action
+ * multiselect dropdowns (post-aggregation column filters) so the table can be
+ * narrowed without click-through drill-down.
  */
 function WidgetSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
@@ -32,6 +36,10 @@ function WidgetSummaryTable({ rows, headers }) {
     actionFilter,
     setActionFilter,
     fileName,
+    sessionSelection,
+    setSessionSelection,
+    actionSelection,
+    setActionSelection,
   } = useCsvData()
 
   // Apply session filter first (broader), then action filter (narrower).
@@ -67,10 +75,22 @@ function WidgetSummaryTable({ rows, headers }) {
     return out
   }, [summaryRows])
 
+  // The Session and Action dropdown selections live in context (shared across
+  // views), so merge them into the per-column filters under their column keys
+  // before matching. Other columns stay in local `filters` state.
+  const effectiveFilters = useMemo(
+    () => ({
+      ...filters,
+      [SESSION_COL_KEY]: sessionSelection,
+      [ACTION_COL_KEY]: actionSelection,
+    }),
+    [filters, sessionSelection, actionSelection]
+  )
+
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesAllMultiFilters(row, effectiveFilters)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -78,7 +98,7 @@ function WidgetSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, effectiveFilters, columns])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -86,7 +106,7 @@ function WidgetSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const activeFilterCount = countActiveMultiFilters(effectiveFilters, search)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -205,7 +225,13 @@ function WidgetSummaryTable({ rows, headers }) {
         {FILTERABLE_COLUMNS.map((col) => {
           const opts = optionsByColumn[col.key] ?? []
           if (opts.length === 0) return null
-          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+          const isSession = col.key === SESSION_COL_KEY
+          const isAction = col.key === ACTION_COL_KEY
+          const selected = isSession
+            ? sessionSelection
+            : isAction
+              ? actionSelection
+              : (Array.isArray(filters[col.key]) ? filters[col.key] : [])
           return (
             <MultiFilterMenu
               key={col.key}
@@ -213,7 +239,11 @@ function WidgetSummaryTable({ rows, headers }) {
               options={opts}
               selected={selected}
               onChange={(next) =>
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
+                isSession
+                  ? setSessionSelection(next)
+                  : isAction
+                    ? setActionSelection(next)
+                    : setFilters((prev) => ({ ...prev, [col.key]: next }))
               }
             />
           )
@@ -241,6 +271,8 @@ function WidgetSummaryTable({ rows, headers }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionSelection([])
+              setActionSelection([])
             }}
           >
             Clear
@@ -320,10 +352,15 @@ function WidgetSummaryTable({ rows, headers }) {
 }
 
 const FILTERABLE_COLUMNS = [
+  { key: 'session_id',  label: 'Session' },
+  { key: 'action_name', label: 'Action' },
   { key: 'widget_id',   label: 'Widget ID' },
   { key: 'widget_name', label: 'Widget name' },
-  { key: 'session_id',  label: 'Session' },
+
 ]
+// Column keys whose dropdown selection is shared across views via context.
+const SESSION_COL_KEY = 'session_id'
+const ACTION_COL_KEY = 'action_name'
 const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'offset'])
 const TIME_COLUMNS = new Set([
   'render_start', 'render_end',
