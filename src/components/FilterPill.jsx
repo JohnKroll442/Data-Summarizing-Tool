@@ -28,4 +28,29 @@ function FilterPill({ label, value, onClear }) {
   )
 }
 
+/**
+ * FilterPills — renders a wrapping bar of FilterPill chips, one per active
+ * filter value. Used to show every selected session / action / column value
+ * as its own removable pill (e.g. filtering two sessions shows two pills).
+ *
+ * Props:
+ *   items  Array<{ key?, label, value, onClear }> — one entry per pill.
+ *          Renders nothing when the list is empty.
+ */
+export function FilterPills({ items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <div className="filter-pill-bar">
+      {items.map((it) => (
+        <FilterPill
+          key={it.key ?? `${it.label}:${it.value}`}
+          label={it.label}
+          value={it.value}
+          onClear={it.onClear}
+        />
+      ))}
+    </div>
+  )
+}
+
 export default FilterPill

@@ -119,6 +119,10 @@ export function buildActionSequenceOption(actionRows) {
         startMs: cursor,
         endMs: cursor + pick.durationMs,
         durationMs: pick.durationMs,
+        // Widget identity so a chart click can drill into that widget's
+        // detailed timing (all phase bars for a widget carry the same id).
+        widgetId: widgetKey,
+        widgetName: displayName,
       })
 
       cursor += pick.durationMs
@@ -154,6 +158,7 @@ export function buildActionSequenceOption(actionRows) {
           `Duration: ${fmtMs(d.durationMs)}`,
           `Start: ${fmtMs(d.startMs)}`,
           `End: ${fmtMs(d.endMs)}`,
+          `<span style="color:#6b7a8d">Click to view widget timing</span>`,
         ].join('<br/>')
       },
     },
@@ -309,7 +314,11 @@ function pickPhase(rows, m, measureTargets, subMatch = null) {
   return { durationMs: bestDur }
 }
 
-function detectMapping(headers) {
+/**
+ * Detect the widget/measure/duration column keys. Exported so the modal can
+ * find the widget-id column to slice rows when drilling into a widget.
+ */
+export function detectMapping(headers) {
   const norm = (s) => String(s).trim().toLowerCase().replace(/[\s_\-.]+/g, '')
   const find = (exacts, substrings, reject = () => false) => {
     for (const h of headers) {

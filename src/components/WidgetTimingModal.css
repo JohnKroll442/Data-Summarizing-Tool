@@ -4,7 +4,9 @@
   background: rgba(0, 0, 0, 0.4);
   display: grid;
   place-items: center;
-  z-index: 100;
+  /* Above the Action Waterfall modal (z-index 100) so drilling into a widget
+     from that chart stacks on top rather than behind it. */
+  z-index: 110;
   padding: 1.5rem;
 }
 

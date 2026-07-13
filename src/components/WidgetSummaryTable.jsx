@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
-import FilterPill from './FilterPill'
+import { FilterPills } from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
 import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
@@ -32,7 +31,6 @@ import './SessionSummaryTable.css'
  * active filters; clicking the × on either clears just that filter.
  */
 function WidgetSummaryTable({ rows, headers }) {
-  const navigate = useNavigate()
   const {
     sessionFilter,
     setSessionFilter,
@@ -150,31 +148,56 @@ function WidgetSummaryTable({ rows, headers }) {
     return Array.from(seen).slice(0, 8).join(', ')
   }, [scopedRows, mapping.measure])
 
-  const pills = (
-    <>
-      {sessionFilter && (
-        <FilterPill
-          label="Session"
-          value={sessionFilter}
-          onClear={() => {
-            setSessionFilter(null)
-            setActionFilter(null)
-            navigate('/summary/session')
-          }}
-        />
-      )}
-      {actionFilter && (
-        <FilterPill
-          label="Action"
-          value={actionFilter.name}
-          onClear={() => {
-            setActionFilter(null)
-            navigate('/summary/action')
-          }}
-        />
-      )}
-    </>
-  )
+  const updateFilter = (colKey, next) =>
+    setFilters((prev) => ({ ...prev, [colKey]: next }))
+
+  // Active session / action scope: the multiselect filter when set, otherwise
+  // the single-value drill-down from the Session / Action views.
+  const sessionPillValues = sessionMultiFilter.length > 0
+    ? sessionMultiFilter
+    : (sessionFilter ? [sessionFilter] : [])
+  const actionPillValues = actionMultiFilter.length > 0
+    ? actionMultiFilter
+    : (actionFilter ? [actionFilter.name] : [])
+
+  const removeSession = (val) => {
+    setSessionMultiFilter(sessionPillValues.filter((v) => v !== val))
+    if (sessionFilter === val) {
+      setSessionFilter(null)
+      setActionFilter(null)
+    }
+  }
+  const removeAction = (val) => {
+    setActionMultiFilter(actionPillValues.filter((v) => v !== val))
+    if (actionFilter && actionFilter.name === val) setActionFilter(null)
+  }
+
+  // One removable pill per active session, then per active action, then per
+  // selected value in the local column filters.
+  const pillItems = [
+    ...sessionPillValues.map((val) => ({
+      key: `session:${val}`,
+      label: 'Session',
+      value: val,
+      onClear: () => removeSession(val),
+    })),
+    ...actionPillValues.map((val) => ({
+      key: `action:${val}`,
+      label: 'Action',
+      value: val,
+      onClear: () => removeAction(val),
+    })),
+    ...FILTERABLE_COLUMNS.flatMap((col) => {
+      const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+      return selected.map((val) => ({
+        key: `${col.key}:${val}`,
+        label: col.label,
+        value: val,
+        onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+      }))
+    }),
+  ]
+  const pills = <FilterPills items={pillItems} />
 
   if (!mapping.widgetId) {
     return (
@@ -291,9 +314,7 @@ function WidgetSummaryTable({ rows, headers }) {
               label={col.label}
               options={opts}
               selected={selected}
-              onChange={(next) =>
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
-              }
+              onChange={(next) => updateFilter(col.key, next)}
             />
           )
         })}

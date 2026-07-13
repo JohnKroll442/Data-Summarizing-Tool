@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
-import FilterPill from './FilterPill'
+import { FilterPills } from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
@@ -134,16 +134,47 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
 
   // Drill-down pill — render BEFORE the data-shape error gates so the user
   // can always escape an "0 actions for this session" empty state.
-  const pill = sessionFilter ? (
-    <FilterPill
-      label="Session"
-      value={sessionFilter}
-      onClear={() => {
-        setSessionFilter(null)
-        navigate('/summary/session')
-      }}
-    />
-  ) : null
+
+  // Update a local column filter, mirroring the Action column into the shared
+  // multi-filter that Widget View reads (matches the drill-down flow).
+  const updateFilter = (colKey, next) => {
+    setFilters((prev) => ({ ...prev, [colKey]: next }))
+    if (colKey === 'action_name') setActionMultiFilter(next)
+  }
+
+  // The active session scope: the multiselect Sessions filter when set,
+  // otherwise the single-session drill-down from Session View.
+  const sessionPillValues = sessionMultiFilter.length > 0
+    ? sessionMultiFilter
+    : (sessionFilter ? [sessionFilter] : [])
+
+  const removeSession = (val) => {
+    const next = sessionPillValues.filter((v) => v !== val)
+    setSessionMultiFilter(next)
+    // Clear the single drill-down too so scope and pills stay in sync.
+    if (sessionFilter === val) setSessionFilter(null)
+  }
+
+  // One removable pill per active session, then one per selected value in the
+  // local column filters (User / Action / Story / Page).
+  const pillItems = [
+    ...sessionPillValues.map((val) => ({
+      key: `session:${val}`,
+      label: 'Session',
+      value: val,
+      onClear: () => removeSession(val),
+    })),
+    ...FILTERABLE_COLUMNS.flatMap((col) => {
+      const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+      return selected.map((val) => ({
+        key: `${col.key}:${val}`,
+        label: col.label,
+        value: val,
+        onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+      }))
+    }),
+  ]
+  const pill = <FilterPills items={pillItems} />
 
   if (!mapping.actionName) {
     return (
@@ -244,13 +275,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               label={col.label}
               options={opts}
               selected={selected}
-              onChange={(next) => {
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
-                // Mirror the Action column filter into the shared filter that
-                // Widget View reads, so filtering here carries over on tab
-                // switch — matching the click-an-action drill-down behavior.
-                if (col.key === 'action_name') setActionMultiFilter(next)
-              }}
+              onChange={(next) => updateFilter(col.key, next)}
             />
           )
         })}

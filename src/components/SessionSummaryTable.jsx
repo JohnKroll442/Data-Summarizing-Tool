@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
+import { FilterPills } from './FilterPill'
 import MultiFilterMenu from './MultiFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
@@ -72,6 +73,25 @@ function SessionSummaryTable({ rows, headers }) {
 
   const activeFilterCount = countActiveMultiFilters(filters, search)
 
+  // Update a column's selected values, mirroring the Session column into the
+  // shared multi-filter that Action View reads (matches the drill-down flow).
+  const updateFilter = (colKey, next) => {
+    setFilters((prev) => ({ ...prev, [colKey]: next }))
+    if (colKey === 'session') setSessionMultiFilter(next)
+  }
+
+  // One removable pill per selected value across every filterable column, so
+  // filtering two sessions shows two "Session" pills, etc.
+  const pillItems = FILTERABLE_COLUMNS.flatMap((col) => {
+    const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
+    return selected.map((val) => ({
+      key: `${col.key}:${val}`,
+      label: col.label,
+      value: val,
+      onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+    }))
+  })
+
   if (!sessionKey) {
     return (
       <div className="summary-note">
@@ -117,6 +137,8 @@ function SessionSummaryTable({ rows, headers }) {
         </div>
       )}
 
+      <FilterPills items={pillItems} />
+
       <div className="summary-filters">
         <input
           type="search"
@@ -135,13 +157,7 @@ function SessionSummaryTable({ rows, headers }) {
               label={col.label}
               options={opts}
               selected={selected}
-              onChange={(next) => {
-                setFilters((prev) => ({ ...prev, [col.key]: next }))
-                // Mirror the Session column filter into the shared filter that
-                // Action View reads, so filtering here carries over on tab
-                // switch — matching the click-a-session drill-down behavior.
-                if (col.key === 'session') setSessionMultiFilter(next)
-              }}
+              onChange={(next) => updateFilter(col.key, next)}
             />
           )
         })}

@@ -82,9 +82,67 @@
   font-size: var(--text-sm);
 }
 
+/* ◀ N / total ▶ stepper for flipping through the session's actions. */
+.action-waterfall-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.action-waterfall-step {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.action-waterfall-step:hover:not(:disabled) {
+  background: var(--sap-blue);
+  border-color: var(--sap-blue);
+  color: #fff;
+}
+
+.action-waterfall-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.action-waterfall-position {
+  min-width: 3.5rem;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--sap-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .action-waterfall-body {
   padding: 0.75rem 1rem 1rem;
   background: var(--sap-surface);
   overflow: auto;
   flex: 1;
+}
+
+/* Honest footnote: names the widgets in this action that had no timed phases
+   and therefore aren't drawn as bars, so nothing is silently hidden. */
+.action-waterfall-footnote {
+  margin: 0.25rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--sap-border);
+  background: var(--sap-surface-muted, #f7f9fb);
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.action-waterfall-footnote-list {
+  color: var(--sap-text);
+  font-weight: var(--weight-medium);
 }
