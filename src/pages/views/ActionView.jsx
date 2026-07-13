@@ -6,6 +6,7 @@ import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 import { aggregateByAction } from '../../lib/actionAggregate'
+import { augmentRowsWithSyntheticMeasures } from '../../lib/syntheticMeasures'
 
 /**
  * ActionView — one row per action table at the top, followed by user-added
@@ -23,6 +24,11 @@ function ActionView() {
     }
     return applySessionFilter(rows, headers, sessionFilter)
   }, [rows, headers, sessionFilter, sessionMultiFilter])
+
+  const chartData = useMemo(
+    () => augmentRowsWithSyntheticMeasures(scopedRows, headers),
+    [scopedRows, headers]
+  )
 
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
@@ -79,7 +85,7 @@ function ActionView() {
       </div>
 
       <h3 className="view-section-heading">Charts</h3>
-      <ChartGrid viewId="action" rows={scopedRows} headers={headers} />
+      <ChartGrid viewId="action" rows={chartData.rows} headers={chartData.headers} />
 
       <ActionWaterfallModal
         open={waterfallOpen}

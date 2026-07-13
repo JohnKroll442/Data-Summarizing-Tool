@@ -70,7 +70,9 @@ export function isDurationColumn(key) {
     n.includes('renderduration') ||
     n.includes('backendduration') ||
     n.includes('networkduration') ||
-    n.includes('frontendduration')
+    n.includes('frontendduration') ||
+    // Synthetic measure columns: "Total Render", "Total Frontend", etc.
+    n.startsWith('total')
   )
 }
 
