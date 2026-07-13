@@ -424,7 +424,6 @@ function WidgetSummaryTable({ rows, headers }) {
 const FILTERABLE_COLUMNS = [
   { key: 'widget_id',   label: 'Widget ID' },
   { key: 'widget_name', label: 'Widget name' },
-  { key: 'session_id',  label: 'Session' },
 ]
 const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'offset'])
 const TIME_COLUMNS = new Set([
