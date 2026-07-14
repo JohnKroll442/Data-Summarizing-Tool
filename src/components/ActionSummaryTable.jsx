@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
+import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
+import { actionKpisFromAgg } from '../lib/kpis'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
 import { formatDurationMs } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
@@ -118,6 +120,14 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     const col = columns.find((c) => c.key === sort.key)
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
+
+  // KPIs track the filters: they summarize the actions currently visible (the
+  // session scope + every local filter), not the whole file. `visibleRows` is
+  // already the filtered set of aggregated action rows.
+  const kpis = useMemo(
+    () => actionKpisFromAgg(visibleRows, mapping),
+    [visibleRows, mapping],
+  )
 
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
@@ -246,6 +256,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   return (
     <>
       {pill}
+      <KpiStrip variant="action" kpis={kpis} />
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}

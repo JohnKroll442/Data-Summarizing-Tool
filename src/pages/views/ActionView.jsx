@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import ActionSummaryTable from '../../components/ActionSummaryTable'
-import KpiStrip from '../../components/KpiStrip'
 import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
@@ -54,7 +53,6 @@ function ActionView() {
       <p className="view-subheading">
         One row per action — search or filter to narrow the list.
       </p>
-      <KpiStrip variant="action" rows={scopedRows} headers={headers} />
       <ActionSummaryTable
         rows={rows}
         headers={headers}

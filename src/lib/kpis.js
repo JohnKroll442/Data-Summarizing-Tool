@@ -32,8 +32,21 @@ function deriveHeaders(rows) {
 
 function sessionKpis(rows, headers) {
   const { rows: agg, mapping, sessionKey } = aggregateBySession(rows, headers)
+  return sessionKpisFromAgg(agg, mapping, { hasSessions: Boolean(sessionKey) })
+}
 
-  const totalSessions = sessionKey ? agg.length : ''
+/**
+ * Build the four session KPI cards from ALREADY-aggregated session rows (one
+ * row per session, as produced by aggregateBySession). Exported so the summary
+ * table can feed its filtered/visible rows here — keeping the KPIs in sync with
+ * whatever the active filters currently show — without re-aggregating.
+ *
+ * `hasSessions` distinguishes "0 sessions currently visible" (show 0) from
+ * "no session column could be detected" (show em dash); the raw-rows path
+ * passes false in the latter case.
+ */
+export function sessionKpisFromAgg(agg, mapping, { hasSessions = true } = {}) {
+  const totalSessions = hasSessions ? agg.length : ''
   const uniqueUsers = mapping.user ? distinct(agg.map((r) => r.user)) : ''
   const avgActions = agg.length ? mean(agg.map((r) => r.action_count)) : ''
   const maxDuration = mapping.duration
@@ -50,7 +63,16 @@ function sessionKpis(rows, headers) {
 
 function actionKpis(rows, headers) {
   const { rows: agg, mapping } = aggregateByAction(rows, headers)
+  return actionKpisFromAgg(agg, mapping)
+}
 
+/**
+ * Build the action KPI cards from ALREADY-aggregated action rows (one row per
+ * action, as produced by aggregateByAction). Exported so the summary table can
+ * feed its filtered/visible rows here, keeping the KPIs in sync with the active
+ * filters without re-aggregating.
+ */
+export function actionKpisFromAgg(agg, mapping) {
   const totalActions = mapping.actionName ? agg.length : ''
   const uniqueNames = mapping.actionName ? distinct(agg.map((r) => r.action_name)) : ''
 
@@ -80,7 +102,16 @@ function actionKpis(rows, headers) {
 
 function widgetKpis(rows, headers) {
   const { rows: agg, mapping } = aggregateByWidget(rows, headers)
+  return widgetKpisFromAgg(agg, mapping)
+}
 
+/**
+ * Build the widget KPI cards from ALREADY-aggregated widget rows (one row per
+ * widget, as produced by aggregateByWidget). Exported so the summary table can
+ * feed its filtered/visible rows here, keeping the KPIs in sync with the active
+ * filters without re-aggregating.
+ */
+export function widgetKpisFromAgg(agg, mapping) {
   const totalWidgets = mapping.widgetId ? agg.length : ''
   const avgRender  = mapping.measure ? mean(agg.map((r) => r.render))  : ''
   const avgNetwork = mapping.measure ? mean(agg.map((r) => r.network)) : ''

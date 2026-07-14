@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import DataTable from './DataTable'
+import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
@@ -7,6 +8,7 @@ import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
+import { widgetKpisFromAgg } from '../lib/kpis'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import {
   applySessionFilter,
@@ -139,6 +141,13 @@ function WidgetSummaryTable({ rows, headers }) {
     const col = columns.find((c) => c.key === sort.key)
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
+
+  // KPIs track the filters: they summarize the widgets currently visible (the
+  // session/action scope + every local filter), not the whole file.
+  const kpis = useMemo(
+    () => widgetKpisFromAgg(visibleRows, mapping),
+    [visibleRows, mapping],
+  )
 
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
@@ -279,6 +288,7 @@ function WidgetSummaryTable({ rows, headers }) {
   return (
     <>
       {pills}
+      <KpiStrip variant="widget" kpis={kpis} />
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}

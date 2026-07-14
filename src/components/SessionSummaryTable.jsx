@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
+import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
+import { sessionKpisFromAgg } from '../lib/kpis'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
@@ -80,6 +82,14 @@ function SessionSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
+  // KPIs track the filters: they summarize the rows currently visible, not the
+  // whole file. `visibleRows` is already the filtered set of aggregated session
+  // rows, so we compute the cards straight off it (no re-aggregation).
+  const kpis = useMemo(
+    () => sessionKpisFromAgg(visibleRows, mapping),
+    [visibleRows, mapping],
+  )
+
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
 
@@ -141,6 +151,8 @@ function SessionSummaryTable({ rows, headers }) {
 
   return (
     <>
+      <KpiStrip variant="session" kpis={kpis} />
+
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}
