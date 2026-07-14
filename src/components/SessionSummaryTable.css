@@ -118,3 +118,61 @@
   padding: 1px 5px;
   border-radius: var(--radius-sm);
 }
+
+/* Rows-per-page selector in the Raw Data View toolbar. */
+.raw-page-size {
+  font-size: var(--text-sm);
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+}
+
+.raw-page-size select {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+}
+
+/* Pager below the Raw Data table. */
+.raw-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.raw-pager-btn {
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.raw-pager-btn:hover:not(:disabled) {
+  background: var(--sap-blue-light);
+}
+
+.raw-pager-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.raw-pager-status {
+  font-size: var(--text-sm);
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+  min-width: 9rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

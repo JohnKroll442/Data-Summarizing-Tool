@@ -48,12 +48,20 @@ export function groupBy(rows, key) {
 /** Bin numeric values from `key` into `binCount` equal-width buckets. */
 export function bin(rows, key, binCount = 10) {
   if (!rows?.length || !key) return []
-  const nums = rows
-    .map((r) => Number(r?.[key]))
-    .filter((n) => Number.isFinite(n))
+  // Single pass: collect finite values and track min/max together. Avoids
+  // Math.min(...nums)/Math.max(...nums), whose argument-count limit throws a
+  // RangeError once a column has ~65k+ finite values (a large-file crash).
+  const nums = []
+  let min = Infinity
+  let max = -Infinity
+  for (let i = 0; i < rows.length; i++) {
+    const n = Number(rows[i]?.[key])
+    if (!Number.isFinite(n)) continue
+    nums.push(n)
+    if (n < min) min = n
+    if (n > max) max = n
+  }
   if (nums.length === 0) return []
-  const min = Math.min(...nums)
-  const max = Math.max(...nums)
   if (min === max) return [{ name: `${min}`, value: nums.length }]
   const width = (max - min) / binCount
   const bins = Array.from({ length: binCount }, (_, i) => ({
@@ -165,16 +173,26 @@ export function profileColumns(rows, headers) {
   const out = {}
   if (!rows?.length || !headers?.length) return out
 
+  // Cap distinct tracking: the picker only uses distinctCount to reject
+  // near-unique columns from dimension dropdowns, so an exact count past a
+  // sane threshold is wasted work — and an uncapped Set on a high-cardinality
+  // column (e.g. a per-row id) on a huge file is a memory/CPU sink.
+  const DISTINCT_CAP = 1000
+
   for (const key of headers) {
     let nonEmpty = 0
     let finite = 0
     let dateLike = 0
     const distinct = new Set()
+    let distinctCapped = false
     for (const row of rows) {
       const v = row?.[key]
       if (v === undefined || v === null || v === '') continue
       nonEmpty++
-      distinct.add(typeof v === 'object' ? JSON.stringify(v) : String(v))
+      if (!distinctCapped) {
+        distinct.add(typeof v === 'object' ? JSON.stringify(v) : String(v))
+        if (distinct.size >= DISTINCT_CAP) distinctCapped = true
+      }
       const n = Number(v)
       if (Number.isFinite(n)) {
         finite++
@@ -191,6 +209,7 @@ export function profileColumns(rows, headers) {
     out[key] = {
       type,
       distinctCount: distinct.size,
+      distinctCapped,
       finiteCount: finite,
       dateCount: dateLike,
       nonEmptyCount: nonEmpty,

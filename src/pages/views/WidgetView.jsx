@@ -9,7 +9,6 @@ import {
   applyActionFilter,
   applyActionMultiFilter,
 } from '../../lib/drillDown'
-import { augmentRowsWithSyntheticMeasures } from '../../lib/syntheticMeasures'
 
 /**
  * WidgetView — one row per widget table at the top, followed by user-added
@@ -38,12 +37,6 @@ function WidgetView() {
     return out
   }, [rows, headers, sessionFilter, sessionMultiFilter, actionFilter, actionMultiFilter])
 
-  // Widget-view charts need the synthetic per-row phase-total measures. Build
-  // them from the scoped rows so charts honor the active filters too.
-  const chartData = useMemo(
-    () => augmentRowsWithSyntheticMeasures(scopedRows, headers),
-    [scopedRows, headers]
-  )
   return (
     <>
       <h2 className="view-heading">Widget View</h2>
@@ -54,7 +47,7 @@ function WidgetView() {
       <WidgetSummaryTable rows={rows} headers={headers} />
 
       <h3 className="view-section-heading">Charts</h3>
-      <ChartGrid viewId="widget" rows={chartData.rows} headers={chartData.headers} />
+      <ChartGrid viewId="widget" rows={scopedRows} headers={headers} />
     </>
   )
 }

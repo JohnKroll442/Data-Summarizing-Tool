@@ -6,7 +6,6 @@ import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 import { aggregateByAction } from '../../lib/actionAggregate'
-import { augmentRowsWithSyntheticMeasures } from '../../lib/syntheticMeasures'
 
 /**
  * ActionView — one row per action table at the top, followed by user-added
@@ -25,18 +24,15 @@ function ActionView() {
     return applySessionFilter(rows, headers, sessionFilter)
   }, [rows, headers, sessionFilter, sessionMultiFilter])
 
-  const chartData = useMemo(
-    () => augmentRowsWithSyntheticMeasures(scopedRows, headers),
-    [scopedRows, headers]
-  )
-
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
 
   // Build the picker list for the Action Waterfall modal from the same
-  // aggregation the summary table uses, so the actions offered here mirror
-  // what the user sees in the table above.
+  // aggregation the summary table uses. Deferred until the modal is actually
+  // opened so we don't run a second full aggregateByAction pass on every
+  // Action View navigation (the table already runs one).
   const waterfallActions = useMemo(() => {
+    if (!waterfallOpen) return []
     const { rows: summaryRows } = aggregateByAction(scopedRows, headers)
     return summaryRows.map((r) => ({
       name: r.action_name,
@@ -45,7 +41,7 @@ function ActionView() {
         ? `${r.action_name} — ${r._action_timestamp}`
         : String(r.action_name),
     }))
-  }, [scopedRows, headers])
+  }, [waterfallOpen, scopedRows, headers])
 
   const openWaterfallFor = ({ name, timestamp }) => {
     setWaterfallInitialKey(`${name}::${timestamp ?? ''}`)
@@ -73,9 +69,9 @@ function ActionView() {
             setWaterfallInitialKey(null)
             setWaterfallOpen(true)
           }}
-          disabled={waterfallActions.length === 0}
+          disabled={scopedRows.length === 0}
           title={
-            waterfallActions.length === 0
+            scopedRows.length === 0
               ? 'No actions available to chart'
               : 'Open the Action Waterfall Chart'
           }
@@ -85,7 +81,7 @@ function ActionView() {
       </div>
 
       <h3 className="view-section-heading">Charts</h3>
-      <ChartGrid viewId="action" rows={chartData.rows} headers={chartData.headers} />
+      <ChartGrid viewId="action" rows={scopedRows} headers={headers} />
 
       <ActionWaterfallModal
         open={waterfallOpen}

@@ -50,20 +50,22 @@ function ChartPicker({ open, onClose, onAdd, headers, profile, rows }) {
     if (open) setSelectedId(CHART_TYPES[0].id)
   }, [open])
 
-  // Per-field valid option list, recomputed when config changes
+  // Per-field valid option list, recomputed when config changes. Skipped
+  // while the dialog is closed or before a profile is available — the parent
+  // computes the (expensive) column profile lazily, only when the picker opens.
   const optionsByField = useMemo(() => {
-    if (!selected) return {}
+    if (!open || !profile || !selected) return {}
     const out = {}
     for (const f of selected.fields) {
       if (f.role === 'number') continue
       out[f.key] = validOptionsFor(f, selected.fields, config, headers, profile, rows)
     }
     return out
-  }, [selected, config, headers, profile, rows])
+  }, [open, selected, config, headers, profile, rows])
 
   // Drop stale selections that are no longer valid given current config
   useEffect(() => {
-    if (!selected) return
+    if (!open || !selected) return
     let dirty = false
     const next = { ...config }
     for (const f of selected.fields) {

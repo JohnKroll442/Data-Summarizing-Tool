@@ -3,8 +3,11 @@ import EChartCard from './EChartCard'
 import ChartPicker from './ChartPicker'
 import { getChartType } from './registry'
 import { profileColumns } from '../../lib/chartData'
+import { augmentRowsWithSyntheticMeasures, SYNTHETIC_MEASURES } from '../../lib/syntheticMeasures'
 import { useCsvData } from '../../context/useCsvData'
 import './ChartGrid.css'
+
+const SYNTHETIC_KEYS = new Set(SYNTHETIC_MEASURES.map((s) => s.key))
 
 /**
  * ChartGrid — renders the user's added charts for a given view, plus an
@@ -15,38 +18,54 @@ import './ChartGrid.css'
  *   viewId: 'session' | 'action' | 'widget'
  *   rows / headers (optional): scoped rows/headers to chart instead of the
  *     full context dataset. Views pass these so charts honor the active
- *     session/action scoping filters. When provided, the column profile is
- *     recomputed from them. For the widget view the caller must pass rows
- *     already augmented with synthetic measure columns.
+ *     session/action scoping filters. The synthetic per-row "Total" measure
+ *     columns are added here, lazily — see below.
  */
 function ChartGrid({ viewId, rows: rowsProp, headers: headersProp }) {
   const {
-    rows: ctxRows, headers: ctxHeaders, columnProfile: ctxProfile,
-    widgetChartData,
+    rows: ctxRows, headers: ctxHeaders,
     chartsByView, addChart, removeChart,
   } = useCsvData()
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const scoped = rowsProp !== undefined
+  const baseRows = scoped ? rowsProp : ctxRows
+  const baseHeaders = scoped ? headersProp : ctxHeaders
 
-  // Widget view exposes synthetic per-row measure columns (Total Render /
-  // Frontend / Backend / Network) so the picker can offer phase totals that
-  // aren't native CSV columns. Other views use raw CSV rows unchanged.
-  // When scoped rows are passed in, chart from those (recomputing the profile);
-  // the widget-view caller passes rows already augmented with the synthetic
-  // measures so the picker still sees the phase-total columns.
-  const scopedProfile = useMemo(
-    () => (scoped ? profileColumns(rowsProp, headersProp) : null),
-    [scoped, rowsProp, headersProp]
+  const charts = useMemo(() => chartsByView[viewId] ?? [], [chartsByView, viewId])
+
+  // Do any existing charts actually plot a synthetic "Total X" measure?
+  const chartsNeedSynthetic = useMemo(
+    () =>
+      charts.some((c) =>
+        Object.values(c.config || {}).some((v) =>
+          Array.isArray(v) ? v.some((x) => SYNTHETIC_KEYS.has(x)) : SYNTHETIC_KEYS.has(v)
+        )
+      ),
+    [charts]
   )
 
-  const source = scoped
-    ? { rows: rowsProp, headers: headersProp, columnProfile: scopedProfile }
-    : viewId === 'widget' && widgetChartData
-      ? widgetChartData
-      : { rows: ctxRows, headers: ctxHeaders, columnProfile: ctxProfile }
+  // Synthetic measure columns (Total Render / Frontend / Backend / Network)
+  // are only needed when the picker is open (to offer them) or when a rendered
+  // chart plots one. Augmenting is O(rows), so on the hot navigation path —
+  // where nothing needs them — we skip it and chart straight off the raw rows.
+  const needAugment = pickerOpen || chartsNeedSynthetic
+  const { rows, headers } = useMemo(
+    () =>
+      needAugment
+        ? augmentRowsWithSyntheticMeasures(baseRows, baseHeaders)
+        : { rows: baseRows, headers: baseHeaders },
+    [needAugment, baseRows, baseHeaders]
+  )
 
-  const charts = chartsByView[viewId] ?? []
+  // The column profile is consumed only by the picker, and computing it scans
+  // every cell (Number()/Date.parse). Compute it lazily, only when open.
+  const columnProfile = useMemo(
+    () => (pickerOpen ? profileColumns(rows, headers) : null),
+    [pickerOpen, rows, headers]
+  )
+
+  const source = { rows, headers, columnProfile }
 
   const handleAdd = (typeId, config) => {
     addChart(viewId, typeId, config)

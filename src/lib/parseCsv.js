@@ -3,68 +3,126 @@ import Papa from 'papaparse'
 /**
  * Parse a CSV File into a tidy { headers, rows } shape.
  *
- * - `header: true` — first line becomes object keys
- * - `skipEmptyLines: 'greedy'` — drops blank trailing lines AND lines with
- *   only whitespace/delimiters
- * - `dynamicTyping: true` — coerces numerics/booleans where unambiguous
- * - `transformHeader` — trims whitespace and strips a leading BOM, so
- *   Excel/SAP exports don't end up with a `﻿BROWSERSESSION_ID` key
- * - `delimitersToGuess` — lets Papa pick from comma/tab/semicolon/pipe
- *   when the file isn't strictly comma-separated (raw SAP exports are
- *   often tab-delimited despite the .csv extension)
- * - Line endings are normalized to `\n` before parsing, and Papa's
- *   `newline` is pinned to match. Some SAP exports have mixed CRLF/LF
- *   line endings (first N lines CRLF, remainder LF), which makes Papa's
- *   auto-detect land on `\r\n` and then treat every LF-only row past
- *   the mixing point as a continuation of the previous record — data
- *   ends up in `__parsed_extra` and the row count silently caps out.
+ * Parsing runs in a Web Worker and streams the File in chunks
+ * (`worker: true` + `chunk`), so:
+ *   - the whole file is never held in memory as one string (Papa reads it in
+ *     slices) — no giant readAsText copy and no second normalized copy, and
+ *   - the CPU-heavy parse happens off the main thread, so the UI stays
+ *     responsive and we can report progress instead of freezing the tab.
  *
- * Rejects with an Error whose `.parseErrors` holds Papa's per-row diagnostics
- * if any row failed to parse cleanly.
+ * Config notes:
+ * - `header: true` — first line becomes object keys. Papa strips a leading
+ *   BOM off header names itself (stripBom), so `﻿BROWSERSESSION_ID` is cleaned
+ *   even though we can't pass a `transformHeader` function to a worker
+ *   (functions can't be structured-cloned across the worker boundary).
+ * - `skipEmptyLines: 'greedy'` — drops blank lines and delimiter-only lines.
+ * - `dynamicTyping: true` — coerces numerics/booleans where unambiguous.
+ * - `delimitersToGuess` — lets Papa pick comma/tab/semicolon/pipe (raw SAP
+ *   exports are often tab-delimited despite the .csv extension).
+ * - `newline: '\n'` — pin the record delimiter to `\n`. Some SAP exports have
+ *   MIXED CRLF/LF endings (first N lines CRLF, remainder LF); Papa's
+ *   auto-detect would lock onto `\r\n` and then merge every later LF-only row
+ *   into the previous record (silent row loss). Forcing `\n` makes every row
+ *   split correctly regardless of ending. The only side effect is a trailing
+ *   `\r` on the LAST column of CRLF rows, which we strip in the chunk handler
+ *   (a cheap in-place fix — no full-array copy).
+ *
+ * @param {File} file
+ * @param {{ onProgress?: (fraction: number) => void }} [opts]
+ * @returns {Promise<{ headers: string[], rows: object[] }>}
+ * Rejects with an Error whose `.parseErrors` holds Papa's diagnostics if the
+ * file produced no rows at all.
  */
-export function parseCsvFile(file) {
-  return readFileAsText(file).then(
-    (raw) =>
-      new Promise((resolve, reject) => {
-        const text = raw.replace(/\r\n?/g, '\n')
-        Papa.parse(text, {
-          header: true,
-          skipEmptyLines: 'greedy',
-          dynamicTyping: true,
-          transformHeader: (h) => String(h).replace(/^﻿/, '').trim(),
-          delimitersToGuess: [',', '\t', ';', '|'],
-          newline: '\n',
-          complete: (result) => {
-            // Don't bail on parse-error warnings — many SAP exports trip
-            // Papa's "TooFewFields" check on the last row without losing data.
-            const headers = (result.meta?.fields ?? []).filter(Boolean)
-            const rows = result.data ?? []
-            const errors = result.errors ?? []
-            if (errors.length > 0) {
-              // eslint-disable-next-line no-console
-              console.warn(
-                `[parseCsv] Parsed ${rows.length} rows with ${errors.length} parser warning(s). ` +
-                  `Delimiter: ${JSON.stringify(result.meta?.delimiter)}, ` +
-                  `newline: ${JSON.stringify(result.meta?.linebreak)}, ` +
-                  `aborted: ${result.meta?.aborted}, truncated: ${result.meta?.truncated}. ` +
-                  `First error:`,
-                errors[0]
-              )
+export function parseCsvFile(file, { onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const rows = []
+    let headers = []
+    // Header-normalization state, computed once from the header row. Papa
+    // can't run a `transformHeader` function in a worker (functions don't
+    // survive the structured-clone to the worker), so we clean header names
+    // ourselves — strip a leading BOM, drop a trailing `\r` (see the
+    // `newline: '\n'` note), and trim surrounding whitespace. When a name
+    // actually changes we re-home that column onto the clean key IN PLACE per
+    // row (rename, not clone), so a clean header file costs nothing.
+    let renames = []
+    let firstError = null
+    let errorCount = 0
+    const totalBytes = file?.size || 0
+
+    const cleanName = (h) =>
+      String(h).replace(/^﻿/, '').replace(/\r$/, '').trim()
+
+    Papa.parse(file, {
+      worker: true,
+      header: true,
+      skipEmptyLines: 'greedy',
+      dynamicTyping: true,
+      delimitersToGuess: [',', '\t', ';', '|'],
+      newline: '\n',
+      chunk: (results) => {
+        const errors = results.errors
+        if (errors && errors.length) {
+          errorCount += errors.length
+          if (!firstError) firstError = errors[0]
+        }
+
+        // Capture + normalize headers once, from the first chunk that has them.
+        if (headers.length === 0 && results.meta?.fields) {
+          const fields = results.meta.fields.filter(Boolean)
+          headers = fields.map(cleanName)
+          renames = []
+          for (let i = 0; i < fields.length; i++) {
+            if (fields[i] !== headers[i]) {
+              renames.push([fields[i], headers[i]])
             }
-            if (rows.length === 0 && errors.length > 0) {
-              const err = new Error(
-                `CSV produced no rows; first parser error: ${errors[0].message}`
-              )
-              err.parseErrors = errors
-              reject(err)
-              return
+          }
+        }
+
+        const data = results.data || []
+        if (renames.length) {
+          for (let i = 0; i < data.length; i++) {
+            const row = data[i]
+            for (let j = 0; j < renames.length; j++) {
+              const raw = renames[j][0]
+              const clean = renames[j][1]
+              const v = row[raw]
+              // Only the last column can carry a trailing `\r` (it sits before
+              // the `\n`); strip it from string values, then drop the raw key.
+              row[clean] = typeof v === 'string' && v.endsWith('\r') ? v.slice(0, -1) : v
+              delete row[raw]
             }
-            resolve({ headers, rows })
-          },
-          error: (err) => reject(err),
-        })
-      })
-  )
+          }
+        }
+
+        for (let i = 0; i < data.length; i++) rows.push(data[i])
+
+        if (onProgress && totalBytes) {
+          const cursor = results.meta?.cursor || 0
+          onProgress(Math.min(1, cursor / totalBytes))
+        }
+      },
+      complete: () => {
+        if (rows.length === 0 && firstError) {
+          const err = new Error(
+            `CSV produced no rows; first parser error: ${firstError.message}`
+          )
+          err.parseErrors = [firstError]
+          reject(err)
+          return
+        }
+        if (errorCount > 0) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[parseCsv] Parsed ${rows.length} rows with ${errorCount} parser warning(s). First error:`,
+            firstError
+          )
+        }
+        if (onProgress) onProgress(1)
+        resolve({ headers, rows })
+      },
+      error: (err) => reject(err),
+    })
+  })
 }
 
 import { aggregateBySession } from './sessionAggregate'
@@ -133,15 +191,4 @@ export function validateSchema(headers, rows) {
     affectedViews,
     canProceed: availableSet.size > 0,
   }
-}
-
-// Read the File as UTF-8 text. Uses FileReader so we can normalize line
-// endings before parsing — Papa's own `File` input path skips this step.
-function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ''))
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'))
-    reader.readAsText(file)
-  })
 }

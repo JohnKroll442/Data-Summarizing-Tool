@@ -20,6 +20,7 @@ function UploadPage() {
   } = useCsvData()
 
   const [isParsing, setIsParsing] = useState(false)
+  const [parseProgress, setParseProgress] = useState(0)
   const [parseError, setParseError] = useState('')
 
   const [pendingCsv, setPendingCsv] = useState(null)
@@ -80,15 +81,24 @@ function UploadPage() {
 
     setParseError('')
     setIsParsing(true)
+    setParseProgress(0)
     try {
-      const { headers, rows } = await parseCsvFile(file)
+      const { headers, rows } = await parseCsvFile(file, {
+        onProgress: setParseProgress,
+      })
       const parsed = {
         headers,
         rows,
         fileName: file.name,
         fileSize: file.size,
       }
-      const result = validateSchema(headers, rows)
+      // Validate against a sample rather than the whole file: schema
+      // validation only needs to detect which columns exist, so running the
+      // three full aggregations over every row here would re-freeze the main
+      // thread right after the (now off-thread) parse. A generous head sample
+      // is enough to detect the column mapping.
+      const sample = rows.length > 5000 ? rows.slice(0, 5000) : rows
+      const result = validateSchema(headers, sample)
       if (result.missing.length === 0) {
         setCsvData(parsed)
         navigate('/summary/raw')
@@ -115,7 +125,9 @@ function UploadPage() {
       <main className="app-main">
         <FileUpload onFilesAdded={handleFilesAdded} accept=".csv" />
         {isParsing && (
-          <p className="app-status" role="status">Parsing CSV…</p>
+          <p className="app-status" role="status">
+            Parsing CSV… {Math.round(parseProgress * 100)}%
+          </p>
         )}
         {parseError && (
           <p className="app-error" role="alert">{parseError}</p>
