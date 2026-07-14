@@ -3,6 +3,8 @@
  * column without re-running the whole session-aggregation pipeline.
  */
 
+import { memoizeFilter } from './memoize'
+
 const norm = (s) => String(s).trim().toLowerCase().replace(/[\s_\-.]+/g, '')
 
 /**
@@ -39,7 +41,12 @@ export function detectSessionKey(headers, rows) {
  * Filter rows down to a specific session. No-op when sessionFilter is null
  * or the session column can't be detected.
  */
-export function applySessionFilter(rows, headers, sessionFilter) {
+export const applySessionFilter = memoizeFilter(
+  applySessionFilterImpl,
+  (sessionFilter) => String(sessionFilter),
+)
+
+function applySessionFilterImpl(rows, headers, sessionFilter) {
   if (!sessionFilter) return rows
   const key = detectSessionKey(headers, rows)
   if (!key) return rows
@@ -62,7 +69,13 @@ export function findActionNameKey(headers) {
  * actionFilter is { name, timestamp } where timestamp may be '' if the
  * source row lacked one.
  */
-export function applyActionFilter(rows, headers, actionFilter) {
+export const applyActionFilter = memoizeFilter(
+  applyActionFilterImpl,
+  (actionFilter) =>
+    actionFilter ? `${actionFilter.name}::${actionFilter.timestamp ?? ''}` : 'null',
+)
+
+function applyActionFilterImpl(rows, headers, actionFilter) {
   if (!actionFilter) return rows
   const nameKey = findActionNameKey(headers)
   if (!nameKey) return rows
@@ -84,7 +97,12 @@ export function applyActionFilter(rows, headers, actionFilter) {
  * session column can't be detected. Complements applySessionFilter (single
  * drill-down) — callers compose them, applying the single filter first.
  */
-export function applySessionMultiFilter(rows, headers, sessionIds) {
+export const applySessionMultiFilter = memoizeFilter(
+  applySessionMultiFilterImpl,
+  sortedJoinSig,
+)
+
+function applySessionMultiFilterImpl(rows, headers, sessionIds) {
   if (!Array.isArray(sessionIds) || sessionIds.length === 0) return rows
   const key = detectSessionKey(headers, rows)
   if (!key) return rows
@@ -97,10 +115,23 @@ export function applySessionMultiFilter(rows, headers, sessionIds) {
  * action-name column can't be detected. Matches on name only (no timestamp),
  * so it selects every invocation of each chosen action.
  */
-export function applyActionMultiFilter(rows, headers, actionNames) {
+export const applyActionMultiFilter = memoizeFilter(
+  applyActionMultiFilterImpl,
+  sortedJoinSig,
+)
+
+function applyActionMultiFilterImpl(rows, headers, actionNames) {
   if (!Array.isArray(actionNames) || actionNames.length === 0) return rows
   const nameKey = findActionNameKey(headers)
   if (!nameKey) return rows
   const set = new Set(actionNames.map((s) => String(s)))
   return rows.filter((r) => set.has(String(r?.[nameKey] ?? '')))
+}
+
+// Stable signature for an array-valued filter arg: order-independent, so
+// selecting the same ids in a different order still hits the cache. Joins on a
+// distinctive delimiter that won't collide with real session ids / action names.
+function sortedJoinSig(arg) {
+  if (!Array.isArray(arg)) return String(arg)
+  return arg.map(String).sort().join('\\u0000')
 }

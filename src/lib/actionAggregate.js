@@ -31,8 +31,11 @@ export const RECOGNIZED_MEASURES = ['render', 'frontend', 'network', 'backend', 
 
 import { detectSessionKey } from './drillDown'
 import { stripUserPrefix } from './format'
+import { memoizeAggregate } from './memoize'
 
-export function aggregateByAction(rows, headers) {
+export const aggregateByAction = memoizeAggregate(aggregateByActionImpl)
+
+function aggregateByActionImpl(rows, headers) {
   const mapping = detectMapping(headers)
   // Populated-column-aware session detection (SESSION_ID may exist but be
   // empty while BROWSERSESSION_ID carries the real value — pick whichever

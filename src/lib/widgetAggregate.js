@@ -30,8 +30,11 @@
  */
 
 import { detectSessionKey } from './drillDown'
+import { memoizeAggregate } from './memoize'
 
-export function aggregateByWidget(rows, headers) {
+export const aggregateByWidget = memoizeAggregate(aggregateByWidgetImpl)
+
+function aggregateByWidgetImpl(rows, headers) {
   const mapping = detectMapping(headers)
   // Populated-column-aware session detection (SESSION_ID may exist but be
   // empty while BROWSERSESSION_ID carries the real value — pick whichever
