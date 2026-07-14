@@ -1,0 +1,12 @@
+applications:
+  - name: sac-performance-analyzer
+    path: dist
+    buildpacks:
+      - staticfile_buildpack
+    memory: 64M
+    disk_quota: 256M
+    instances: 1
+    # Gives the app a unique route on first deploy so you don't collide with
+    # an existing host in a shared space. Swap for a fixed `routes:` block
+    # (see the notes) once you know the host/domain you want.
+    random-route: true

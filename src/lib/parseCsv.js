@@ -37,13 +37,11 @@ export function parseCsvFile(file, { onProgress } = {}) {
   return new Promise((resolve, reject) => {
     const rows = []
     let headers = []
-    // Header-normalization state, computed once from the header row. Papa
-    // can't run a `transformHeader` function in a worker (functions don't
-    // survive the structured-clone to the worker), so we clean header names
-    // ourselves — strip a leading BOM, drop a trailing `\r` (see the
-    // `newline: '\n'` note), and trim surrounding whitespace. When a name
-    // actually changes we re-home that column onto the clean key IN PLACE per
-    // row (rename, not clone), so a clean header file costs nothing.
+    // Header-normalization state, computed once from the header row. We clean
+    // header names ourselves — strip a leading BOM, drop a trailing `\r` (see
+    // the `newline: '\n'` note), and trim surrounding whitespace — then re-home
+    // any changed column onto its clean key IN PLACE per row (rename, not
+    // clone), so a clean-header file costs nothing.
     let renames = []
     let firstError = null
     let errorCount = 0
@@ -53,12 +51,20 @@ export function parseCsvFile(file, { onProgress } = {}) {
       String(h).replace(/^﻿/, '').replace(/\r$/, '').trim()
 
     Papa.parse(file, {
-      worker: true,
+      // Stream the File in chunks on the MAIN thread. We intentionally do NOT
+      // use `worker: true`: PapaParse's worker runs from a `blob:` URL that a
+      // deployment's Content-Security-Policy can block, and Papa attaches no
+      // error handler to that worker — so a blocked worker hangs forever at
+      // "Parsing… 0%" instead of failing (seen on the Cloud Foundry PROD
+      // deploy). Chunk streaming still reads the file in slices (no whole-file
+      // string copy) and yields between chunks to keep the UI responsive, and
+      // it works regardless of CSP.
       header: true,
       skipEmptyLines: 'greedy',
       dynamicTyping: true,
       delimitersToGuess: [',', '\t', ';', '|'],
       newline: '\n',
+      chunkSize: 5 * 1024 * 1024,
       chunk: (results) => {
         const errors = results.errors
         if (errors && errors.length) {
