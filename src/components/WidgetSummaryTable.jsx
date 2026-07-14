@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import DataTable from './DataTable'
 import { FilterPills } from './FilterPill'
+import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
+import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
@@ -18,8 +20,15 @@ import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
+import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
+
+// Row timestamp field for the Time filter — the earliest phase time available
+// on the aggregated widget row (stable ref).
+const WIDGET_TS = (row) =>
+  row.render_start || row.network_start || row.backend_start ||
+  row.render_end || row.network_end || row.backend_end || ''
 
 /**
  * WidgetSummaryTable — one row per distinct widget, columns:
@@ -91,6 +100,7 @@ function WidgetSummaryTable({ rows, headers }) {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({})
   const [sort, setSort] = useState(null)
+  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
   // Clicking a widget name opens the per-widget timing modal. Holds the
   // selected row's widget_id + display name, plus the rows we should pass
   // to the chart builder.
@@ -114,6 +124,7 @@ function WidgetSummaryTable({ rows, headers }) {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesTimeFilter(row, WIDGET_TS, timeFilter)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -121,7 +132,7 @@ function WidgetSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, filters, columns, timeFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -129,10 +140,14 @@ function WidgetSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
+  const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
+    usePagination(sortedRows)
+
   const activeFilterCount =
     countActiveMultiFilters(filters, search) +
     (sessionMultiFilter.length > 0 ? 1 : 0) +
-    (actionMultiFilter.length > 0 ? 1 : 0)
+    (actionMultiFilter.length > 0 ? 1 : 0) +
+    (hasTimeSelection(timeFilter) ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -318,10 +333,17 @@ function WidgetSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <TimeFilterMenu
+          rows={summaryRows}
+          getTimestamp={WIDGET_TS}
+          value={timeFilter}
+          onChange={setTimeFilter}
+        />
         <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
+        <PageSizeSelect value={pageSize} onChange={setPageSize} />
         <button
           type="button"
           className="summary-filter-export"
@@ -343,6 +365,7 @@ function WidgetSummaryTable({ rows, headers }) {
               setFilters({})
               setSessionMultiFilter([])
               setActionMultiFilter([])
+              setTimeFilter(emptyTimeSelections())
             }}
           >
             Clear
@@ -351,7 +374,7 @@ function WidgetSummaryTable({ rows, headers }) {
       </div>
 
       <DataTable
-        rows={sortedRows}
+        rows={pageRows}
         sort={sort}
         onSortChange={setSort}
         columns={columns.map((c) => ({
@@ -409,6 +432,8 @@ function WidgetSummaryTable({ rows, headers }) {
         }))}
         emptyMessage="No widgets match your filters."
       />
+
+      <TablePager page={page} pageCount={pageCount} onPage={setPage} />
 
       <WidgetTimingModal
         open={!!timingModal}

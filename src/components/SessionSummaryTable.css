@@ -136,6 +136,24 @@
   color: var(--sap-text);
 }
 
+.raw-page-size-input {
+  width: 5rem;
+  margin-left: 0.4rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+}
+
+.raw-page-size-input:focus {
+  outline: none;
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
+}
+
 /* Pager below the Raw Data table. */
 .raw-pager {
   display: flex;

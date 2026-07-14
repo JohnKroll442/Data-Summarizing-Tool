@@ -2,15 +2,22 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import { FilterPills } from './FilterPill'
+import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
+import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
+import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
+
+// Which field carries the row's timestamp for the Time filter (stable ref so
+// the menu's bucket memo doesn't recompute every render).
+const SESSION_TS = (row) => row.timestamp_range
 
 /**
  * SessionSummaryTable — one row per session, columns:
@@ -37,6 +44,7 @@ function SessionSummaryTable({ rows, headers }) {
     sessionMultiFilter.length > 0 ? { session: sessionMultiFilter } : {}
   )
   const [sort, setSort] = useState(null)
+  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
   const optionsByColumn = useMemo(() => {
     const out = {}
@@ -56,6 +64,7 @@ function SessionSummaryTable({ rows, headers }) {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesTimeFilter(row, SESSION_TS, timeFilter)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -63,7 +72,7 @@ function SessionSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, filters, columns, timeFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -71,7 +80,11 @@ function SessionSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  const activeFilterCount = countActiveMultiFilters(filters, search)
+  const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
+    usePagination(sortedRows)
+
+  const activeFilterCount =
+    countActiveMultiFilters(filters, search) + (hasTimeSelection(timeFilter) ? 1 : 0)
 
   // Update a column's selected values, mirroring the Session column into the
   // shared multi-filter that Action View reads (matches the drill-down flow).
@@ -161,10 +174,17 @@ function SessionSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <TimeFilterMenu
+          rows={summaryRows}
+          getTimestamp={SESSION_TS}
+          value={timeFilter}
+          onChange={setTimeFilter}
+        />
         <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
+        <PageSizeSelect value={pageSize} onChange={setPageSize} />
         <button
           type="button"
           className="summary-filter-export"
@@ -185,6 +205,7 @@ function SessionSummaryTable({ rows, headers }) {
               setSearch('')
               setFilters({})
               setSessionMultiFilter([])
+              setTimeFilter(emptyTimeSelections())
             }}
           >
             Clear
@@ -193,7 +214,7 @@ function SessionSummaryTable({ rows, headers }) {
       </div>
 
       <DataTable
-        rows={sortedRows}
+        rows={pageRows}
         sort={sort}
         onSortChange={setSort}
         columns={columns.map((c) => ({
@@ -239,6 +260,8 @@ function SessionSummaryTable({ rows, headers }) {
             : 'No sessions match your filters.'
         }
       />
+
+      <TablePager page={page} pageCount={pageCount} onPage={setPage} />
     </>
   )
 }

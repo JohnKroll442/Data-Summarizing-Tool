@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
 import { FilterPills } from './FilterPill'
+import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
+import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
@@ -11,8 +13,12 @@ import { formatDurationMs } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
+import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
+
+// Row timestamp field for the Time filter (stable ref).
+const ACTION_TS = (row) => row._action_timestamp
 
 /**
  * ActionSummaryTable — one row per action, columns:
@@ -77,6 +83,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {}
   )
   const [sort, setSort] = useState(null)
+  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
   const optionsByColumn = useMemo(() => {
     const out = {}
@@ -96,6 +103,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     const needle = search.trim().toLowerCase()
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
+      if (!matchesTimeFilter(row, ACTION_TS, timeFilter)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -103,7 +111,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         return String(v).toLowerCase().includes(needle)
       })
     })
-  }, [summaryRows, search, filters, columns])
+  }, [summaryRows, search, filters, columns, timeFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -111,8 +119,13 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
+  const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
+    usePagination(sortedRows)
+
   const activeFilterCount =
-    countActiveMultiFilters(filters, search) + (sessionMultiFilter.length > 0 ? 1 : 0)
+    countActiveMultiFilters(filters, search) +
+    (sessionMultiFilter.length > 0 ? 1 : 0) +
+    (hasTimeSelection(timeFilter) ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -279,10 +292,17 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
             />
           )
         })}
+        <TimeFilterMenu
+          rows={summaryRows}
+          getTimestamp={ACTION_TS}
+          value={timeFilter}
+          onChange={setTimeFilter}
+        />
         <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
+        <PageSizeSelect value={pageSize} onChange={setPageSize} />
         <button
           type="button"
           className="summary-filter-export"
@@ -304,6 +324,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               setFilters({})
               setSessionMultiFilter([])
               setActionMultiFilter([])
+              setTimeFilter(emptyTimeSelections())
             }}
           >
             Clear
@@ -312,7 +333,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
       </div>
 
       <DataTable
-        rows={sortedRows}
+        rows={pageRows}
         sort={sort}
         onSortChange={setSort}
         columns={columns.map((c) => ({
@@ -366,6 +387,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         }))}
         emptyMessage="No actions match your filters."
       />
+
+      <TablePager page={page} pageCount={pageCount} onPage={setPage} />
     </>
   )
 }

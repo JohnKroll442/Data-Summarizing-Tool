@@ -1,0 +1,121 @@
+/* Timestamp filter menu — extends the shared MultiFilterMenu panel with a
+   granularity switch and per-bucket counts. */
+
+.time-filter-panel {
+  width: 340px;
+}
+
+.time-filter-granularity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.time-filter-gran-btn {
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface-alt);
+  color: var(--sap-text);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.time-filter-gran-btn:hover {
+  background: var(--sap-blue-bg);
+}
+
+.time-filter-gran-btn.is-active {
+  background: var(--sap-blue);
+  border-color: var(--sap-blue);
+  color: #fff;
+}
+
+/* A level that has selections but isn't the current tab — flag it so the user
+   can see selections live on other granularities too. */
+.time-filter-gran-btn.has-selection:not(.is-active) {
+  border-color: var(--sap-blue);
+  color: var(--sap-blue-darker);
+  font-weight: var(--weight-semibold);
+}
+
+/* Per-bucket row count, right-aligned after the label. */
+.time-filter-count {
+  margin-left: auto;
+  padding-left: 0.5rem;
+  font-size: var(--text-xs);
+  color: var(--sap-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+/* Explicit From → To range picker. */
+.time-filter-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  background: var(--sap-blue-bg);
+  border: 1px solid var(--sap-blue-light);
+  border-radius: var(--radius-md);
+}
+
+.time-filter-range-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--sap-blue-darker);
+}
+
+.time-filter-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.time-filter-range-select {
+  flex: 1 1 0;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.3rem 0.35rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+}
+
+.time-filter-range-arrow {
+  flex: 0 0 auto;
+  color: var(--sap-text-muted);
+}
+
+.time-filter-range-add {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sap-blue);
+  border-radius: var(--radius-md);
+  background: var(--sap-blue);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.time-filter-range-add:hover:not(:disabled) {
+  background: var(--sap-blue-dark);
+}
+
+.time-filter-range-add:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--sap-surface-alt);
+  color: var(--sap-text-muted);
+  border-color: var(--sap-border);
+}

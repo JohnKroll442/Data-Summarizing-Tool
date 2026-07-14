@@ -30,6 +30,7 @@
 export const RECOGNIZED_MEASURES = ['render', 'frontend', 'network', 'backend', 'offset']
 
 import { detectSessionKey } from './drillDown'
+import { stripUserPrefix } from './format'
 
 export function aggregateByAction(rows, headers) {
   const mapping = detectMapping(headers)
@@ -81,7 +82,7 @@ export function aggregateByAction(rows, headers) {
         ? firstNonEmpty(groupRows, mapping.actionTimestamp)
         : '',
       session_id:   firstNonEmpty(groupRows, mapping.session),
-      user:         firstNonEmpty(groupRows, mapping.user),
+      user:         stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),
       story_page:   firstNonEmpty(groupRows, mapping.storyPage),

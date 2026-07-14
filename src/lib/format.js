@@ -33,6 +33,19 @@ export function formatCsvTime(value) {
 }
 
 /**
+ * Strip the prefix from a user/username value: drop everything up to and
+ * including the FIRST underscore, so "APAC_jsmith" displays as "jsmith".
+ * Values with no underscore pass through unchanged; empty / null / undefined
+ * are returned as-is.
+ */
+export function stripUserPrefix(value) {
+  if (value === '' || value === null || value === undefined) return value
+  const str = String(value)
+  const i = str.indexOf('_')
+  return i === -1 ? str : str.slice(i + 1)
+}
+
+/**
  * Convert raw bytes into a human-readable string (e.g. "1.2 MB").
  */
 export function formatFileSize(bytes) {
