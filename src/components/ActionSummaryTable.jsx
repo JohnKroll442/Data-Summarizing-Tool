@@ -14,7 +14,7 @@ import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '.
 import { formatDurationMs } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
-import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
+import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
@@ -87,19 +87,21 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const [sort, setSort] = useState(null)
   const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
-  const optionsByColumn = useMemo(() => {
-    const out = {}
-    for (const col of FILTERABLE_COLUMNS) {
-      const set = new Set()
-      for (const row of summaryRows) {
-        const v = row?.[col.key]
-        if (v === undefined || v === null || v === '') continue
-        set.add(String(v))
-      }
-      out[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b))
-    }
-    return out
-  }, [summaryRows])
+  // Faceted options: each dropdown lists only values that still apply given the
+  // OTHER active column filters plus the time filter. The session scope is
+  // already baked into summaryRows (rows are filtered before aggregation).
+  const optionsByColumn = useMemo(
+    () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
+      (row) => matchesTimeFilter(row, ACTION_TS, timeFilter)),
+    [summaryRows, filters, timeFilter],
+  )
+
+  // Rows the Time filter derives its buckets from — narrowed by the column
+  // filters (but not by time itself) so the time options track the other menus.
+  const timeFilterRows = useMemo(
+    () => summaryRows.filter((row) => matchesAllMultiFilters(row, filters)),
+    [summaryRows, filters],
+  )
 
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -304,7 +306,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
           )
         })}
         <TimeFilterMenu
-          rows={summaryRows}
+          rows={timeFilterRows}
           getTimestamp={ACTION_TS}
           value={timeFilter}
           onChange={setTimeFilter}

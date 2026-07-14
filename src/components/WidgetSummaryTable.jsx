@@ -21,7 +21,7 @@ import {
 import { formatDurationMs, formatCsvTime } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
-import { matchesAllMultiFilters, countActiveMultiFilters } from '../lib/multiFilter'
+import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
@@ -58,18 +58,27 @@ function WidgetSummaryTable({ rows, headers }) {
   // over its dimension's row scope (letting the user pick any set of sessions
   // /actions from the whole file); otherwise the single drill-down from the
   // Session/Action views applies. Session and action scoping compose.
-  const scopedRows = useMemo(() => {
-    let out = sessionMultiFilter.length > 0
-      ? applySessionMultiFilter(rows, headers, sessionMultiFilter)
-      : applySessionFilter(rows, headers, sessionFilter)
-    out = actionMultiFilter.length > 0
-      ? applyActionMultiFilter(out, headers, actionMultiFilter)
-      : applyActionFilter(out, headers, actionFilter)
-    return out
-  }, [rows, headers, sessionFilter, actionFilter, sessionMultiFilter, actionMultiFilter])
+  //
+  // Split out the session-only scope so the Actions menu can offer just the
+  // actions that occur in the selected sessions (Session → Action hierarchy).
+  const sessionScopedRows = useMemo(
+    () =>
+      sessionMultiFilter.length > 0
+        ? applySessionMultiFilter(rows, headers, sessionMultiFilter)
+        : applySessionFilter(rows, headers, sessionFilter),
+    [rows, headers, sessionFilter, sessionMultiFilter],
+  )
 
-  // Dropdown options — ALL sessions / actions in the file, so the user can
-  // pick any value regardless of how they drilled in.
+  const scopedRows = useMemo(
+    () =>
+      actionMultiFilter.length > 0
+        ? applyActionMultiFilter(sessionScopedRows, headers, actionMultiFilter)
+        : applyActionFilter(sessionScopedRows, headers, actionFilter),
+    [sessionScopedRows, headers, actionFilter, actionMultiFilter],
+  )
+
+  // Session ids — ALL sessions in the file, so the user can pick any session
+  // regardless of how they drilled in (Sessions is the top-level scope).
   const sessionOptions = useMemo(() => {
     const key = detectSessionKey(headers, rows)
     if (!key) return []
@@ -82,17 +91,21 @@ function WidgetSummaryTable({ rows, headers }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [rows, headers])
 
+  // Action names — only those present in the session-scoped rows, so the menu
+  // tracks the selected sessions like every other filter. Any already-selected
+  // action is kept so a selection never vanishes from its own menu.
   const actionOptions = useMemo(() => {
     const key = findActionNameKey(headers)
     if (!key) return []
     const set = new Set()
-    for (const r of rows) {
+    for (const r of sessionScopedRows) {
       const v = r?.[key]
       if (v === undefined || v === null || v === '') continue
       set.add(String(v))
     }
+    for (const v of actionMultiFilter) set.add(String(v))
     return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [rows, headers])
+  }, [sessionScopedRows, headers, actionMultiFilter])
 
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByWidget(scopedRows, headers),
@@ -108,19 +121,21 @@ function WidgetSummaryTable({ rows, headers }) {
   // to the chart builder.
   const [timingModal, setTimingModal] = useState(null)
 
-  const optionsByColumn = useMemo(() => {
-    const out = {}
-    for (const col of FILTERABLE_COLUMNS) {
-      const set = new Set()
-      for (const row of summaryRows) {
-        const v = row?.[col.key]
-        if (v === undefined || v === null || v === '') continue
-        set.add(String(v))
-      }
-      out[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b))
-    }
-    return out
-  }, [summaryRows])
+  // Faceted options: each dropdown lists only values that still apply given the
+  // OTHER active column filters plus the time filter. The session/action scope
+  // is already baked into summaryRows (rows are filtered before aggregation).
+  const optionsByColumn = useMemo(
+    () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
+      (row) => matchesTimeFilter(row, WIDGET_TS, timeFilter)),
+    [summaryRows, filters, timeFilter],
+  )
+
+  // Rows the Time filter derives its buckets from — narrowed by the column
+  // filters (but not by time itself) so the time options track the other menus.
+  const timeFilterRows = useMemo(
+    () => summaryRows.filter((row) => matchesAllMultiFilters(row, filters)),
+    [summaryRows, filters],
+  )
 
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -344,7 +359,7 @@ function WidgetSummaryTable({ rows, headers }) {
           )
         })}
         <TimeFilterMenu
-          rows={summaryRows}
+          rows={timeFilterRows}
           getTimestamp={WIDGET_TS}
           value={timeFilter}
           onChange={setTimeFilter}
