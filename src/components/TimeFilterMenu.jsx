@@ -57,7 +57,7 @@ function TimeFilterMenu({ rows, getTimestamp, value, onChange }) {
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
     if (!needle) return allBuckets
-    return allBuckets.filter((b) => b.label.toLowerCase().includes(needle))
+    return allBuckets.filter((b) => b.label.toLowerCase().startsWith(needle))
   }, [allBuckets, search])
 
   const current = value[granularity] ?? []

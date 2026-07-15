@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import './MultiFilterMenu.css'
 
@@ -17,10 +17,22 @@ import './MultiFilterMenu.css'
  *   selected: string[] currently-selected values
  *   onChange: (next: string[]) => void
  */
-function MultiFilterMenu({ label, options, selected, onChange }) {
+function MultiFilterMenu({ label, options, selected, onChange, showSelectAll = true }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const rootRef = useRef(null)
+  // When "Select all" balloons the selection, the pill bar above the table and
+  // the surrounding re-render shift the layout, which makes the browser jump
+  // the page (keeping the focused search input in view). Stash the scroll
+  // position on that click and restore it after the commit so nothing moves.
+  const restoreScrollRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (!restoreScrollRef.current) return
+    const { x, y } = restoreScrollRef.current
+    restoreScrollRef.current = null
+    window.scrollTo(x, y)
+  })
 
   // Close on outside click / Escape so the panel behaves like a proper menu.
   useEffect(() => {
@@ -40,7 +52,7 @@ function MultiFilterMenu({ label, options, selected, onChange }) {
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
     if (!needle) return options
-    return options.filter((o) => o.toLowerCase().includes(needle))
+    return options.filter((o) => o.toLowerCase().startsWith(needle))
   }, [options, search])
 
   const selectedSet = useMemo(() => new Set(selected), [selected])
@@ -79,17 +91,20 @@ function MultiFilterMenu({ label, options, selected, onChange }) {
           />
 
           <div className="multi-filter-actions">
-            <button
-              type="button"
-              className="multi-filter-action"
-              disabled={filtered.length === 0}
-              onClick={() => {
-                const merged = Array.from(new Set([...selected, ...filtered]))
-                onChange(merged)
-              }}
-            >
-              Select {search ? 'matching' : 'all'}
-            </button>
+            {showSelectAll && (
+              <button
+                type="button"
+                className="multi-filter-action"
+                disabled={filtered.length === 0}
+                onClick={() => {
+                  restoreScrollRef.current = { x: window.scrollX, y: window.scrollY }
+                  const merged = Array.from(new Set([...selected, ...filtered]))
+                  onChange(merged)
+                }}
+              >
+                Select {search ? 'matching' : 'all'}
+              </button>
+            )}
             <button
               type="button"
               className="multi-filter-action"

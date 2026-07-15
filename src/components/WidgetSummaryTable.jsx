@@ -146,7 +146,7 @@ function WidgetSummaryTable({ rows, headers }) {
       return columns.some((c) => {
         const v = row[c.key]
         if (v === undefined || v === null || v === '') return false
-        return String(v).toLowerCase().includes(needle)
+        return String(v).toLowerCase().startsWith(needle)
       })
     })
   }, [summaryRows, search, filters, columns, timeFilter])

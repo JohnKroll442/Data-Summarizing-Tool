@@ -1,6 +1,7 @@
 import { Link, Navigate, NavLink, Outlet } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useCsvData } from '../context/useCsvData'
+import ActivityTimeline from '../components/ActivityTimeline'
 import './SummaryPage.css'
 
 /**
@@ -56,6 +57,7 @@ function SummaryPage() {
       </nav>
 
       <div className="summary-content">
+        <ActivityTimeline />
         <Outlet />
       </div>
     </div>

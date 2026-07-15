@@ -1,0 +1,180 @@
+.activity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--sap-surface-alt, var(--sap-surface));
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.activity-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.activity-timeline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.35rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--sap-text);
+}
+
+.activity-timeline-title {
+  font-weight: var(--weight-semibold, 600);
+  font-size: 1rem;
+}
+
+.activity-timeline-subtitle {
+  color: var(--sap-text-muted);
+  font-size: 0.85rem;
+}
+
+.activity-timeline-body {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.activity-timeline-rail {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.75rem;
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+}
+
+.activity-timeline-dim {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.activity-timeline-dim-heading {
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sap-text-muted);
+}
+
+.activity-timeline-dim-field,
+.activity-timeline-gran select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: var(--sap-text);
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-sm);
+}
+
+.activity-timeline-gran {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sap-text-muted);
+  margin-top: auto;
+}
+
+.activity-timeline-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--sap-text-muted);
+}
+
+.activity-timeline-chart,
+.activity-timeline-charts {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.activity-timeline-overview-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: var(--sap-text-muted);
+  text-align: center;
+}
+
+.activity-timeline-reset {
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg, var(--sap-surface));
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.activity-timeline-reset:hover {
+  background: var(--sap-blue-light);
+}
+
+.activity-timeline-zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sap-text-muted);
+}
+
+.activity-timeline-zoom-btns {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.activity-timeline-zoom-btns button {
+  flex: 1;
+  padding: 0.35rem 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--sap-blue-darker);
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.activity-timeline-zoom-btns button:hover {
+  background: var(--sap-blue-light);
+}
+
+.activity-timeline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 340px;
+  padding: 1rem;
+  text-align: center;
+  color: var(--sap-text-muted);
+  background: var(--sap-surface);
+  border: 1px dashed var(--sap-border);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 720px) {
+  .activity-timeline-body {
+    flex-direction: column;
+  }
+  .activity-timeline-rail {
+    flex-basis: auto;
+  }
+}
