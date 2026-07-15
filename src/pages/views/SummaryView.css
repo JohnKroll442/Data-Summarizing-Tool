@@ -1,0 +1,175 @@
+/* Busiest-periods strip — mirrors the KPI card look. */
+.summary-busiest {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.summary-busiest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--sap-surface-alt, var(--sap-surface));
+  border: 1px solid var(--sap-border);
+  border-left: 3px solid var(--sap-blue);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-busiest-label {
+  font-size: 0.72rem;
+  font-weight: var(--weight-semibold, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sap-text-muted);
+}
+
+.summary-busiest-period {
+  font-size: 1.05rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text);
+}
+
+.summary-busiest-count {
+  font-size: 0.82rem;
+  color: var(--sap-text-muted);
+}
+
+/* Slowest / fastest split. */
+.summary-rank-section {
+  margin-top: 0.5rem;
+}
+
+.summary-rank-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text);
+  text-align: center;
+}
+
+.summary-rank-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.summary-rank-slowest .summary-rank-dot {
+  background: var(--sap-danger, #bb0000);
+}
+
+.summary-rank-fastest .summary-rank-dot {
+  background: var(--sap-success, #107e3e);
+}
+
+.summary-rank-divider {
+  margin: 1.75rem 0;
+  border: none;
+  border-top: 1px solid var(--sap-border);
+}
+
+/* Top-10 grid of ranked lists. */
+.summary-top10-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.summary-top10-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--sap-surface-alt, var(--sap-surface));
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-top10-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text);
+}
+
+.summary-top10-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--sap-text-muted);
+}
+
+.summary-top10-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-top10-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.35rem;
+  font: inherit;
+  text-align: left;
+  color: var(--sap-text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border-bottom: 1px solid var(--sap-border);
+}
+
+.summary-top10-list li:last-child .summary-top10-row {
+  border-bottom: none;
+}
+
+.summary-top10-row:hover {
+  background: var(--sap-blue-light);
+}
+
+.summary-top10-rank {
+  flex: 0 0 1.4rem;
+  font-size: 0.8rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text-muted);
+  text-align: right;
+}
+
+.summary-top10-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.summary-top10-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-top10-sub {
+  font-size: 0.72rem;
+  color: var(--sap-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-top10-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-blue-darker, var(--sap-text));
+}

@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import MultiFilterMenu from './MultiFilterMenu'
 import {
   buildActivityTimeline,
-  listDimensionFields,
-  dimensionOptions,
   granularityLabel,
   bucketSpanMs,
-  chooseGranularity,
-  INTERVAL_OPTIONS,
 } from '../lib/activityTimeline'
 import { buildActivityBarsOption, buildOverviewOption } from './charts/options/activityBars'
 import { useCsvData } from '../context/useCsvData'
@@ -34,7 +29,9 @@ const CONTEXT_FACTOR = 3
  *     to grow/shrink the focused range. Handle labels show the exact day/time.
  *   - Detail: grouped bars for just the focused window, re-bucketed to fit —
  *     so narrowing to a day, then an hour, then 30 minutes drills the bars down
- *     to a 5-minute (or 1-minute) view. The interval dropdown can force a size.
+ *     to a 5-minute (or 1-minute) view. The bucket size is chosen automatically
+ *     to fit the window and shown read-only ("Viewing") — there's no manual
+ *     size control.
  *
  * State is local: the shell doesn't unmount on tab switch, so selections
  * persist across views; they reset on file swap.
@@ -43,35 +40,24 @@ function ActivityTimeline() {
   const { rows, headers, hasData, activeFileId } = useCsvData()
 
   const [collapsed, setCollapsed] = useState(false)
-  const [interval, setInterval] = useState('auto')
   // Focused window (what the detail shows) in epoch ms; null = full data span.
   const [range, setRange] = useState(null)
   // Navigator's visible context range in epoch ms; null = full data span. The
   // focus sits inside this; keeping view ≈ focus × CONTEXT_FACTOR is what keeps
   // the drag box a usable size while the axis labels zoom down to minutes.
   const [viewRange, setViewRange] = useState(null)
-  const [primaryFilter, setPrimaryFilter] = useState({ field: '', values: [] })
-  const [secondaryFilter, setSecondaryFilter] = useState({ field: '', values: [] })
 
-  const fields = useMemo(
-    () => (hasData ? listDimensionFields(rows, headers) : []),
-    [rows, headers, hasData],
-  )
-
-  // Reset everything on file swap (shell persists across tabs).
+  // Reset the window on file swap (shell persists across tabs).
   useEffect(() => {
-    setInterval('auto')
     setRange(null)
     setViewRange(null)
-    setPrimaryFilter({ field: '', values: [] })
-    setSecondaryFilter({ field: '', values: [] })
   }, [activeFileId])
 
   // Overview: full data span, auto interval — gives the strip its context and
   // the true min/max the window maps onto.
   const overview = useMemo(
-    () => (hasData ? buildActivityTimeline(rows, headers, { primaryFilter, secondaryFilter }) : null),
-    [rows, headers, hasData, primaryFilter, secondaryFilter],
+    () => (hasData ? buildActivityTimeline(rows, headers) : null),
+    [rows, headers, hasData],
   )
 
   const span = overview && !overview.empty ? overview.span : null
@@ -105,9 +91,8 @@ function ActivityTimeline() {
 
   // Zoom focus in/out around its center (factor <1 = in, >1 = out) and re-frame
   // the navigator context to ≈ CONTEXT_FACTOR × focus, so the drag box resets to
-  // a comfortable size and the nav labels zoom down toward minutes. Also snap
-  // the bucket size to whatever fits the new focus, so the "Bucket size" shown
-  // matches the bars actually drawn.
+  // a comfortable size and the nav labels zoom down toward minutes. The bucket
+  // size follows the window automatically (see the `detail` build below).
   const zoomBy = useCallback((factor) => {
     if (!span) return
     const fullSpan = spanMax - spanMin
@@ -120,7 +105,6 @@ function ActivityTimeline() {
     const [vlo, vhi] = clampToSpan(center - vw / 2, center + vw / 2)
     setRange({ min: flo, max: fhi })
     setViewRange({ min: vlo, max: vhi })
-    setInterval(chooseGranularity(new Date(flo), new Date(fhi)))
   }, [span, effRange, spanMin, spanMax, clampToSpan])
 
   // Slide the focus left/right by ~80% of its width and re-frame the context
@@ -160,23 +144,26 @@ function ActivityTimeline() {
     return () => clearTimeout(reframeTimer.current)
   }, [effRange, effView, spanMin, spanMax, clampToSpan])
 
-  // Detail: only the focused window, re-bucketed to fit.
+  // Detail: only the focused window, auto-bucketed to fit — the bucket size
+  // follows the window and is reported read-only in the rail.
   const detail = useMemo(
     () =>
       hasData && effRange
-        ? buildActivityTimeline(rows, headers, { interval, range: effRange, primaryFilter, secondaryFilter })
+        ? buildActivityTimeline(rows, headers, { range: effRange })
         : overview,
-    [rows, headers, hasData, interval, effRange, primaryFilter, secondaryFilter, overview],
+    [rows, headers, hasData, effRange, overview],
   )
 
-  // Navigator bars are built over the CONTEXT range (not the full span), so
-  // zooming in makes the strip show finer buckets + minute-level time labels.
+  // Navigator bars use the SAME bucket size the detail resolved to (honored
+  // verbatim over the wider context range), so the strip visually matches the
+  // activity timeline view instead of auto-picking a coarser size.
+  const navInterval = detail && !detail.empty ? detail.granularity : undefined
   const nav = useMemo(
     () =>
       hasData && effView
-        ? buildActivityTimeline(rows, headers, { range: effView, primaryFilter, secondaryFilter })
+        ? buildActivityTimeline(rows, headers, { interval: navInterval, coarsen: false, range: effView })
         : overview,
-    [rows, headers, hasData, effView, primaryFilter, secondaryFilter, overview],
+    [rows, headers, hasData, navInterval, effView, overview],
   )
 
   const overviewOption = useMemo(() => {
@@ -244,30 +231,19 @@ function ActivityTimeline() {
       {!collapsed && (
         <div className="activity-timeline-body">
           <aside className="activity-timeline-rail">
-            <DimensionFilter
-              heading="Primary dimension"
-              fields={fields}
-              rows={rows}
-              value={primaryFilter}
-              onChange={setPrimaryFilter}
-            />
-            <DimensionFilter
-              heading="Secondary dimension"
-              fields={fields}
-              rows={rows}
-              value={secondaryFilter}
-              onChange={setSecondaryFilter}
-            />
-
-            <label className="activity-timeline-gran">
-              <span>Bucket size</span>
-              <select value={interval} onChange={(e) => setInterval(e.target.value)}>
-                <option value="auto">Auto (fit window)</option>
-                {INTERVAL_OPTIONS.map((g) => (
-                  <option key={g.id} value={g.id}>{g.label}</option>
-                ))}
-              </select>
-            </label>
+            <div className="activity-timeline-gran">
+              <span>Viewing</span>
+              <div className="activity-timeline-viewing">
+                <span className="activity-timeline-viewing-range">
+                  {effRange ? fmtRange(effRange) : 'Full range'}
+                </span>
+                {!t.empty && (
+                  <span className="activity-timeline-viewing-bucket">
+                    {granularityLabel(t.granularity)} buckets
+                  </span>
+                )}
+              </div>
+            </div>
 
             <div className="activity-timeline-zoom">
               <span>Navigate</span>
@@ -282,7 +258,7 @@ function ActivityTimeline() {
               <button
                 type="button"
                 className="activity-timeline-reset"
-                onClick={() => { setRange(null); setViewRange(null); setInterval('auto') }}
+                onClick={() => { setRange(null); setViewRange(null) }}
               >
                 Reset to full range
               </button>
@@ -292,8 +268,7 @@ function ActivityTimeline() {
           <div className="activity-timeline-charts">
             {overview.empty ? (
               <div className="activity-timeline-empty">
-                No timestamps to plot. This file has no parseable time column,
-                or the current filters removed every row.
+                No timestamps to plot. This file has no parseable time column.
               </div>
             ) : (
               <>
@@ -319,38 +294,6 @@ function ActivityTimeline() {
         </div>
       )}
     </section>
-  )
-}
-
-function DimensionFilter({ heading, fields, rows, value, onChange }) {
-  const field = fields.find((f) => f.id === value.field)
-  const options = useMemo(
-    () => (field ? dimensionOptions(rows, field.header) : []),
-    [rows, field],
-  )
-
-  return (
-    <div className="activity-timeline-dim">
-      <span className="activity-timeline-dim-heading">{heading}</span>
-      <select
-        className="activity-timeline-dim-field"
-        value={value.field}
-        onChange={(e) => onChange({ field: e.target.value, values: [] })}
-      >
-        <option value="">None</option>
-        {fields.map((f) => (
-          <option key={f.id} value={f.id}>{f.label}</option>
-        ))}
-      </select>
-      {field && (
-        <MultiFilterMenu
-          label={field.label}
-          options={options}
-          selected={value.values}
-          onChange={(values) => onChange({ ...value, values })}
-        />
-      )}
-    </div>
   )
 }
 

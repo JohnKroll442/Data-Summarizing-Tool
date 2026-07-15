@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import DataTable from './DataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
@@ -42,6 +43,7 @@ const WIDGET_TS = (row) =>
  * active filters; clicking the × on either clears just that filter.
  */
 function WidgetSummaryTable({ rows, headers }) {
+  const location = useLocation()
   const {
     sessionFilter,
     setSessionFilter,
@@ -113,7 +115,13 @@ function WidgetSummaryTable({ rows, headers }) {
   )
 
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({})
+  // A one-shot `summaryFilters` router state (from the Summary tab's top-10
+  // rows) seeds the column filters so clicking a widget lands here scoped to
+  // just that widget.
+  const [filters, setFilters] = useState(() => {
+    const nav = location.state?.summaryFilters
+    return nav ? { ...nav } : {}
+  })
   const [sort, setSort] = useState(null)
   const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
   // Clicking a widget name opens the per-widget timing modal. Holds the

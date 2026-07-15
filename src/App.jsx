@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import UploadPage from './pages/UploadPage'
 import SummaryPage from './pages/SummaryPage'
 import RawDataView from './pages/views/RawDataView'
+import SummaryView from './pages/views/SummaryView'
 import SessionView from './pages/views/SessionView'
 import ActionView from './pages/views/ActionView'
 import WidgetView from './pages/views/WidgetView'
@@ -21,7 +22,8 @@ function App() {
       <Routes>
         <Route path="/" element={<UploadPage />} />
         <Route path="/summary" element={<SummaryPage />}>
-          <Route index element={<Navigate to="raw" replace />} />
+          <Route index element={<Navigate to="summary" replace />} />
+          <Route path="summary" element={<SummaryView />} />
           <Route path="raw" element={<RawDataView />} />
           <Route path="session" element={<SessionView />} />
           <Route path="action" element={<ActionView />} />

@@ -54,6 +54,7 @@ function SummaryPage() {
         <NavLink to="session" className="summary-tab">Session View</NavLink>
         <NavLink to="action" className="summary-tab">Action View</NavLink>
         <NavLink to="widget" className="summary-tab">Widget View</NavLink>
+        <NavLink to="summary" className="summary-tab">Summary</NavLink>
       </nav>
 
       <div className="summary-content">

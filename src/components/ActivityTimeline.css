@@ -91,6 +91,30 @@
   margin-top: auto;
 }
 
+.activity-timeline-viewing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.activity-timeline-viewing-range {
+  font-size: 0.82rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text);
+}
+
+.activity-timeline-viewing-bucket {
+  font-size: 0.75rem;
+  font-weight: var(--weight-regular, 400);
+  color: var(--sap-text-muted);
+}
+
 .activity-timeline-note {
   margin: 0;
   font-size: 0.78rem;

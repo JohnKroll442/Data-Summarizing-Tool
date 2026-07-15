@@ -300,6 +300,10 @@ const toDate = (v) => (v instanceof Date ? v : new Date(v))
  *                        `granularity` for back-compat)
  * @param opts.range      { min, max } (Date | epoch ms) — window to bucket;
  *                        defaults to the full data span
+ * @param opts.coarsen    when true (default), an explicit interval is coarsened
+ *                        to fit a readable bar count; when false it's honored
+ *                        verbatim (used to force the nav strip to the detail's
+ *                        exact bucket size, capped only by MAX_BUCKETS).
  * @param opts.primaryFilter / opts.secondaryFilter  { field, values } | null
  * @returns {
  *   granularity, granularityClamped, buckets, series:{sessions,actions,widgets},
@@ -310,6 +314,7 @@ export function buildActivityTimeline(rows, headers, {
   interval,
   granularity,
   range = null,
+  coarsen = true,
   primaryFilter = null,
   secondaryFilter = null,
 } = {}) {
@@ -360,10 +365,10 @@ export function buildActivityTimeline(rows, headers, {
   if (effMax <= effMin) { effMin = spanMin; effMax = spanMax }
 
   // Resolve the interval. 'auto' fits the window; an explicit choice is honored
-  // but coarsened if it would pack in too many bars — the window is never
-  // shrunk to fit, so the drag box stays exactly where the user set it.
+  // but coarsened (unless coarsen:false) if it would pack in too many bars —
+  // the window is never shrunk to fit, so the drag box stays put.
   const id = requested && requested !== 'auto'
-    ? coarsenToFit(requested, effMin, effMax)
+    ? (coarsen ? coarsenToFit(requested, effMin, effMax) : requested)
     : chooseGranularity(effMin, effMax)
 
   const { buckets, indexByKey } = enumerateBuckets(effMin, effMax, id)

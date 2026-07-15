@@ -5,6 +5,7 @@ import {
   SAP_BLUE,
   SAP_BLUE_LIGHT,
   SAP_GOLD,
+  SAP_GOLD_LIGHT,
   SAP_SUCCESS,
   SAP_TEXT,
 } from '../../../lib/chartColors'
@@ -133,7 +134,11 @@ export function buildOverviewOption(points, spanMin, spanMax, range) {
         data: points,
         barWidth: '62%',
         itemStyle: { color: SAP_BLUE_LIGHT, borderRadius: [2, 2, 0, 0] },
-        emphasis: { itemStyle: { color: SAP_BLUE } },
+        // Hover pops in the gold accent so it stands out from the pale-blue
+        // bars and the blue selection handles/filler in this same strip.
+        emphasis: {
+          itemStyle: { color: SAP_GOLD, borderColor: SAP_GOLD_LIGHT, borderWidth: 1 },
+        },
       },
     ],
   }

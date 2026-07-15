@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
 import KpiStrip from './KpiStrip'
@@ -36,6 +36,7 @@ const ACTION_TS = (row) => row._action_timestamp
  */
 function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const {
     sessionFilter,
     setSessionFilter,
@@ -80,10 +81,14 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const [search, setSearch] = useState('')
   // Seed the Action column filter from the shared actionMultiFilter so a
   // selection made elsewhere (drill-down or Widget View) shows here too —
-  // matching how the Session column filter carries over.
-  const [filters, setFilters] = useState(() =>
-    actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {}
-  )
+  // matching how the Session column filter carries over. A one-shot
+  // `summaryFilters` router state (from the Summary tab's top-10 rows) layers
+  // on top, pre-selecting the clicked action + its story.
+  const [filters, setFilters] = useState(() => {
+    const seed = actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {}
+    const nav = location.state?.summaryFilters
+    return nav ? { ...seed, ...nav } : seed
+  })
   const [sort, setSort] = useState(null)
   const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
