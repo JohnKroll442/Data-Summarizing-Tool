@@ -122,6 +122,15 @@
   min-width: 0;
 }
 
+/* The detail chart is grab-to-pan / scroll-to-zoom. */
+.activity-timeline-detail {
+  cursor: grab;
+}
+
+.activity-timeline-detail:active {
+  cursor: grabbing;
+}
+
 .activity-timeline-overview-label {
   margin: 0.25rem 0 0;
   font-size: 0.72rem;
@@ -142,6 +151,46 @@
 
 .activity-timeline-reset:hover {
   background: var(--sap-blue-light);
+}
+
+/* Log-scale toggle in the rail. Reads as a pill; fills in when active. */
+.activity-timeline-scale {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--sap-text);
+  background: var(--sap-surface);
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.activity-timeline-scale::before {
+  content: '';
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--sap-border);
+  background: transparent;
+}
+
+.activity-timeline-scale:hover {
+  background: var(--sap-blue-bg, var(--sap-surface));
+}
+
+.activity-timeline-scale.is-active {
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-light);
+  border-color: var(--sap-blue);
+}
+
+.activity-timeline-scale.is-active::before {
+  background: var(--sap-blue);
+  border-color: var(--sap-blue);
 }
 
 .activity-timeline-legend {

@@ -11,7 +11,6 @@
  *                     one) with the MOST actions.
  */
 
-import { aggregateBySession } from './sessionAggregate'
 import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
 import { actionPoint } from './activityTimeline'
@@ -50,7 +49,6 @@ function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction) {
 function categorySpecs(rows, headers) {
   const widgets = aggregateByWidget(rows, headers).rows
   const actions = aggregateByAction(rows, headers).rows
-  const sessions = aggregateBySession(rows, headers).rows
 
   const widgetLabel = (w) => String(w.widget_name || w.widget_id || '—')
   const widgetSub = (w) =>
@@ -66,7 +64,6 @@ function categorySpecs(rows, headers) {
     widgetSpec('render', 'Widgets by render', 'render'),
     widgetSpec('network', 'Widgets by network', 'network'),
     widgetSpec('backend', 'Widgets by backend', 'backend'),
-    widgetSpec('offset', 'Widgets by offset', 'offset'),
     {
       id: 'action', title: 'Actions by duration', view: 'action', items: actions,
       valueOf: (a) => {
@@ -90,13 +87,6 @@ function categorySpecs(rows, headers) {
         },
       }),
     },
-    {
-      id: 'session', title: 'Sessions by total duration', view: 'session', items: sessions,
-      valueOf: (s) => num(s.total_action_duration),
-      labelOf: (s) => String(s.session || '—'),
-      sublabelOf: (s) => (s.user ? String(s.user) : ''),
-      navOf: (s) => ({ view: 'session', columns: { session: [String(s.session ?? '')] } }),
-    },
   ]
 }
 
@@ -119,14 +109,14 @@ export function computeRankings(rows, headers) {
   return { slowest: build('desc'), fastest: build('asc') }
 }
 
-/** Tally actions into buckets at `granularity`; return a Map<key, {label,count}>. */
+/** Tally actions into buckets at `granularity`; return a Map<key, {label,count,sort}>. */
 function bucketCounts(dates, granularity) {
   const map = new Map()
   for (const d of dates) {
     const b = bucketOf(d, granularity)
     const cur = map.get(b.key)
     if (cur) cur.count++
-    else map.set(b.key, { label: b.label, count: 1 })
+    else map.set(b.key, { label: b.label, count: 1, sort: b.sort })
   }
   return map
 }
@@ -140,13 +130,75 @@ function busiest(map) {
   return best
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Local midnight (epoch ms) of a Date — the calendar day it falls in.
+const dayStartMs = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+
+// "Jun 15 – Jun 22, 2026" (both years shown only when the range crosses a year).
+function rangeLabel(startMs, endMs) {
+  const s = new Date(startMs)
+  const e = new Date(endMs)
+  const day = (d) => `${MONTHS[d.getMonth()]} ${d.getDate()}`
+  return s.getFullYear() === e.getFullYear()
+    ? `${day(s)} – ${day(e)}, ${e.getFullYear()}`
+    : `${day(s)}, ${s.getFullYear()} – ${day(e)}, ${e.getFullYear()}`
+}
+
+/**
+ * Busiest rolling `windowDays`-day stretch by action count — a sliding window
+ * over the calendar days, so a busy run that straddles a calendar week/month
+ * boundary is still found whole (unlike fixed calendar buckets). Returns
+ * { label, count, min, max } for the window [start, start+windowDays) with the
+ * most actions, or null if undated.
+ *
+ * `min`/`max` are the nominal window bounds (the timeline clamps them to the
+ * data span). The label's end is clamped to the last active day, so a window
+ * that overshoots the data reads as its real coverage (e.g. a 30-day window on
+ * ~4 weeks of data shows "Jun 15 – Jul 13", not "… – Jul 15").
+ */
+function busiestWindow(dates, windowDays) {
+  if (dates.length === 0) return null
+  const counts = new Map()
+  for (const d of dates) {
+    const k = dayStartMs(d)
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const days = [...counts.keys()].sort((a, b) => a - b)
+  const lastDay = days[days.length - 1]
+  const windowMs = windowDays * DAY_MS
+
+  // Sliding window: keep days[left..right] within a < windowDays span; the best
+  // sum is the busiest window, anchored at its first active day.
+  let left = 0
+  let sum = 0
+  let best = null
+  for (let right = 0; right < days.length; right++) {
+    sum += counts.get(days[right])
+    while (days[right] - days[left] >= windowMs) {
+      sum -= counts.get(days[left])
+      left++
+    }
+    if (!best || sum > best.count) best = { count: sum, startMs: days[left] }
+  }
+  const max = best.startMs + windowMs
+  return {
+    label: rangeLabel(best.startMs, Math.min(max, lastDay)),
+    count: best.count,
+    min: best.startMs,
+    max,
+  }
+}
+
 /**
  * Busiest periods by ACTION count. Always returns the busiest day (when any
- * action has a parseable timestamp); adds week / month only when the data
- * actually spans more than one of that period (so a single-week file shows no
- * week card). Returns null when there are no dated actions at all.
+ * action has a parseable timestamp); adds the busiest rolling 7-day stretch
+ * only when the data spans more than 7 days, and the busiest month only when
+ * it spans more than one month. Returns null when there are no dated actions.
  *
- * @returns { day, week?, month? } where each is { label, count } | null
+ * Each period carries `{ label, count, min, max }` where min/max are the epoch
+ * ms bounds of that window — so a click can focus the Activity Timeline on it.
  */
 export function computeBusiest(rows, headers) {
   if (!rows?.length || !headers?.length) return null
@@ -155,11 +207,22 @@ export function computeBusiest(rows, headers) {
   if (dates.length === 0) return null
 
   const days = bucketCounts(dates, 'day')
-  const weeks = bucketCounts(dates, 'week')
   const months = bucketCounts(dates, 'month')
 
-  const out = { day: busiest(days) }
-  if (weeks.size > 1) out.week = busiest(weeks)
-  if (months.size > 1) out.month = busiest(months)
+  // Total span in whole days — a 7-day card only makes sense past a week.
+  let minDay = Infinity
+  let maxDay = -Infinity
+  for (const d of dates) {
+    const k = dayStartMs(d)
+    if (k < minDay) minDay = k
+    if (k > maxDay) maxDay = k
+  }
+
+  const dayB = busiest(days)
+  const out = {
+    day: dayB ? { label: dayB.label, count: dayB.count, min: dayB.sort, max: dayB.sort + DAY_MS } : null,
+  }
+  if (maxDay - minDay >= 7 * DAY_MS) out.week = busiestWindow(dates, 7)
+  if (months.size > 1) out.month = busiestWindow(dates, 30)
   return out
 }

@@ -135,6 +135,50 @@ export function buildActionSequenceOption(actionRows) {
 
   const totalDuration = cursor
 
+  // Two vertical markLines anchor the sequence to the action's start (x=0) and
+  // end (x=totalDuration), mirroring the per-widget timing chart. Each line
+  // carries two stacked labels above the plot: the "Action Start/End Timestamp"
+  // tag, and the elapsed value above it. (Elapsed, not a wall-clock time — the
+  // layout is duration-based, same as the widget chart the user likes.)
+  const markLineData = [
+    {
+      xAxis: 0,
+      label: {
+        formatter: 'Action Start Timestamp',
+        position: 'end', distance: [0, 6], color: '#1d2d3e',
+        fontSize: 11, align: 'center', verticalAlign: 'bottom',
+      },
+      lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
+    },
+    {
+      xAxis: 0,
+      label: {
+        formatter: fmtMs(0),
+        position: 'end', distance: [0, 22], color: '#1d2d3e',
+        fontSize: 11, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
+      },
+      lineStyle: { color: 'transparent', width: 0 },
+    },
+    {
+      xAxis: totalDuration,
+      label: {
+        formatter: 'Action End Timestamp',
+        position: 'end', distance: [0, 6], color: '#1d2d3e',
+        fontSize: 11, align: 'center', verticalAlign: 'bottom',
+      },
+      lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
+    },
+    {
+      xAxis: totalDuration,
+      label: {
+        formatter: fmtMs(totalDuration),
+        position: 'end', distance: [0, 22], color: '#1d2d3e',
+        fontSize: 11, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
+      },
+      lineStyle: { color: 'transparent', width: 0 },
+    },
+  ]
+
   return {
     textStyle: BASE_TEXT_STYLE,
     legend: {
@@ -162,11 +206,11 @@ export function buildActionSequenceOption(actionRows) {
         ].join('<br/>')
       },
     },
-    grid: { ...BASE_GRID, left: 260, right: 80, top: 48, bottom: 56 },
+    grid: { ...BASE_GRID, left: 260, right: 96, top: 76, bottom: 56 },
     xAxis: {
       type: 'value',
       min: 0,
-      max: totalDuration * 1.05,
+      max: totalDuration * 1.15,
       name: 'Elapsed time',
       nameLocation: 'middle',
       nameGap: 32,
@@ -221,6 +265,11 @@ export function buildActionSequenceOption(actionRows) {
         stack: 'seq',
         data: durationData.slice().reverse(),
         barCategoryGap: '30%',
+        markLine: {
+          symbol: 'none',
+          silent: true,
+          data: markLineData,
+        },
         label: {
           show: true,
           position: 'right',

@@ -219,6 +219,16 @@ function WidgetSummaryTable({ rows, headers }) {
     if (actionFilter && actionFilter.name === val) setActionFilter(null)
   }
 
+  // Clear a whole scope at once (from a collapsed summary chip).
+  const clearAllSessions = () => {
+    setSessionMultiFilter([])
+    setSessionFilter(null)
+  }
+  const clearAllActions = () => {
+    setActionMultiFilter([])
+    setActionFilter(null)
+  }
+
   // One removable pill per active session, then per active action, then per
   // selected value in the local column filters.
   const pillItems = [
@@ -227,12 +237,14 @@ function WidgetSummaryTable({ rows, headers }) {
       label: 'Session',
       value: val,
       onClear: () => removeSession(val),
+      onClearAll: clearAllSessions,
     })),
     ...actionPillValues.map((val) => ({
       key: `action:${val}`,
       label: 'Action',
       value: val,
       onClear: () => removeAction(val),
+      onClearAll: clearAllActions,
     })),
     ...FILTERABLE_COLUMNS.flatMap((col) => {
       const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
@@ -241,6 +253,7 @@ function WidgetSummaryTable({ rows, headers }) {
         label: col.label,
         value: val,
         onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+        onClearAll: () => updateFilter(col.key, []),
       }))
     }),
   ]

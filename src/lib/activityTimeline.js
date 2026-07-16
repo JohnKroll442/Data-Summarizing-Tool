@@ -233,6 +233,26 @@ export function actionPoint(row) {
   return parseStamp(row._action_timestamp)
 }
 
+/**
+ * Distinct session IDs whose interval overlaps the half-open window
+ * [start, end) (epoch ms). Used to turn a clicked timeline bucket into the set
+ * of sessions active during it, to scope the Session view. Overlap mirrors the
+ * bucket-counting semantics (`countIntervals`): a session counts if it was live
+ * at any point in the window. Reuses the memoized `aggregateBySession`, so
+ * calling it per click is cheap.
+ */
+export function sessionIdsInWindow(rows, headers, start, end) {
+  if (!rows?.length || !headers?.length) return []
+  const ids = new Set()
+  for (const r of aggregateBySession(rows, headers).rows) {
+    const iv = sessionInterval(r)
+    if (iv && iv.start.getTime() < end && iv.end.getTime() >= start) {
+      ids.add(String(r.session))
+    }
+  }
+  return [...ids]
+}
+
 /* ——— dimension fields (scoping filters) ——— */
 
 export function listDimensionFields(rows, headers) {

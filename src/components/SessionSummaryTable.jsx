@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DataTable from './DataTable'
 import KpiStrip from './KpiStrip'
@@ -32,7 +32,7 @@ const SESSION_TS = (row) => row.timestamp_range
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, fileName } = useCsvData()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, fileName } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -47,6 +47,23 @@ function SessionSummaryTable({ rows, headers }) {
   )
   const [sort, setSort] = useState(null)
   const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
+
+  // Keep the Session column filter in sync when sessionMultiFilter changes from
+  // OUTSIDE this table (e.g. clicking a Sessions bar in the Activity Timeline
+  // while this view is already mounted — the mount-time seed above only runs
+  // once). Idempotent: it no-ops when the values already match, so it doesn't
+  // fight updateFilter (which sets both to the same value) or loop. Does NOT
+  // mirror back out — only the incoming direction.
+  useEffect(() => {
+    setFilters((prev) => {
+      const cur = Array.isArray(prev.session) ? prev.session : []
+      if (sameStringSet(cur, sessionMultiFilter)) return prev
+      const next = { ...prev }
+      if (sessionMultiFilter.length > 0) next.session = sessionMultiFilter
+      else delete next.session
+      return next
+    })
+  }, [sessionMultiFilter])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters plus the time filter, so the menus stay in sync.
@@ -101,7 +118,12 @@ function SessionSummaryTable({ rows, headers }) {
   // shared multi-filter that Action View reads (matches the drill-down flow).
   const updateFilter = (colKey, next) => {
     setFilters((prev) => ({ ...prev, [colKey]: next }))
-    if (colKey === 'session') setSessionMultiFilter(next)
+    if (colKey === 'session') {
+      setSessionMultiFilter(next)
+      // The user changed the session set by hand, so the timeline window that
+      // seeded it no longer describes what's shown — drop the label.
+      setSessionFilterWindow(null)
+    }
   }
 
   // One removable pill per selected value across every filterable column, so
@@ -113,6 +135,7 @@ function SessionSummaryTable({ rows, headers }) {
       label: col.label,
       value: val,
       onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+      onClearAll: () => updateFilter(col.key, []),
     }))
   })
 
@@ -218,6 +241,7 @@ function SessionSummaryTable({ rows, headers }) {
               setSearch('')
               setFilters({})
               setSessionMultiFilter([])
+              setSessionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
             }}
           >
@@ -225,6 +249,16 @@ function SessionSummaryTable({ rows, headers }) {
           </button>
         )}
       </div>
+
+      {sessionFilterWindow && Array.isArray(filters.session) && filters.session.length > 0 && (
+        <div className="summary-active-window" role="status">
+          <span className="summary-active-window-dot" aria-hidden="true" />
+          Showing sessions active <strong>{sessionFilterWindow}</strong>
+          <span className="summary-active-window-count">
+            · {filters.session.length} session{filters.session.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
 
       <DataTable
         rows={pageRows}
@@ -284,5 +318,13 @@ const FILTERABLE_COLUMNS = [
   { key: 'user',    label: 'User' },
   { key: 'story',   label: 'Story' },
 ]
+
+// Order-insensitive equality for two string arrays — used to skip redundant
+// filter updates when the external multi-filter already matches the local one.
+function sameStringSet(a, b) {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((v) => set.has(v))
+}
 
 export default SessionSummaryTable

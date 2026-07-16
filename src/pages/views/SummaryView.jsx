@@ -18,6 +18,7 @@ function SummaryView() {
     setActionFilter,
     setSessionMultiFilter,
     setActionMultiFilter,
+    focusTimeline,
   } = useCsvData()
   const navigate = useNavigate()
 
@@ -40,8 +41,8 @@ function SummaryView() {
   const busiestCards = busiest
     ? [
         { key: 'day', label: 'Busiest day', period: busiest.day },
-        { key: 'week', label: 'Busiest week', period: busiest.week },
-        { key: 'month', label: 'Busiest month', period: busiest.month },
+        { key: 'week', label: 'Busiest 7 days', period: busiest.week },
+        { key: 'month', label: 'Busiest 30 Days', period: busiest.month },
       ].filter((c) => c.period)
     : []
 
@@ -83,13 +84,19 @@ function SummaryView() {
       {busiestCards.length > 0 && (
         <div className="summary-busiest" role="group" aria-label="Busiest periods">
           {busiestCards.map((c) => (
-            <div className="summary-busiest-card" key={c.key}>
+            <button
+              type="button"
+              className="summary-busiest-card"
+              key={c.key}
+              onClick={() => focusTimeline(c.period.min, c.period.max)}
+              title="Focus the Activity Timeline on this period"
+            >
               <div className="summary-busiest-label">{c.label}</div>
               <div className="summary-busiest-period">{c.period.label}</div>
               <div className="summary-busiest-count">
                 {formatCount(c.period.count)} actions
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

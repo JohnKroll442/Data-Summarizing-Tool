@@ -59,7 +59,12 @@ function SummaryPage() {
 
       <div className="summary-content">
         <ActivityTimeline />
-        <Outlet />
+        {/* Scroll anchor: the Sessions-bar click in ActivityTimeline collapses
+            the timeline and scrolls this into view so the filtered table is
+            front and center. */}
+        <div id="summary-view-top">
+          <Outlet />
+        </div>
       </div>
     </div>
   )

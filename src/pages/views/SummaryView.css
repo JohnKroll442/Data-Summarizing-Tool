@@ -35,6 +35,23 @@
   border-left: 3px solid var(--sap-blue);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  /* Clickable: focuses the Activity Timeline on this period. */
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.summary-busiest-card:hover {
+  background: var(--sap-blue-bg, var(--sap-surface));
+  box-shadow: var(--shadow-md);
+}
+
+.summary-busiest-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.25);
 }
 
 .summary-busiest-label {

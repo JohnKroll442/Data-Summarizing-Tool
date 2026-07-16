@@ -16,9 +16,9 @@ const W_ROWS = [
 ]
 
 describe('computeRankings', () => {
-  it('returns slowest and fastest, each with the six lists in order', () => {
+  it('returns slowest and fastest, each with the four lists in order', () => {
     const { slowest, fastest } = computeRankings(W_ROWS, W_HEADERS)
-    const ids = ['render', 'network', 'backend', 'offset', 'action', 'session']
+    const ids = ['render', 'network', 'backend', 'action']
     expect(slowest.map((l) => l.id)).toEqual(ids)
     expect(fastest.map((l) => l.id)).toEqual(ids)
   })
@@ -96,8 +96,10 @@ describe('computeBusiest', () => {
     const b = computeBusiest(rows, A_HEADERS)
     expect(b.day.count).toBe(2)
     expect(b.day.label).toContain('Jun 1')
-    expect(b.week.count).toBe(3) // week of Jun 1 holds A, B, C
-    expect(b.month).toMatchObject({ label: 'Jun 2026', count: 3 })
+    expect(b.week.count).toBe(3) // busiest 7-day stretch holds A, B, C
+    // Busiest 30-day stretch is now a rolling window with a range label
+    // (anchored at Jun 1; A, B, C fall inside, D is 44 days later).
+    expect(b.month).toMatchObject({ label: 'Jun 1 – Jul 1, 2026', count: 3 })
   })
 
   it('omits week and month when the data is a single day', () => {

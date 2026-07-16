@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import {
   buildActivityTimeline,
   granularityLabel,
   bucketSpanMs,
+  sessionIdsInWindow,
 } from '../lib/activityTimeline'
 import { buildActivityBarsOption, buildOverviewOption } from './charts/options/activityBars'
 import { useCsvData } from '../context/useCsvData'
@@ -17,6 +19,19 @@ const MIN_WINDOW_MS = 4 * 60 * 1000
 // so the drag box stays a comfortable, grabbable size at ANY zoom level (a
 // minute-wide focus still fills ~1/CONTEXT_FACTOR of the navigator).
 const CONTEXT_FACTOR = 3
+
+// Per wheel-notch zoom factor. Gentle (10%) so it feels smooth; rapid scrolls
+// coalesce per animation frame so trackpads glide instead of jumping.
+const WHEEL_STEP = 0.9
+// Pixels of movement before a mouse-down becomes a pan (vs. a bar click).
+const DRAG_THRESHOLD = 4
+
+// Clamp [lo,hi] into [min,max], preserving width by sliding at the edges.
+function clampToSpanPure(lo, hi, min, max) {
+  if (lo < min) { hi += min - lo; lo = min }
+  if (hi > max) { lo -= hi - max; hi = max }
+  return [Math.max(min, lo), Math.min(max, hi)]
+}
 
 // Header color key ⇄ detail series. `key` doubles as the swatch modifier class
 // (swatch-<key>) and the `hidden` state field; `label` matches the series name
@@ -46,12 +61,28 @@ const LEGEND_ITEMS = [
  * persist across views; they reset on file swap.
  */
 function ActivityTimeline() {
-  const { rows, headers, hasData, activeFileId } = useCsvData()
+  const {
+    rows,
+    headers,
+    hasData,
+    activeFileId,
+    setSessionFilter,
+    setSessionMultiFilter,
+    setActionFilter,
+    setActionMultiFilter,
+    setSessionFilterWindow,
+    timelineFocus,
+  } = useCsvData()
+  const navigate = useNavigate()
+  const rootRef = useRef(null)
 
   const [collapsed, setCollapsed] = useState(false)
   // Series toggled off via the header color key — hidden ones drop out of the
   // detail bars (the remaining bars re-center) just like the old legend clicks.
   const [hidden, setHidden] = useState({ sessions: false, actions: false, widgets: false })
+  // Log y-axis makes small bars readable next to a dominant spike; off by
+  // default since a linear axis reads more naturally for exact counts.
+  const [logScale, setLogScale] = useState(false)
   const toggleSeries = useCallback(
     (key) => setHidden((h) => ({ ...h, [key]: !h[key] })),
     [],
@@ -99,11 +130,28 @@ function ActivityTimeline() {
     return { min, max }
   }, [span, viewRange, spanMin, spanMax, effRange])
 
-  const clampToSpan = useCallback((lo, hi) => {
-    if (lo < spanMin) { hi += spanMin - lo; lo = spanMin }
-    if (hi > spanMax) { lo -= hi - spanMax; hi = spanMax }
-    return [Math.max(spanMin, lo), Math.min(spanMax, hi)]
-  }, [spanMin, spanMax])
+  const clampToSpan = useCallback(
+    (lo, hi) => clampToSpanPure(lo, hi, spanMin, spanMax),
+    [spanMin, spanMax],
+  )
+
+  // Focus the timeline on a window requested from elsewhere (a "busiest day /
+  // 7 days / month" card on the Summary view). Sets the focus + navigator
+  // context, expands the panel if collapsed, and scrolls it into view.
+  useEffect(() => {
+    if (!timelineFocus || !span) return
+    const [flo, fhi] = clampToSpan(timelineFocus.min, timelineFocus.max)
+    if (fhi <= flo) return
+    setRange({ min: flo, max: fhi })
+    const vw = Math.min(spanMax - spanMin, (fhi - flo) * CONTEXT_FACTOR)
+    const c = (flo + fhi) / 2
+    const [vlo, vhi] = clampToSpan(c - vw / 2, c + vw / 2)
+    setViewRange({ min: vlo, max: vhi })
+    setCollapsed(false)
+    requestAnimationFrame(() => {
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [timelineFocus, span, spanMin, spanMax, clampToSpan])
 
   // After a drag settles, re-frame the navigator context around the focus so
   // the drag box stays a comfortable ~1/CONTEXT_FACTOR size and you can keep
@@ -162,8 +210,8 @@ function ActivityTimeline() {
   }, [nav, effView, effRange])
 
   const detailOption = useMemo(
-    () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series, hidden) : { series: [] }),
-    [detail, hidden],
+    () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series, hidden, logScale) : { series: [] }),
+    [detail, hidden, logScale],
   )
 
   // ECharts reports the slider window in epoch ms (fall back to mapping the
@@ -187,6 +235,189 @@ function ActivityTimeline() {
     setRange({ min, max })
   }, [effView])
 
+  // ——— Wheel zoom + drag-pan on the detail chart ———
+  // Wheel zooms the focused window in/out around the timestamp under the
+  // pointer (auto-refining bucket size: day → hour → 5-min → 1-min); click-drag
+  // pans the window through time. Both mutate effRange, so they feel like one
+  // continuous navigation and stay in sync with the overview strip. Handlers
+  // are stable and read live state from a ref, so DOM listeners attach once.
+  const detailChartRef = useRef(null)
+  const detailWrapRef = useRef(null)
+  const stateRef = useRef({})
+  stateRef.current = { collapsed, effRange, spanMin, spanMax, hasSpan: !!span, detail }
+  // Set while dragging so the click that fires on mouse-up doesn't also trigger
+  // the Sessions-bar drill-down.
+  const didPanRef = useRef(false)
+
+  // rAF-coalesced wheel zoom: many wheel/trackpad events in one frame combine
+  // into one smooth step rather than a stack of jumps.
+  const wheelAccum = useRef(1)
+  const wheelAnchor = useRef(null)
+  const wheelPending = useRef(false)
+  const applyWheelZoom = useCallback(() => {
+    wheelPending.current = false
+    const s = stateRef.current
+    const factor = Math.min(2, Math.max(0.5, wheelAccum.current))
+    wheelAccum.current = 1
+    if (!s.effRange || !s.hasSpan) return
+    const width = s.effRange.max - s.effRange.min
+    const fullSpan = s.spanMax - s.spanMin
+    const newWidth = Math.min(fullSpan, Math.max(MIN_WINDOW_MS, width * factor))
+    if (Math.abs(newWidth - width) < 1) return // at the min/max already
+    let anchor = wheelAnchor.current ?? (s.effRange.min + s.effRange.max) / 2
+    anchor = Math.max(s.effRange.min, Math.min(s.effRange.max, anchor))
+    const frac = width > 0 ? (anchor - s.effRange.min) / width : 0.5
+    const [flo, fhi] = clampToSpanPure(anchor - frac * newWidth, anchor + (1 - frac) * newWidth, s.spanMin, s.spanMax)
+    setRange({ min: flo, max: fhi })
+    const vw = Math.min(fullSpan, newWidth * CONTEXT_FACTOR)
+    const c = (flo + fhi) / 2
+    const [vlo, vhi] = clampToSpanPure(c - vw / 2, c + vw / 2, s.spanMin, s.spanMax)
+    setViewRange({ min: vlo, max: vhi })
+  }, [])
+
+  const onDetailWheel = useCallback((e) => {
+    const s = stateRef.current
+    if (s.collapsed || !s.hasSpan || !s.effRange || !s.detail || s.detail.empty) return
+    e.preventDefault()
+    // Anchor = the timestamp under the cursor (falls back to window center).
+    let anchor = (s.effRange.min + s.effRange.max) / 2
+    const inst = detailChartRef.current?.getEchartsInstance?.()
+    const n = s.detail.buckets.length
+    if (inst && n > 0) {
+      const rect = inst.getDom().getBoundingClientRect()
+      let idx = inst.convertFromPixel({ xAxisIndex: 0 }, e.clientX - rect.left)
+      if (Array.isArray(idx)) idx = idx[0]
+      if (Number.isFinite(idx)) {
+        idx = Math.max(0, Math.min(n - 1, idx))
+        const i = Math.floor(idx)
+        anchor = s.detail.buckets[i].sort + (idx - i) * bucketSpanMs(s.detail.granularity)
+      }
+    }
+    wheelAnchor.current = anchor
+    wheelAccum.current *= e.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP
+    if (!wheelPending.current) {
+      wheelPending.current = true
+      requestAnimationFrame(applyWheelZoom)
+    }
+  }, [applyWheelZoom])
+
+  // Drag-to-pan: shift the focus window through time (grab-style — drag right
+  // reveals earlier data). ms-per-pixel is measured from the chart geometry at
+  // grab time so the content tracks the cursor 1:1.
+  const dragRef = useRef(null)
+  const onDetailPointerMove = useCallback((e) => {
+    const d = dragRef.current
+    if (!d) return
+    const dx = e.clientX - d.startX
+    if (!d.moved) {
+      if (Math.abs(dx) < DRAG_THRESHOLD) return
+      d.moved = true
+      didPanRef.current = true
+    }
+    const shift = -dx * d.msPerPx
+    const [flo, fhi] = clampToSpanPure(d.startMin + shift, d.startMax + shift, d.spanMin, d.spanMax)
+    setRange({ min: flo, max: fhi })
+    const fullSpan = d.spanMax - d.spanMin
+    const vw = Math.min(fullSpan, (fhi - flo) * CONTEXT_FACTOR)
+    const c = (flo + fhi) / 2
+    const [vlo, vhi] = clampToSpanPure(c - vw / 2, c + vw / 2, d.spanMin, d.spanMax)
+    setViewRange({ min: vlo, max: vhi })
+  }, [])
+  const onDetailPointerUp = useCallback(() => {
+    dragRef.current = null
+    window.removeEventListener('pointermove', onDetailPointerMove)
+    window.removeEventListener('pointerup', onDetailPointerUp)
+  }, [onDetailPointerMove])
+  const onDetailPointerDown = useCallback((e) => {
+    if (e.button !== 0) return
+    const s = stateRef.current
+    if (s.collapsed || !s.hasSpan || !s.effRange || !s.detail || s.detail.empty) return
+    const inst = detailChartRef.current?.getEchartsInstance?.()
+    if (!inst) return
+    const buckets = s.detail.buckets
+    const n = buckets.length
+    const rect = inst.getDom().getBoundingClientRect()
+    let msPerPx
+    if (n >= 2) {
+      const px0 = inst.convertToPixel({ xAxisIndex: 0 }, 0)
+      const pxN = inst.convertToPixel({ xAxisIndex: 0 }, n - 1)
+      const dpx = pxN - px0
+      if (Number.isFinite(dpx) && Math.abs(dpx) > 1) {
+        msPerPx = (buckets[n - 1].sort - buckets[0].sort) / dpx
+      }
+    }
+    if (!Number.isFinite(msPerPx) || msPerPx <= 0) {
+      msPerPx = (s.effRange.max - s.effRange.min) / (rect.width || 1)
+    }
+    didPanRef.current = false
+    dragRef.current = {
+      startX: e.clientX,
+      startMin: s.effRange.min,
+      startMax: s.effRange.max,
+      spanMin: s.spanMin,
+      spanMax: s.spanMax,
+      msPerPx,
+      moved: false,
+    }
+    window.addEventListener('pointermove', onDetailPointerMove)
+    window.addEventListener('pointerup', onDetailPointerUp)
+  }, [onDetailPointerMove, onDetailPointerUp])
+
+  // Attach wheel (non-passive so preventDefault stops the page scrolling) and
+  // pointer-down natively; re-run when the chart mounts/unmounts.
+  useEffect(() => {
+    const el = detailWrapRef.current
+    if (!el) return undefined
+    el.addEventListener('wheel', onDetailWheel, { passive: false })
+    el.addEventListener('pointerdown', onDetailPointerDown)
+    return () => {
+      el.removeEventListener('wheel', onDetailWheel)
+      el.removeEventListener('pointerdown', onDetailPointerDown)
+    }
+  }, [collapsed, overview, onDetailWheel, onDetailPointerDown])
+
+
+  // during that bucket's [start, end) window. Only the Sessions series is
+  // actionable; Actions/Widgets clicks are ignored. Works whether or not we're
+  // already on the Session tab: the shared sessionMultiFilter both seeds a fresh
+  // SessionSummaryTable mount and is synced live by an already-mounted one.
+  const onDetailClick = useCallback((params) => {
+    // Ignore the click that fires at the end of a drag-pan.
+    if (didPanRef.current) { didPanRef.current = false; return }
+    if (params?.componentType !== 'series' || params.seriesName !== 'Sessions') return
+    if (!detail || detail.empty) return
+    const b = detail.buckets[params.dataIndex]
+    if (!b) return
+    const start = b.sort
+    const end = detail.buckets[params.dataIndex + 1]?.sort
+      ?? b.sort + bucketSpanMs(detail.granularity)
+    const ids = sessionIdsInWindow(rows, headers, start, end)
+    if (ids.length === 0) return
+    // Clear other drill state (mirrors SummaryView.openEntity) and scope to
+    // exactly these sessions.
+    setSessionFilter(null)
+    setActionFilter(null)
+    setActionMultiFilter([])
+    setSessionMultiFilter(ids)
+    // Record the clicked bucket's window so the Session view can show which
+    // period this filter came from.
+    setSessionFilterWindow(fmtRange({ min: start, max: end }))
+    navigate('/summary/session')
+    // Minimize the timeline and jump down to the freshly-filtered table so it's
+    // the focus. rAF runs after React commits the collapse + navigation, so the
+    // anchor sits at its final (post-collapse) position when we scroll.
+    setCollapsed(true)
+    requestAnimationFrame(() => {
+      document
+        .getElementById('summary-view-top')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [
+    detail, rows, headers, navigate,
+    setSessionFilter, setActionFilter, setActionMultiFilter, setSessionMultiFilter,
+    setSessionFilterWindow,
+  ])
+
   if (!hasData || !overview) return null
 
   const zoomed = !!range || !!viewRange
@@ -198,7 +429,7 @@ function ActivityTimeline() {
       (effRange ? ` · ${fmtRange(effRange)}` : '')
 
   return (
-    <section className="activity-timeline">
+    <section className="activity-timeline" ref={rootRef}>
       <header className="activity-timeline-header">
         <button
           type="button"
@@ -246,6 +477,16 @@ function ActivityTimeline() {
               </div>
             </div>
 
+            <button
+              type="button"
+              className={`activity-timeline-scale${logScale ? ' is-active' : ''}`}
+              onClick={() => setLogScale((v) => !v)}
+              aria-pressed={logScale}
+              title="Log scale makes small bars visible next to a large spike"
+            >
+              Log scale
+            </button>
+
             {zoomed && (
               <button
                 type="button"
@@ -264,12 +505,16 @@ function ActivityTimeline() {
               </div>
             ) : (
               <>
-                <ReactECharts
-                  option={detailOption}
-                  style={{ height: 300, width: '100%' }}
-                  notMerge
-                  lazyUpdate
-                />
+                <div className="activity-timeline-detail" ref={detailWrapRef}>
+                  <ReactECharts
+                    ref={detailChartRef}
+                    option={detailOption}
+                    style={{ height: 300, width: '100%' }}
+                    notMerge
+                    lazyUpdate
+                    onEvents={{ click: onDetailClick }}
+                  />
+                </div>
                 <div className="activity-timeline-overview-label">
                   Drag the window below to focus a day, hour, or minute range
                 </div>

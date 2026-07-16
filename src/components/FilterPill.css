@@ -26,6 +26,40 @@
   margin-bottom: 0;
 }
 
+/* Collapsed summary chip: same shell as a pill, a shade darker so it reads as
+   an aggregate ("Session · 76 selected") rather than one value. */
+.filter-pill-summary {
+  background: var(--sap-blue-dark);
+  border-color: var(--sap-blue-darker);
+}
+
+/* Inline "Show all" / "Show less" text toggle. Blue when standing on the light
+   bar; light when it sits inside the (dark) summary chip. */
+.filter-pill-toggle {
+  align-self: center;
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--sap-blue);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.filter-pill-toggle:hover {
+  color: var(--sap-blue-darker);
+}
+
+.filter-pill-summary .filter-pill-toggle {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.filter-pill-summary .filter-pill-toggle:hover {
+  color: #fff;
+}
+
 .filter-pill-label {
   font-weight: var(--weight-semibold);
   text-transform: uppercase;

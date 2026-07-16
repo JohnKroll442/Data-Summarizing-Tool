@@ -79,6 +79,20 @@ export function CsvDataProvider({ children }) {
   const [sessionMultiFilter, setSessionMultiFilter] = useState([])
   const [actionMultiFilter, setActionMultiFilter] = useState([])
 
+  // When the session filter was seeded by clicking a Sessions bar in the
+  // Activity Timeline, this holds a human label for that bucket's time window
+  // (e.g. "Jun 15, 10:00 → Jun 15, 11:00") so the Session view can show which
+  // period the current filter came from. null when the filter wasn't set that
+  // way (or was cleared / manually edited).
+  const [sessionFilterWindow, setSessionFilterWindow] = useState(null)
+
+  // A request to focus the Activity Timeline on a time window (epoch ms), set
+  // by clicking a "busiest day / 7 days / month" card on the Summary view. A
+  // fresh object each call so the timeline's effect re-fires even for the same
+  // window. null = no pending request.
+  const [timelineFocus, setTimelineFocus] = useState(null)
+  const focusTimeline = useCallback((min, max) => setTimelineFocus({ min, max }), [])
+
   // Compare selection — ephemeral, not persisted to localStorage.
   const [baselineId, setBaselineIdState] = useState(null)
   const [currentId, setCurrentIdState] = useState(null)
@@ -94,6 +108,8 @@ export function CsvDataProvider({ children }) {
     setActionFilter(null)
     setSessionMultiFilter([])
     setActionMultiFilter([])
+    setSessionFilterWindow(null)
+    setTimelineFocus(null)
   }, [])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
@@ -264,6 +280,10 @@ export function CsvDataProvider({ children }) {
         setSessionMultiFilter,
         actionMultiFilter,
         setActionMultiFilter,
+        sessionFilterWindow,
+        setSessionFilterWindow,
+        timelineFocus,
+        focusTimeline,
         baselineId,
         currentId,
         setBaselineId,
@@ -287,6 +307,9 @@ export function CsvDataProvider({ children }) {
       actionFilter,
       sessionMultiFilter,
       actionMultiFilter,
+      sessionFilterWindow,
+      timelineFocus,
+      focusTimeline,
       baselineId,
       currentId,
       setBaselineId,

@@ -21,10 +21,13 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
  * @param hidden   { sessions?:bool, actions?:bool, widgets?:bool } — series the
  *                 user has toggled off via the header key; hidden ones drop out
  *                 and the remaining bars re-center, exactly like a legend click.
+ * @param logScale when true, plot the count axis logarithmically so small bars
+ *                 stay visible next to a dominant spike (zero-count bars simply
+ *                 don't render, which is fine — they're empty).
  * Returns an empty `series` array when there are no buckets so EChartCard /
  * the panel can show a "no data" state.
  */
-export function buildActivityBarsOption(buckets, series, hidden = {}) {
+export function buildActivityBarsOption(buckets, series, hidden = {}, logScale = false) {
   if (!buckets || buckets.length === 0) return { series: [] }
 
   return {
@@ -46,14 +49,15 @@ export function buildActivityBarsOption(buckets, series, hidden = {}) {
     },
     grid: { ...BASE_GRID },
     xAxis: { type: 'category', data: buckets.map((b) => b.label), axisLabel: { hideOverlap: true } },
-    yAxis: { type: 'value', minInterval: 1 },
-    // Inside zoom lets the user scroll/pinch within the window too; the main
-    // range selection lives on the overview strip's slider.
-    dataZoom: [{ type: 'inside', xAxisIndex: 0 }],
+    yAxis: logScale
+      ? { type: 'log', minorSplitLine: { show: true } }
+      : { type: 'value', minInterval: 1 },
     series: [
-      { name: 'Sessions',       type: 'bar', data: series.sessions, ...BAR_STYLE },
-      { name: 'Actions',        type: 'bar', data: series.actions,  ...BAR_STYLE },
-      { name: 'Widgets active', type: 'bar', data: series.widgets,  ...BAR_STYLE },
+      // Only Sessions is clickable (opens the filtered Session view), so it
+      // gets the pointer cursor; the other two use the default arrow.
+      { name: 'Sessions',       type: 'bar', data: series.sessions, cursor: 'pointer', ...BAR_STYLE },
+      { name: 'Actions',        type: 'bar', data: series.actions,  cursor: 'default', ...BAR_STYLE },
+      { name: 'Widgets active', type: 'bar', data: series.widgets,  cursor: 'default', ...BAR_STYLE },
     ],
   }
 }

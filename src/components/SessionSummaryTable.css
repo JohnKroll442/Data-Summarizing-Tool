@@ -12,6 +12,37 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Banner shown when the session filter was seeded by clicking a Sessions bar
+   in the Activity Timeline — tells the user which time window is in view. */
+.summary-active-window {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg, var(--sap-surface));
+  border: 1px solid var(--sap-blue-light);
+  border-radius: var(--radius-md);
+}
+
+.summary-active-window strong {
+  font-weight: var(--weight-semibold);
+}
+
+.summary-active-window-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--sap-blue);
+}
+
+.summary-active-window-count {
+  color: var(--sap-text-muted);
+}
+
 .summary-filter-search {
   flex: 1 1 220px;
   min-width: 180px;

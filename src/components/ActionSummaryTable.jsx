@@ -185,6 +185,12 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     if (sessionFilter === val) setSessionFilter(null)
   }
 
+  // Clear the whole Session scope at once (from the collapsed summary chip).
+  const clearAllSessions = () => {
+    setSessionMultiFilter([])
+    setSessionFilter(null)
+  }
+
   // One removable pill per active session, then one per selected value in the
   // local column filters (User / Action / Story / Page).
   const pillItems = [
@@ -193,6 +199,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
       label: 'Session',
       value: val,
       onClear: () => removeSession(val),
+      onClearAll: clearAllSessions,
     })),
     ...FILTERABLE_COLUMNS.flatMap((col) => {
       const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
@@ -201,6 +208,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         label: col.label,
         value: val,
         onClear: () => updateFilter(col.key, selected.filter((v) => v !== val)),
+        onClearAll: () => updateFilter(col.key, []),
       }))
     }),
   ]
