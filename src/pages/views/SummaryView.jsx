@@ -76,11 +76,9 @@ function SummaryView() {
 
   return (
     <>
-      <h2 className="view-heading">Summary</h2>
-      <p className="view-subheading">
-        The busiest periods and the slowest / fastest widgets, actions, and
-        sessions at a glance. Click a row to open its view.
-      </p>
+      <header className="summary-view-header">
+        <h2 className="view-heading">Summary</h2>
+      </header>
 
       {busiestCards.length > 0 && (
         <div className="summary-busiest" role="group" aria-label="Busiest periods">

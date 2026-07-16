@@ -22,27 +22,24 @@
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--sap-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .kpi-delta-values {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.5rem;
   min-width: 0;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.15;
 }
 
 .kpi-delta-baseline {
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
   color: var(--sap-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 
@@ -58,9 +55,8 @@
   font-weight: var(--weight-bold);
   color: var(--sap-text);
   letter-spacing: var(--tracking-tight);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Show the full value no matter how long — wrap rather than clip. */
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 

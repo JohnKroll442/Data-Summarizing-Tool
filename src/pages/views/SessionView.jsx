@@ -8,11 +8,7 @@ function SessionView() {
   return (
     <>
       <h2 className="view-heading">Session View</h2>
-      <p className="view-subheading">
-        One row per session — search or filter to narrow the list.
-      </p>
       <SessionSummaryTable rows={rows} headers={headers} />
-
       <h3 className="view-section-heading">Charts</h3>
       <ChartGrid viewId="session" rows={rows} headers={headers} />
     </>

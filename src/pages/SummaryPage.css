@@ -147,6 +147,12 @@
   width: 100%;
 }
 
+/* The shared Activity Timeline sits directly above each view's content; give
+   it clear breathing room so the panel doesn't butt up against the heading. */
+.summary-content > .activity-timeline {
+  margin-bottom: 1.75rem;
+}
+
 /* Responsive grid for chart cards. Cards self-size with a 360px min width,
    so on narrow viewports they stack into a single column. */
 .view-charts {
@@ -163,12 +169,14 @@
   font-weight: var(--weight-semibold);
   line-height: 1.15;
   letter-spacing: var(--tracking-heading);
+  text-align: center;
 }
 
 .view-subheading {
   margin: 0 0 1rem;
   font-size: var(--text-base);
   color: var(--sap-text-muted);
+  text-align: center;
 }
 
 /* Section heading used by views that have more than one section (e.g.

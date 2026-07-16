@@ -50,9 +50,6 @@ function ActionView() {
   return (
     <>
       <h2 className="view-heading">Action View</h2>
-      <p className="view-subheading">
-        One row per action — search or filter to narrow the list.
-      </p>
       <ActionSummaryTable
         rows={rows}
         headers={headers}

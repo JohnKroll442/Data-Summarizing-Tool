@@ -39,9 +39,6 @@ function WidgetView() {
   return (
     <>
       <h2 className="view-heading">Widget View</h2>
-      <p className="view-subheading">
-        One row per widget — search or filter to narrow the list.
-      </p>
       <WidgetSummaryTable rows={rows} headers={headers} />
 
       <h3 className="view-section-heading">Charts</h3>

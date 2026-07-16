@@ -10,28 +10,41 @@ import {
   SAP_TEXT,
 } from '../../../lib/chartColors'
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
 /**
  * Detail chart — grouped bars per bucket for the three activity metrics over
  * the currently-selected time window.
  *
  * @param buckets  [{ key, label, sort }] chronological, contiguous
  * @param series   { sessions:number[], actions:number[], widgets:number[] }
+ * @param hidden   { sessions?:bool, actions?:bool, widgets?:bool } — series the
+ *                 user has toggled off via the header key; hidden ones drop out
+ *                 and the remaining bars re-center, exactly like a legend click.
  * Returns an empty `series` array when there are no buckets so EChartCard /
  * the panel can show a "no data" state.
  */
-export function buildActivityBarsOption(buckets, series) {
+export function buildActivityBarsOption(buckets, series, hidden = {}) {
   if (!buckets || buckets.length === 0) return { series: [] }
 
   return {
     color: [SAP_BLUE, SAP_GOLD, SAP_SUCCESS],
     textStyle: BASE_TEXT_STYLE,
     tooltip: { ...BASE_TOOLTIP, trigger: 'axis', axisPointer: { type: 'shadow' } },
+    // The visible color key lives in the panel header (HTML legend). This
+    // legend is kept but hidden (show:false) purely to drive series visibility:
+    // the header buttons flip `selected` here, so toggling a series off makes
+    // the grouped bars re-center just as clicking the old chart legend did.
     legend: {
+      show: false,
       data: ['Sessions', 'Actions', 'Widgets active'],
-      bottom: 0,
-      textStyle: { color: '#fff' },
+      selected: {
+        Sessions: !hidden.sessions,
+        Actions: !hidden.actions,
+        'Widgets active': !hidden.widgets,
+      },
     },
-    grid: { ...BASE_GRID, bottom: 48 },
+    grid: { ...BASE_GRID },
     xAxis: { type: 'category', data: buckets.map((b) => b.label), axisLabel: { hideOverlap: true } },
     yAxis: { type: 'value', minInterval: 1 },
     // Inside zoom lets the user scroll/pinch within the window too; the main
@@ -72,9 +85,8 @@ export function buildOverviewOption(points, spanMin, spanMax, range) {
 
   const fmt = (ms) => {
     const d = new Date(ms)
-    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]
     const p = (n) => String(n).padStart(2, '0')
-    return `${mon} ${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`
+    return `${MONTHS[d.getMonth()]} ${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`
   }
 
   return {
@@ -89,18 +101,53 @@ export function buildOverviewOption(points, spanMin, spanMax, range) {
     // Slider overlays this exact rect (same left/right/top/bottom) so the drag
     // window sits directly ON the day bars rather than in a separate track.
     grid: { left: 10, right: 10, top: 16, bottom: 30 },
-    xAxis: {
-      type: 'time',
-      min: spanMin,
-      max: spanMax,
-      axisTick: { show: false },
-      axisLabel: { hideOverlap: true },
-    },
+    // Two identical time axes over the SAME grid rect. Axis 0 draws the bars and
+    // the date labels and is NEVER zoomed, so the strip always shows the full
+    // context span. Axis 1 is invisible and exists only for the slider to act
+    // on. Pointing the slider at axis 0 (the old setup) zoomed the strip itself:
+    // the bars/labels stretched to the selected window while the handles stayed
+    // mapped to the full extent, so the window you dragged no longer matched the
+    // dates printed beneath it. With a dedicated hidden axis sharing the same
+    // [min,max] and pixel rect, the handles line up exactly with the bars below.
+    xAxis: [
+      {
+        type: 'time',
+        min: spanMin,
+        max: spanMax,
+        axisTick: { show: false },
+        axisLabel: {
+          hideOverlap: true,
+          // Match the time axis's natural levels but enlarge month boundaries.
+          // A tick at midnight is a day/month gridline: the 1st reads as a
+          // section header (large, bold month name), other days a small number.
+          // Intra-day ticks (when zoomed to hours/minutes) show the time. Keyed
+          // off the date itself, so it applies to every month, not just Jul.
+          formatter: (value) => {
+            const d = new Date(value)
+            const p = (n) => String(n).padStart(2, '0')
+            if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+              return `{day|${p(d.getHours())}:${p(d.getMinutes())}}`
+            }
+            return d.getDate() === 1
+              ? `{month|${MONTHS[d.getMonth()]}}`
+              : `{day|${d.getDate()}}`
+          },
+          rich: {
+            month: { fontSize: 15, fontWeight: 'bold', color: SAP_TEXT },
+            day: { fontSize: 11, color: SAP_TEXT },
+          },
+        },
+      },
+      { type: 'time', min: spanMin, max: spanMax, show: false },
+    ],
     yAxis: { type: 'value', show: false, minInterval: 1 },
     dataZoom: [
       {
         type: 'slider',
-        xAxisIndex: 0,
+        xAxisIndex: 1,
+        // Selection-only: never filter/zoom any rendered series — the strip is a
+        // fixed-extent overview and the window is just a reported range.
+        filterMode: 'none',
         startValue: range.min,
         endValue: range.max,
         left: 10,
@@ -131,6 +178,7 @@ export function buildOverviewOption(points, spanMin, spanMax, range) {
       {
         name: 'Total activity',
         type: 'bar',
+        xAxisIndex: 0,
         data: points,
         barWidth: '62%',
         itemStyle: { color: SAP_BLUE_LIGHT, borderRadius: [2, 2, 0, 0] },

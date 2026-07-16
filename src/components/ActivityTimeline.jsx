@@ -18,6 +18,15 @@ const MIN_WINDOW_MS = 4 * 60 * 1000
 // minute-wide focus still fills ~1/CONTEXT_FACTOR of the navigator).
 const CONTEXT_FACTOR = 3
 
+// Header color key ⇄ detail series. `key` doubles as the swatch modifier class
+// (swatch-<key>) and the `hidden` state field; `label` matches the series name
+// in buildActivityBarsOption so toggling drives the chart's legend selection.
+const LEGEND_ITEMS = [
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'actions', label: 'Actions' },
+  { key: 'widgets', label: 'Widgets active' },
+]
+
 /**
  * ActivityTimeline — a shared, collapsible panel mounted in the /summary shell
  * so it appears above every view. Grouped bars show how many sessions /
@@ -40,6 +49,13 @@ function ActivityTimeline() {
   const { rows, headers, hasData, activeFileId } = useCsvData()
 
   const [collapsed, setCollapsed] = useState(false)
+  // Series toggled off via the header color key — hidden ones drop out of the
+  // detail bars (the remaining bars re-center) just like the old legend clicks.
+  const [hidden, setHidden] = useState({ sessions: false, actions: false, widgets: false })
+  const toggleSeries = useCallback(
+    (key) => setHidden((h) => ({ ...h, [key]: !h[key] })),
+    [],
+  )
   // Focused window (what the detail shows) in epoch ms; null = full data span.
   const [range, setRange] = useState(null)
   // Navigator's visible context range in epoch ms; null = full data span. The
@@ -88,38 +104,6 @@ function ActivityTimeline() {
     if (hi > spanMax) { lo -= hi - spanMax; hi = spanMax }
     return [Math.max(spanMin, lo), Math.min(spanMax, hi)]
   }, [spanMin, spanMax])
-
-  // Zoom focus in/out around its center (factor <1 = in, >1 = out) and re-frame
-  // the navigator context to ≈ CONTEXT_FACTOR × focus, so the drag box resets to
-  // a comfortable size and the nav labels zoom down toward minutes. The bucket
-  // size follows the window automatically (see the `detail` build below).
-  const zoomBy = useCallback((factor) => {
-    if (!span) return
-    const fullSpan = spanMax - spanMin
-    const fMin = effRange ? effRange.min : spanMin
-    const fMax = effRange ? effRange.max : spanMax
-    const center = (fMin + fMax) / 2
-    const fw = Math.min(fullSpan, Math.max(MIN_WINDOW_MS, (fMax - fMin) * factor))
-    const vw = Math.min(fullSpan, fw * CONTEXT_FACTOR)
-    const [flo, fhi] = clampToSpan(center - fw / 2, center + fw / 2)
-    const [vlo, vhi] = clampToSpan(center - vw / 2, center + vw / 2)
-    setRange({ min: flo, max: fhi })
-    setViewRange({ min: vlo, max: vhi })
-  }, [span, effRange, spanMin, spanMax, clampToSpan])
-
-  // Slide the focus left/right by ~80% of its width and re-frame the context
-  // around it, so dragging/paging keeps moving into new periods (never blocked).
-  const panBy = useCallback((dir) => {
-    if (!span || !effRange) return
-    const width = effRange.max - effRange.min
-    const shift = width * 0.8 * dir
-    const [flo, fhi] = clampToSpan(effRange.min + shift, effRange.max + shift)
-    const center = (flo + fhi) / 2
-    const vw = Math.min(spanMax - spanMin, (fhi - flo) * CONTEXT_FACTOR)
-    const [vlo, vhi] = clampToSpan(center - vw / 2, center + vw / 2)
-    setRange({ min: flo, max: fhi })
-    setViewRange({ min: vlo, max: vhi })
-  }, [span, effRange, spanMin, spanMax, clampToSpan])
 
   // After a drag settles, re-frame the navigator context around the focus so
   // the drag box stays a comfortable ~1/CONTEXT_FACTOR size and you can keep
@@ -178,8 +162,8 @@ function ActivityTimeline() {
   }, [nav, effView, effRange])
 
   const detailOption = useMemo(
-    () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series) : { series: [] }),
-    [detail],
+    () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series, hidden) : { series: [] }),
+    [detail, hidden],
   )
 
   // ECharts reports the slider window in epoch ms (fall back to mapping the
@@ -226,6 +210,23 @@ function ActivityTimeline() {
           <span className="activity-timeline-title">Activity Timeline</span>
         </button>
         <span className="activity-timeline-subtitle">{subtitle}</span>
+        {!t.empty && !collapsed && (
+          <div className="activity-timeline-legend" role="group" aria-label="Toggle series">
+            {LEGEND_ITEMS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`activity-timeline-legend-item${hidden[key] ? ' is-hidden' : ''}`}
+                onClick={() => toggleSeries(key)}
+                aria-pressed={!hidden[key]}
+                title={hidden[key] ? `Show ${label}` : `Hide ${label}`}
+              >
+                <span className={`activity-timeline-swatch swatch-${key}`} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       {!collapsed && (
@@ -245,15 +246,6 @@ function ActivityTimeline() {
               </div>
             </div>
 
-            <div className="activity-timeline-zoom">
-              <span>Navigate</span>
-              <div className="activity-timeline-zoom-btns">
-                <button type="button" onClick={() => panBy(-1)} title="Move window earlier">◀</button>
-                <button type="button" onClick={() => zoomBy(0.5)} title="Zoom in (narrow the window)">＋</button>
-                <button type="button" onClick={() => zoomBy(2)} title="Zoom out (widen the window)">－</button>
-                <button type="button" onClick={() => panBy(1)} title="Move window later">▶</button>
-              </div>
-            </div>
             {zoomed && (
               <button
                 type="button"

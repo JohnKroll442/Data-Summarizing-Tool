@@ -44,14 +44,10 @@
 }
 
 .activity-timeline-rail {
-  flex: 0 0 220px;
+  flex: 0 0 180px;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
-  padding: 0.75rem;
-  background: var(--sap-surface);
-  border: 1px solid var(--sap-border);
-  border-radius: var(--radius-md);
 }
 
 .activity-timeline-dim {
@@ -88,7 +84,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--sap-text-muted);
-  margin-top: auto;
 }
 
 .activity-timeline-viewing {
@@ -149,37 +144,54 @@
   background: var(--sap-blue-light);
 }
 
-.activity-timeline-zoom {
+.activity-timeline-legend {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0 auto; /* push to the right end of the header row */
+  font-size: 0.8rem;
+}
+
+.activity-timeline-legend-item {
+  display: inline-flex;
+  align-items: center;
   gap: 0.4rem;
-  font-size: 0.78rem;
-  font-weight: var(--weight-semibold, 600);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  padding: 0.15rem 0.35rem;
+  font: inherit;
+  font-size: 0.8rem;
   color: var(--sap-text-muted);
-}
-
-.activity-timeline-zoom-btns {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.activity-timeline-zoom-btns button {
-  flex: 1;
-  padding: 0.35rem 0;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--sap-blue-darker);
-  background: var(--sap-surface);
-  border: 1px solid var(--sap-border);
+  background: none;
+  border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  user-select: none;
 }
 
-.activity-timeline-zoom-btns button:hover {
-  background: var(--sap-blue-light);
+.activity-timeline-legend-item:hover {
+  background: var(--sap-blue-bg, var(--sap-surface));
 }
+
+/* Toggled off: dimmed label and a hollow swatch, matching hidden series. */
+.activity-timeline-legend-item.is-hidden {
+  color: var(--sap-text-muted);
+  opacity: 0.5;
+}
+
+.activity-timeline-legend-item.is-hidden .activity-timeline-swatch {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.activity-timeline-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.swatch-sessions { background: var(--sap-blue); }
+.swatch-actions  { background: var(--sap-gold); }
+.swatch-widgets  { background: var(--sap-success); }
 
 .activity-timeline-empty {
   display: flex;

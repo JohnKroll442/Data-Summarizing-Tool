@@ -1,3 +1,22 @@
+/* Centered page header — matches the centered "Slowest/Fastest 10" headings
+   below, so the whole Summary view reads as centered. The subheading is width-
+   capped and centered so the sentence stays readable rather than spanning edge
+   to edge. */
+.summary-view-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.summary-view-header .view-heading {
+  margin-bottom: 0.35rem;
+}
+
+.summary-view-header .view-subheading {
+  max-width: 60ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Busiest-periods strip — mirrors the KPI card look. */
 .summary-busiest {
   display: grid;
