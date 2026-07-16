@@ -109,8 +109,10 @@ describe('buildActivityTimeline', () => {
     const r = buildActivityTimeline(ROWS, HEADERS, { granularity: 'day' })
     expect(r.empty).toBe(false)
     expect(r.buckets.map((b) => b.key)).toEqual(['2026-07-01', '2026-07-02'])
-    // S1 overlaps both days, S2 only Jul 1.
-    expect(r.series.sessions).toEqual([2, 1])
+    // S1 overlaps both days. S2 has a single timestamp (Jul 1), so its end is
+    // filled with the file's latest timestamp (S1's Jul 2 action) → it now spans
+    // both days too.
+    expect(r.series.sessions).toEqual([2, 2])
     // A + C on Jul 1, B on Jul 2.
     expect(r.series.actions).toEqual([2, 1])
     // W1,W3 on Jul 1, W2 on Jul 2.

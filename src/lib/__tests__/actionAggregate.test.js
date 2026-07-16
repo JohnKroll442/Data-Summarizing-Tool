@@ -28,7 +28,7 @@ describe('aggregateByAction', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'session_id', 'user', 'action_name', 'story_name', 'story_page', 'widget_count',
+      'session_id', 'action_timestamp', 'user', 'action_name', 'story_name', 'story_page', 'widget_count',
       'max_frontend', 'max_network', 'max_backend',
     ])
   })
@@ -52,6 +52,9 @@ describe('aggregateByAction', () => {
     const t2 = out.find((r) => r._action_timestamp === 't2')
     expect(t1.max_frontend).toBe(200)
     expect(t2.max_frontend).toBe(300)
+    // The displayed column mirrors the hidden meta timestamp.
+    expect(t1.action_timestamp).toBe('t1')
+    expect(t2.action_timestamp).toBe('t2')
   })
 
   it('falls back to name-only grouping when no timestamp column exists', () => {

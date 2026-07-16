@@ -131,4 +131,46 @@ describe('aggregateBySession', () => {
     const { mapping } = aggregateBySession(rows, ['SESSION_ID', 'WIDGET_DURATION', 'DURATION'])
     expect(mapping.duration).toBe('DURATION')
   })
+
+  describe('single-timestamp session end fallback', () => {
+    const TS_HEADERS = ['SESSION_ID', 'USER_NAME', 'STORY_NAME', 'ACTION_TIMESTAMP', 'DURATION']
+    const tsRow = (SESSION_ID, ACTION_TIMESTAMP) => ({
+      SESSION_ID, USER_NAME: 'a', STORY_NAME: 'S', ACTION_TIMESTAMP, DURATION: 100,
+    })
+
+    it('fills a single-timestamp session end with the file-wide latest timestamp', () => {
+      const rows = [
+        tsRow('s1', '2026-07-01 10:00:00'),
+        tsRow('s1', '2026-07-03 10:00:00'), // s1 has a real span
+        tsRow('s2', '2026-07-02 09:00:00'), // s2 single point, earlier than the latest
+      ]
+      const { rows: out } = aggregateBySession(rows, TS_HEADERS)
+      const s1 = out.find((r) => r.session === 's1')
+      const s2 = out.find((r) => r.session === 's2')
+      // A session with a real span keeps its own earliest/latest.
+      expect(s1.timestamp_range).toBe('2026-07-01 10:00:00')
+      expect(s1._timestamp_end).toBe('2026-07-03 10:00:00')
+      // The single-point session's end is assumed to be the file-wide latest.
+      expect(s2.timestamp_range).toBe('2026-07-02 09:00:00')
+      expect(s2._timestamp_end).toBe('2026-07-03 10:00:00')
+    })
+
+    it('leaves a single-timestamp session as a point when it IS the file-wide latest', () => {
+      const rows = [
+        tsRow('s1', '2026-07-01 10:00:00'),
+        tsRow('s2', '2026-07-05 10:00:00'), // single point AND the latest in the file
+      ]
+      const { rows: out } = aggregateBySession(rows, TS_HEADERS)
+      const s2 = out.find((r) => r.session === 's2')
+      expect(s2.timestamp_range).toBe('2026-07-05 10:00:00')
+      expect(s2._timestamp_end).toBe('2026-07-05 10:00:00') // nothing later to extend to
+    })
+
+    it('does not fill an end when there is no timestamp column', () => {
+      const rows = makeRows([['s1', 'a', 'A', 100]])
+      const { rows: out } = aggregateBySession(rows, HEADERS)
+      expect(out[0].timestamp_range).toBe('')
+      expect(out[0]._timestamp_end).toBe('')
+    })
+  })
 })

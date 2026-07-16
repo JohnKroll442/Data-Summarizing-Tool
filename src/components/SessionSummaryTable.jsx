@@ -9,11 +9,11 @@ import TimeFilterMenu from './TimeFilterMenu'
 import SortMenu from './SortMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
 import { sessionKpisFromAgg } from '../lib/kpis'
-import { formatDurationMs, formatCsvTime } from '../lib/format'
+import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
-import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -32,7 +32,7 @@ const SESSION_TS = (row) => row.timestamp_range
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, fileName } = useCsvData()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -66,18 +66,22 @@ function SessionSummaryTable({ rows, headers }) {
   }, [sessionMultiFilter])
 
   // Faceted options: each dropdown lists only values that still apply given the
-  // OTHER active column filters plus the time filter, so the menus stay in sync.
+  // OTHER active column filters plus the time filter and the timeline range, so
+  // the menus stay in sync with what's visible.
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
-      (row) => matchesTimeFilter(row, SESSION_TS, timeFilter)),
-    [summaryRows, filters, timeFilter],
+      (row) => matchesTimeFilter(row, SESSION_TS, timeFilter)
+        && matchesTimeRange(row, SESSION_TS, timelineRange)),
+    [summaryRows, filters, timeFilter, timelineRange],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters (but not by time itself) so the time options track the other menus.
+  // filters and the timeline range (but not by time itself) so the time options
+  // track the other menus and the selected timeline window.
   const timeFilterRows = useMemo(
-    () => summaryRows.filter((row) => matchesAllMultiFilters(row, filters)),
-    [summaryRows, filters],
+    () => summaryRows.filter((row) =>
+      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, SESSION_TS, timelineRange)),
+    [summaryRows, filters, timelineRange],
   )
 
   const visibleRows = useMemo(() => {
@@ -85,6 +89,7 @@ function SessionSummaryTable({ rows, headers }) {
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, SESSION_TS, timeFilter)) return false
+      if (!matchesTimeRange(row, SESSION_TS, timelineRange)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -92,7 +97,7 @@ function SessionSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -112,7 +117,8 @@ function SessionSummaryTable({ rows, headers }) {
     usePagination(sortedRows)
 
   const activeFilterCount =
-    countActiveMultiFilters(filters, search) + (hasTimeSelection(timeFilter) ? 1 : 0)
+    countActiveMultiFilters(filters, search) + (hasTimeSelection(timeFilter) ? 1 : 0) +
+    (timelineRange ? 1 : 0)
 
   // Update a column's selected values, mirroring the Session column into the
   // shared multi-filter that Action View reads (matches the drill-down flow).
@@ -243,12 +249,28 @@ function SessionSummaryTable({ rows, headers }) {
               setSessionMultiFilter([])
               setSessionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
+              resetTimeline()
             }}
           >
             Clear
           </button>
         )}
       </div>
+
+      {timelineRange && (
+        <div className="summary-active-window is-centered" role="status">
+          Showing rows within the timeline range{' '}
+          <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={resetTimeline}
+            title="Reset the Activity Timeline to its full range"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {sessionFilterWindow && Array.isArray(filters.session) && filters.session.length > 0 && (
         <div className="summary-active-window" role="status">

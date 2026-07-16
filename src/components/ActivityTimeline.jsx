@@ -9,6 +9,7 @@ import {
   sessionIdsInWindow,
 } from '../lib/activityTimeline'
 import { buildActivityBarsOption, buildOverviewOption } from './charts/options/activityBars'
+import { formatTimeRangeLabel } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import './ActivityTimeline.css'
 
@@ -72,6 +73,8 @@ function ActivityTimeline() {
     setActionMultiFilter,
     setSessionFilterWindow,
     timelineFocus,
+    setTimelineRange,
+    timelineResetNonce,
   } = useCsvData()
   const navigate = useNavigate()
   const rootRef = useRef(null)
@@ -134,6 +137,27 @@ function ActivityTimeline() {
     (lo, hi) => clampToSpanPure(lo, hi, spanMin, spanMax),
     [spanMin, spanMax],
   )
+
+  // Publish the focused window to the shared context so the summary tables scope
+  // themselves to what the timeline shows. Only while actually zoomed — at full
+  // range we publish null (no constraint). effRange/zoomed don't depend on
+  // timelineRange, so there's no update loop.
+  const isZoomed = !!range || !!viewRange
+  useEffect(() => {
+    if (!span) return
+    if (isZoomed && effRange) setTimelineRange({ min: effRange.min, max: effRange.max })
+    else setTimelineRange(null)
+  }, [isZoomed, effRange, span, setTimelineRange])
+
+  // A table's Clear (or the range banner's clear) bumps timelineResetNonce to ask
+  // us to drop the zoom. Resetting range/viewRange flips isZoomed false, which
+  // clears timelineRange via the effect above. Skip the initial mount.
+  const skipFirstReset = useRef(true)
+  useEffect(() => {
+    if (skipFirstReset.current) { skipFirstReset.current = false; return }
+    setRange(null)
+    setViewRange(null)
+  }, [timelineResetNonce])
 
   // Focus the timeline on a window requested from elsewhere (a "busiest day /
   // 7 days / month" card on the Summary view). Sets the focus + navigator
@@ -420,7 +444,7 @@ function ActivityTimeline() {
 
   if (!hasData || !overview) return null
 
-  const zoomed = !!range || !!viewRange
+  const zoomed = isZoomed
   const t = detail ?? overview
   const subtitle = t.empty
     ? 'No parseable timestamps in this file'
@@ -536,13 +560,7 @@ function ActivityTimeline() {
 
 // Compact "Jun 15, 14:30 → Jul 2, 09:00" window label.
 function fmtRange(range) {
-  const f = (ms) => {
-    const d = new Date(ms)
-    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]
-    const p = (n) => String(n).padStart(2, '0')
-    return `${mon} ${d.getDate()}, ${p(d.getHours())}:${p(d.getMinutes())}`
-  }
-  return `${f(range.min)} → ${f(range.max)}`
+  return formatTimeRangeLabel(range.min, range.max)
 }
 
 export default ActivityTimeline

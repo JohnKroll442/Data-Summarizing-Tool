@@ -46,6 +46,21 @@ export function stripUserPrefix(value) {
 }
 
 /**
+ * Format a continuous epoch-ms window as a compact
+ * "Jul 5, 03:35 → Jul 13, 17:04" label. Matches the Activity Timeline's window
+ * labels so the tables' timeline-range banner reads the same.
+ */
+export function formatTimeRangeLabel(min, max) {
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const f = (ms) => {
+    const d = new Date(ms)
+    const p = (n) => String(n).padStart(2, '0')
+    return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  return `${f(min)} → ${f(max)}`
+}
+
+/**
  * Convert raw bytes into a human-readable string (e.g. "1.2 MB").
  */
 export function formatFileSize(bytes) {

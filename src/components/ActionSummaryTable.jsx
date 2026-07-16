@@ -11,11 +11,11 @@ import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { actionKpisFromAgg } from '../lib/kpis'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
-import { formatDurationMs } from '../lib/format'
+import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
-import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -45,6 +45,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     setActionMultiFilter,
     sessionMultiFilter,
     setSessionMultiFilter,
+    timelineRange,
+    resetTimeline,
     fileName,
   } = useCsvData()
 
@@ -97,15 +99,18 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   // already baked into summaryRows (rows are filtered before aggregation).
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
-      (row) => matchesTimeFilter(row, ACTION_TS, timeFilter)),
-    [summaryRows, filters, timeFilter],
+      (row) => matchesTimeFilter(row, ACTION_TS, timeFilter)
+        && matchesTimeRange(row, ACTION_TS, timelineRange)),
+    [summaryRows, filters, timeFilter, timelineRange],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters (but not by time itself) so the time options track the other menus.
+  // filters and the timeline range (but not by time itself) so the time options
+  // track the other menus and the selected timeline window.
   const timeFilterRows = useMemo(
-    () => summaryRows.filter((row) => matchesAllMultiFilters(row, filters)),
-    [summaryRows, filters],
+    () => summaryRows.filter((row) =>
+      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, ACTION_TS, timelineRange)),
+    [summaryRows, filters, timelineRange],
   )
 
   const visibleRows = useMemo(() => {
@@ -113,6 +118,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, ACTION_TS, timeFilter)) return false
+      if (!matchesTimeRange(row, ACTION_TS, timelineRange)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -120,7 +126,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -142,7 +148,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const activeFilterCount =
     countActiveMultiFilters(filters, search) +
     (sessionMultiFilter.length > 0 ? 1 : 0) +
-    (hasTimeSelection(timeFilter) ? 1 : 0)
+    (hasTimeSelection(timeFilter) ? 1 : 0) +
+    (timelineRange ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -288,6 +295,21 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         </div>
       )}
 
+      {timelineRange && (
+        <div className="summary-active-window is-centered" role="status">
+          Showing rows within the timeline range{' '}
+          <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={resetTimeline}
+            title="Reset the Activity Timeline to its full range"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="summary-filters">
         <input
           type="search"
@@ -351,6 +373,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               setSessionMultiFilter([])
               setActionMultiFilter([])
               setTimeFilter(emptyTimeSelections())
+              resetTimeline()
             }}
           >
             Clear
@@ -367,6 +390,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
           render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
             if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
+            if (c.key === 'action_timestamp') return formatCsvTime(v) || '—'
             if (c.key === 'action_name') {
               return (
                 <div className="cell-link-row">

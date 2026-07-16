@@ -43,6 +43,39 @@
   color: var(--sap-text-muted);
 }
 
+/* The timeline-range banner shrink-wraps its message and sits centered, rather
+   than stretching the blue border/background across the full width. */
+.summary-active-window.is-centered {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.summary-active-window.is-centered .summary-active-window-clear {
+  margin-left: 0;
+}
+
+/* Inline clear (×) on the timeline-range banner — resets the Activity Timeline
+   back to its full range, dropping the derived table scope. */
+.summary-active-window-clear {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--sap-blue-darker);
+  background: transparent;
+  border: 1px solid var(--sap-blue-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.summary-active-window-clear:hover {
+  background: var(--sap-blue-light);
+}
+
 .summary-filter-search {
   flex: 1 1 220px;
   min-width: 180px;

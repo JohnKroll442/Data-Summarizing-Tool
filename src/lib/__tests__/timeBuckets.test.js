@@ -4,6 +4,7 @@ import {
   bucketOf,
   listConstrainedBuckets,
   matchesTimeFilter,
+  matchesTimeRange,
   pruneSelections,
   emptyTimeSelections,
   hasTimeSelection,
@@ -109,6 +110,34 @@ describe('matchesTimeFilter', () => {
   })
   it('excludes rows with no parseable timestamp when active', () => {
     expect(matchesTimeFilter({ ts: '' }, get, { ...emptyTimeSelections(), day: ['2026-07-08'] })).toBe(false)
+  })
+})
+
+describe('matchesTimeRange', () => {
+  const get = (r) => r.ts
+  const row = { ts: '2026-07-08 18:33:46.496000000' }
+  // Inclusive window: Jul 8 00:00 → Jul 8 23:59 (local, matching parseTimestamp).
+  const range = {
+    min: new Date(2026, 6, 8, 0, 0).getTime(),
+    max: new Date(2026, 6, 8, 23, 59).getTime(),
+  }
+
+  it('passes everything when the range is null', () => {
+    expect(matchesTimeRange(row, get, null)).toBe(true)
+    expect(matchesTimeRange({ ts: '' }, get, null)).toBe(true)
+  })
+  it('keeps rows inside the window and drops rows outside it', () => {
+    expect(matchesTimeRange(row, get, range)).toBe(true)
+    expect(matchesTimeRange({ ts: '2026-07-09 09:15:00.000000000' }, get, range)).toBe(false)
+    expect(matchesTimeRange({ ts: '2026-07-07 23:59:00.000000000' }, get, range)).toBe(false)
+  })
+  it('treats both bounds as inclusive', () => {
+    expect(matchesTimeRange({ ts: '2026-07-08 00:00:00.000000000' }, get, range)).toBe(true)
+    expect(matchesTimeRange({ ts: '2026-07-08 23:59:00.000000000' }, get, range)).toBe(true)
+  })
+  it('excludes rows with no parseable timestamp when a range is active', () => {
+    expect(matchesTimeRange({ ts: '' }, get, range)).toBe(false)
+    expect(matchesTimeRange({ ts: 'not a date' }, get, range)).toBe(false)
   })
 })
 

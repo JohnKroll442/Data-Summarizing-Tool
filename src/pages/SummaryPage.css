@@ -133,14 +133,35 @@
 }
 
 .summary-tab:hover {
-  background: var(--sap-blue-bg);
+  background: var(--sap-blue-light);
   color: var(--sap-blue-darker);
+}
+
+/* Subtle vertical divider between adjacent tabs, drawn in the flex gap so the
+   segmented control reads as distinct sections. Sits behind nothing (it's in
+   the gap, not over a tab), so hover/active backgrounds never cover it. */
+.summary-tab + .summary-tab::before {
+  content: '';
+  position: absolute;
+  left: -0.125rem;
+  top: 25%;
+  bottom: 25%;
+  width: 1px;
+  background: var(--sap-border);
+  pointer-events: none;
 }
 
 .summary-tab.active {
   background: var(--sap-blue);
   color: #fff;
   border-color: var(--sap-blue);
+}
+
+/* Hide the divider on both sides of the active tab so its solid fill reads as
+   one clean block. */
+.summary-tab.active::before,
+.summary-tab.active + .summary-tab::before {
+  display: none;
 }
 
 .summary-content {

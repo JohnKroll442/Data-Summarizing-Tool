@@ -43,15 +43,16 @@ function aggregateByActionImpl(rows, headers) {
   mapping.session = detectSessionKey(headers, rows)
 
   const columns = [
-    { key: 'session_id',   label: 'Session ID' },
-    { key: 'user',         label: 'User' },
-    { key: 'action_name',  label: 'Action name' },
-    { key: 'story_name',   label: 'Story name' },
-    { key: 'story_page',   label: 'Story page' },
-    { key: 'widget_count', label: 'Widget count', sortType: 'number' },
-    { key: 'max_frontend', label: 'Max frontend', sortType: 'duration' },
-    { key: 'max_network',  label: 'Max network',  sortType: 'duration' },
-    { key: 'max_backend',  label: 'Max backend',  sortType: 'duration' },
+    { key: 'session_id',      label: 'Session ID' },
+    { key: 'action_timestamp', label: 'Action timestamp', sortType: 'timestamp' },
+    { key: 'user',            label: 'User' },
+    { key: 'action_name',     label: 'Action name' },
+    { key: 'story_name',      label: 'Story name' },
+    { key: 'story_page',      label: 'Story page' },
+    { key: 'widget_count',    label: 'Widget count', sortType: 'number' },
+    { key: 'max_frontend',    label: 'Max frontend', sortType: 'duration' },
+    { key: 'max_network',     label: 'Max network',  sortType: 'duration' },
+    { key: 'max_backend',     label: 'Max backend',  sortType: 'duration' },
   ]
 
   if (!mapping.actionName || !rows?.length) {
@@ -77,14 +78,18 @@ function aggregateByActionImpl(rows, headers) {
 
   const outRows = []
   for (const [, groupRows] of groups) {
+    const actionTs = mapping.actionTimestamp
+      ? firstNonEmpty(groupRows, mapping.actionTimestamp)
+      : ''
     outRows.push({
       // Hidden meta — not in the displayed columns, but carried on the
       // row so click handlers can disambiguate two invocations of the
       // same action name fired at different times.
-      _action_timestamp: mapping.actionTimestamp
-        ? firstNonEmpty(groupRows, mapping.actionTimestamp)
-        : '',
+      _action_timestamp: actionTs,
       session_id:   firstNonEmpty(groupRows, mapping.session),
+      // Displayed copy of the action timestamp (underscore-prefixed key stays
+      // the click-handler meta; this one renders in the table).
+      action_timestamp: actionTs,
       user:         stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),

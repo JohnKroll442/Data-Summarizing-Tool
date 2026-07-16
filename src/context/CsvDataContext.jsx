@@ -93,6 +93,19 @@ export function CsvDataProvider({ children }) {
   const [timelineFocus, setTimelineFocus] = useState(null)
   const focusTimeline = useCallback((min, max) => setTimelineFocus({ min, max }), [])
 
+  // The continuous window (epoch ms) currently focused in the Activity Timeline,
+  // published by the timeline whenever the user zooms/drags. The summary tables
+  // AND this into their row filtering so what's selected in the timeline is what
+  // the tables show. null = full range (no constraint).
+  const [timelineRange, setTimelineRange] = useState(null)
+
+  // A request to reset the Activity Timeline back to its full range, bumped by a
+  // table's Clear (or the range banner's clear) so clearing the table filters
+  // also drops the timeline zoom. The timeline observes the nonce and resets its
+  // local window, which in turn clears timelineRange. Mirrors timelineFocus.
+  const [timelineResetNonce, setTimelineResetNonce] = useState(0)
+  const resetTimeline = useCallback(() => setTimelineResetNonce((n) => n + 1), [])
+
   // Compare selection — ephemeral, not persisted to localStorage.
   const [baselineId, setBaselineIdState] = useState(null)
   const [currentId, setCurrentIdState] = useState(null)
@@ -110,6 +123,7 @@ export function CsvDataProvider({ children }) {
     setActionMultiFilter([])
     setSessionFilterWindow(null)
     setTimelineFocus(null)
+    setTimelineRange(null)
   }, [])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
@@ -284,6 +298,10 @@ export function CsvDataProvider({ children }) {
         setSessionFilterWindow,
         timelineFocus,
         focusTimeline,
+        timelineRange,
+        setTimelineRange,
+        resetTimeline,
+        timelineResetNonce,
         baselineId,
         currentId,
         setBaselineId,
@@ -310,6 +328,9 @@ export function CsvDataProvider({ children }) {
       sessionFilterWindow,
       timelineFocus,
       focusTimeline,
+      timelineRange,
+      resetTimeline,
+      timelineResetNonce,
       baselineId,
       currentId,
       setBaselineId,

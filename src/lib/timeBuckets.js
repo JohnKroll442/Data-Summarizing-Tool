@@ -165,6 +165,20 @@ export function matchesTimeFilter(row, getTimestamp, selections) {
 }
 
 /**
+ * True if a row's timestamp falls within a continuous [min, max] epoch-ms range.
+ * `range == null` means no constraint. Rows with an unparseable/missing timestamp
+ * are excluded only when a range is active (mirrors matchesTimeFilter). Used to
+ * scope the summary tables to the window selected in the Activity Timeline.
+ */
+export function matchesTimeRange(row, getTimestamp, range) {
+  if (!range) return true
+  const dt = parseTimestamp(getTimestamp(row))
+  if (!dt) return false
+  const t = dt.getTime()
+  return t >= range.min && t <= range.max
+}
+
+/**
  * Keep the selection set consistent after a change: cascading coarse → fine,
  * drop any selected bucket at a level that no longer falls within the (already
  * pruned) coarser selections — e.g. deselecting a week removes the days that

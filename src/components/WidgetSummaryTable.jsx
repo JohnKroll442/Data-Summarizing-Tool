@@ -19,11 +19,11 @@ import {
   detectSessionKey,
   findActionNameKey,
 } from '../lib/drillDown'
-import { formatDurationMs, formatCsvTime } from '../lib/format'
+import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
-import { matchesTimeFilter, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -53,6 +53,8 @@ function WidgetSummaryTable({ rows, headers }) {
     setSessionMultiFilter,
     actionMultiFilter,
     setActionMultiFilter,
+    timelineRange,
+    resetTimeline,
     fileName,
   } = useCsvData()
 
@@ -134,15 +136,18 @@ function WidgetSummaryTable({ rows, headers }) {
   // is already baked into summaryRows (rows are filtered before aggregation).
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
-      (row) => matchesTimeFilter(row, WIDGET_TS, timeFilter)),
-    [summaryRows, filters, timeFilter],
+      (row) => matchesTimeFilter(row, WIDGET_TS, timeFilter)
+        && matchesTimeRange(row, WIDGET_TS, timelineRange)),
+    [summaryRows, filters, timeFilter, timelineRange],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters (but not by time itself) so the time options track the other menus.
+  // filters and the timeline range (but not by time itself) so the time options
+  // track the other menus and the selected timeline window.
   const timeFilterRows = useMemo(
-    () => summaryRows.filter((row) => matchesAllMultiFilters(row, filters)),
-    [summaryRows, filters],
+    () => summaryRows.filter((row) =>
+      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, WIDGET_TS, timelineRange)),
+    [summaryRows, filters, timelineRange],
   )
 
   const visibleRows = useMemo(() => {
@@ -150,6 +155,7 @@ function WidgetSummaryTable({ rows, headers }) {
     return summaryRows.filter((row) => {
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, WIDGET_TS, timeFilter)) return false
+      if (!matchesTimeRange(row, WIDGET_TS, timelineRange)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -157,7 +163,7 @@ function WidgetSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -179,7 +185,8 @@ function WidgetSummaryTable({ rows, headers }) {
     countActiveMultiFilters(filters, search) +
     (sessionMultiFilter.length > 0 ? 1 : 0) +
     (actionMultiFilter.length > 0 ? 1 : 0) +
-    (hasTimeSelection(timeFilter) ? 1 : 0)
+    (hasTimeSelection(timeFilter) ? 1 : 0) +
+    (timelineRange ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -341,6 +348,21 @@ function WidgetSummaryTable({ rows, headers }) {
         </div>
       )}
 
+      {timelineRange && (
+        <div className="summary-active-window is-centered" role="status">
+          Showing rows within the timeline range{' '}
+          <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={resetTimeline}
+            title="Reset the Activity Timeline to its full range"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="summary-filters">
         <input
           type="search"
@@ -412,6 +434,7 @@ function WidgetSummaryTable({ rows, headers }) {
               setSessionMultiFilter([])
               setActionMultiFilter([])
               setTimeFilter(emptyTimeSelections())
+              resetTimeline()
             }}
           >
             Clear

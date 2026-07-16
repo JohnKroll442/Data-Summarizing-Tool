@@ -45,7 +45,7 @@
 }
 
 .summary-busiest-card:hover {
-  background: var(--sap-blue-bg, var(--sap-surface));
+  background: var(--sap-blue-light);
   box-shadow: var(--shadow-md);
 }
 
