@@ -31,6 +31,7 @@
 
 import { detectSessionKey } from './drillDown'
 import { memoizeAggregate } from './memoize'
+import { parseStrictTimestamp } from './timeBuckets'
 
 export const aggregateByWidget = memoizeAggregate(aggregateByWidgetImpl)
 
@@ -72,6 +73,9 @@ function aggregateByWidgetImpl(rows, headers) {
 
   let phaseMax = 0
   const outRows = []
+  // Latest timestamp anywhere in the widget data — the assumed end for widgets
+  // that "never ended" (see effectiveWidgetEnd).
+  const latestStamp = latestWidgetTimestamp(rows, mapping)
   for (const [widgetId, groupRows] of groups) {
     const renderPick  = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['render', 'frontend'])
     const networkPick = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])
@@ -82,20 +86,37 @@ function aggregateByWidgetImpl(rows, headers) {
       if (typeof v === 'number' && v > phaseMax) phaseMax = v
     }
 
+    const render_end  = phaseEnd(renderPick, mapping, 'render')
+    const network_end = phaseEnd(networkPick, mapping, 'widget')
+    const backend_end = phaseEnd(backendPick, mapping, 'widget')
+
+    // A widget "never ended" when its terminal (latest-ending) phase is the
+    // network phase — a ttfb/network with no render or backend completing after
+    // it — or when it has no parseable end at all. Per the data owner a ttfb is
+    // an incomplete load, so (like a single-event session, see sessionAggregate)
+    // we assume it stayed active until the last activity recorded anywhere in
+    // the file. `_widget_end` is that effective interval end; the Activity
+    // Timeline and its summary tables use it to decide the widget is active
+    // across a window, even one that opens after the widget's own phases.
+    const { end: _widget_end, neverEnded: _widget_never_ended } =
+      effectiveWidgetEnd({ render_end, network_end, backend_end }, latestStamp)
+
     outRows.push({
       widget_id:     widgetId,
       widget_name:   firstNonEmpty(groupRows, mapping.widgetName),
       session_id:    firstNonEmpty(groupRows, mapping.session),
       render:        renderPick.value,
       render_start:  phaseStart(renderPick, mapping, 'render'),
-      render_end:    phaseEnd(renderPick, mapping, 'render'),
+      render_end,
       network:       networkPick.value,
       network_start: phaseStart(networkPick, mapping, 'widget'),
-      network_end:   phaseEnd(networkPick, mapping, 'widget'),
+      network_end,
       backend:       backendPick.value,
       backend_start: phaseStart(backendPick, mapping, 'widget'),
-      backend_end:   phaseEnd(backendPick, mapping, 'widget'),
+      backend_end,
       offset:        offsetPick.value,
+      _widget_end,
+      _widget_never_ended,
     })
   }
 
@@ -103,6 +124,73 @@ function aggregateByWidgetImpl(rows, headers) {
 }
 
 /* ——— helpers ——— */
+
+// The effective interval end for a widget, and whether it "never ended".
+// Terminal phase = the phase with the latest parseable end; a real completion
+// (render/backend) wins ties over network so a load that finishes exactly when
+// its ttfb sample lands still counts as ended. A widget never ended when its
+// terminal phase is the network phase, nothing parses, or any phase end carries
+// a "never ended" marker (a non-empty value that isn't a real timestamp — the
+// app uses the literal token "ttfb"). Such a widget's end is pushed out to
+// `latestStamp` (the last activity in the file) when that is later than its own
+// last real phase. Returns the raw end value untouched otherwise.
+function effectiveWidgetEnd(ends, latestStamp) {
+  const ms = (v) => {
+    const d = parseStrictTimestamp(v)
+    return d ? d.getTime() : null
+  }
+  const isMarker = (v) => {
+    const s = String(v ?? '').trim()
+    return s !== '' && parseStrictTimestamp(v) === null
+  }
+  let terminal = null
+  let terminalMs = -Infinity
+  const consider = (phase, m, winsTie) => {
+    if (m === null) return
+    if (m > terminalMs || (winsTie && m === terminalMs)) {
+      terminalMs = m
+      terminal = phase
+    }
+  }
+  // Order matters for ties: network first, then render/backend override it.
+  consider('network', ms(ends.network_end), false)
+  consider('render', ms(ends.render_end), true)
+  consider('backend', ms(ends.backend_end), true)
+
+  const hasMarker = isMarker(ends.render_end) || isMarker(ends.network_end) || isMarker(ends.backend_end)
+  const neverEnded = terminal === null || terminal === 'network' || hasMarker
+  const latestMs = ms(latestStamp)
+  if (neverEnded && latestMs !== null && (terminal === null || latestMs > terminalMs)) {
+    return { end: latestStamp, neverEnded: true }
+  }
+  const endStr = terminal === 'render' ? ends.render_end
+    : terminal === 'backend' ? ends.backend_end
+    : terminal === 'network' ? ends.network_end
+    : ''
+  return { end: endStr, neverEnded }
+}
+
+// Latest parseable timestamp across every timestamp column widgets read, over
+// ALL rows. Compared numerically (not lexically) because phaseStart can emit an
+// ISO "…T…Z" string while phaseEnd returns the CSV's space-separated shape, and
+// those don't sort correctly as strings. Strict parsing ignores "ttfb"-style
+// sentinels so they can't masquerade as the latest timestamp.
+function latestWidgetTimestamp(rows, mapping) {
+  const cols = [
+    mapping.renderTimestampStart, mapping.renderTimestamp,
+    mapping.widgetTimestampStart, mapping.widgetTimestamp,
+    mapping.rowTimestamp,
+  ].filter(Boolean)
+  if (!cols.length || !rows?.length) return null
+  let latest = null
+  for (const r of rows) {
+    for (const c of cols) {
+      const d = parseStrictTimestamp(r?.[c])
+      if (d && (latest === null || d.getTime() > latest.getTime())) latest = d
+    }
+  }
+  return latest
+}
 
 function firstNonEmpty(rows, key) {
   if (!key) return ''

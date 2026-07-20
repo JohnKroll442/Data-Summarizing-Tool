@@ -172,5 +172,36 @@ describe('aggregateBySession', () => {
       expect(out[0].timestamp_range).toBe('')
       expect(out[0]._timestamp_end).toBe('')
     })
+
+    it('treats a "ttfb" marker as never-ended and extends to the file-wide latest', () => {
+      // Reproduces the reported bug: a session that starts Jun 22 and carries a
+      // literal "ttfb" sentinel instead of a real end. Its end must become the
+      // last real timestamp in the file — never the string "ttfb".
+      const rows = [
+        tsRow('s1', '2026-06-22 10:17:41.896'),
+        tsRow('s1', 'ttfb'), // sentinel: the load never returned
+        tsRow('s2', '2026-07-09 08:00:00'), // establishes the file-wide latest
+      ]
+      const { rows: out } = aggregateBySession(rows, TS_HEADERS)
+      const s1 = out.find((r) => r.session === 's1')
+      expect(s1.timestamp_range).toBe('2026-06-22 10:17:41.896')
+      expect(s1._timestamp_end).toBe('2026-07-09 08:00:00')
+      expect(s1._timestamp_end).not.toBe('ttfb')
+    })
+
+    it('never selects "ttfb" as the end even when it lexically sorts highest', () => {
+      // "ttfb" > any "2026-..." lexically; the old max-by-string logic picked it.
+      const rows = [
+        tsRow('s1', '2026-06-22 10:00:00'),
+        tsRow('s1', '2026-06-28 10:00:00'), // real span within June
+        tsRow('s1', 'ttfb'),
+        tsRow('s2', '2026-07-13 10:00:00'), // file-wide latest
+      ]
+      const { rows: out } = aggregateBySession(rows, TS_HEADERS)
+      const s1 = out.find((r) => r.session === 's1')
+      expect(s1.timestamp_range).toBe('2026-06-22 10:00:00')
+      // Marker present → extend past the real June span to the file-wide latest.
+      expect(s1._timestamp_end).toBe('2026-07-13 10:00:00')
+    })
   })
 })

@@ -48,6 +48,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     timelineRange,
     resetTimeline,
     fileName,
+    timeSelections: timeFilter,
+    setTimeSelections: setTimeFilter,
   } = useCsvData()
 
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
@@ -92,7 +94,6 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     return nav ? { ...seed, ...nav } : seed
   })
   const [sort, setSort] = useState(null)
-  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters plus the time filter. The session scope is

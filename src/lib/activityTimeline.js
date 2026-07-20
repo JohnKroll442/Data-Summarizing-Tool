@@ -226,6 +226,12 @@ export function widgetInterval(row) {
     if (s < start) start = s
     if (s > end) end = s
   }
+  // A widget that "never ended" (a ttfb/network with no completion after it)
+  // carries `_widget_end` = the last activity in the file, so it counts as
+  // active through then — matching the summary tables. Only ever extends the
+  // end forward; never pulls it in.
+  const eff = parseStamp(row._widget_end)
+  if (eff && eff > end) end = eff
   return { start, end }
 }
 

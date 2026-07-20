@@ -32,7 +32,7 @@ const SESSION_TS = (row) => row.timestamp_range
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName } = useCsvData()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName, timeSelections: timeFilter, setTimeSelections: setTimeFilter } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -46,7 +46,6 @@ function SessionSummaryTable({ rows, headers }) {
     sessionMultiFilter.length > 0 ? { session: sessionMultiFilter } : {}
   )
   const [sort, setSort] = useState(null)
-  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
 
   // Keep the Session column filter in sync when sessionMultiFilter changes from
   // OUTSIDE this table (e.g. clicking a Sessions bar in the Activity Timeline

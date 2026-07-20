@@ -43,6 +43,24 @@ export function parseTimestamp(v) {
   return Number.isNaN(dt.getTime()) ? null : dt
 }
 
+// A full "YYYY-MM-DD[ T]HH:MM:SS" datetime; the anchor for parseStrictTimestamp.
+const FULL_DATETIME = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/
+
+/**
+ * Strict timestamp parse: only a full "YYYY-MM-DD[ T]HH:MM:SS(.fff…)" datetime
+ * (or a Date) is accepted. Unlike parseTimestamp — which falls back to
+ * `new Date(s)` and so turns a sentinel like "ttfb" or a bare "2029" into a
+ * date — this returns null for anything that isn't a real, complete timestamp.
+ * Used where such sentinels must NOT be mistaken for a real start/end.
+ */
+export function parseStrictTimestamp(v) {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v
+  if (v === null || v === undefined) return null
+  const s = String(v).trim()
+  if (!FULL_DATETIME.test(s)) return null
+  return parseTimestamp(s)
+}
+
 const pad = (n) => String(n).padStart(2, '0')
 
 // Monday-anchored start of the week containing `d`, at midnight.
@@ -165,10 +183,15 @@ export function matchesTimeFilter(row, getTimestamp, selections) {
 }
 
 /**
- * True if a row's timestamp falls within a continuous [min, max] epoch-ms range.
- * `range == null` means no constraint. Rows with an unparseable/missing timestamp
- * are excluded only when a range is active (mirrors matchesTimeFilter). Used to
- * scope the summary tables to the window selected in the Activity Timeline.
+ * True if a row's START timestamp falls within a continuous [min, max] epoch-ms
+ * range. `range == null` means no constraint. Rows with an unparseable/missing
+ * timestamp are excluded only when a range is active (mirrors matchesTimeFilter).
+ *
+ * The rule is start-in-range by design: a row is scoped to the window selected
+ * in the Activity Timeline when it STARTED inside that window. A row that starts
+ * in-range but ends after it still matches (we only gate on the start), while a
+ * row that started before the window is not shown even if it was still active —
+ * per product direction, the table lists what began in the selected frame.
  */
 export function matchesTimeRange(row, getTimestamp, range) {
   if (!range) return true

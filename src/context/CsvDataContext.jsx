@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildDefaultCharts } from '../lib/defaultCharts'
 import { loadCache, saveCache, clearCache } from '../lib/csvCache'
+import { emptyTimeSelections } from '../lib/timeBuckets'
 
 /**
  * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
@@ -99,6 +100,14 @@ export function CsvDataProvider({ children }) {
   // the tables show. null = full range (no constraint).
   const [timelineRange, setTimelineRange] = useState(null)
 
+  // The hierarchical Time-filter selection (Month/Week/Day/Hour/Minute bucket
+  // picks) shared by every summary table, so the choice stays constant as the
+  // user navigates between the Session / Action / Widget views instead of
+  // resetting to empty on each mount. Like the other filters it lives here (not
+  // in the tables' local state) and resets only on file swap or an explicit
+  // Clear. See emptyTimeSelections() for the shape.
+  const [timeSelections, setTimeSelections] = useState(emptyTimeSelections)
+
   // A request to reset the Activity Timeline back to its full range, bumped by a
   // table's Clear (or the range banner's clear) so clearing the table filters
   // also drops the timeline zoom. The timeline observes the nonce and resets its
@@ -124,6 +133,7 @@ export function CsvDataProvider({ children }) {
     setSessionFilterWindow(null)
     setTimelineFocus(null)
     setTimelineRange(null)
+    setTimeSelections(emptyTimeSelections())
   }, [])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
@@ -300,6 +310,8 @@ export function CsvDataProvider({ children }) {
         focusTimeline,
         timelineRange,
         setTimelineRange,
+        timeSelections,
+        setTimeSelections,
         resetTimeline,
         timelineResetNonce,
         baselineId,
@@ -329,6 +341,7 @@ export function CsvDataProvider({ children }) {
       timelineFocus,
       focusTimeline,
       timelineRange,
+      timeSelections,
       resetTimeline,
       timelineResetNonce,
       baselineId,

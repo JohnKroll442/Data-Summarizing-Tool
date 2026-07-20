@@ -56,6 +56,8 @@ function WidgetSummaryTable({ rows, headers }) {
     timelineRange,
     resetTimeline,
     fileName,
+    timeSelections: timeFilter,
+    setTimeSelections: setTimeFilter,
   } = useCsvData()
 
   // Scope rows BEFORE aggregating. Each multiselect filter, when active, takes
@@ -125,7 +127,6 @@ function WidgetSummaryTable({ rows, headers }) {
     return nav ? { ...nav } : {}
   })
   const [sort, setSort] = useState(null)
-  const [timeFilter, setTimeFilter] = useState(emptyTimeSelections)
   // Clicking a widget name opens the per-widget timing modal. Holds the
   // selected row's widget_id + display name, plus the rows we should pass
   // to the chart builder.
