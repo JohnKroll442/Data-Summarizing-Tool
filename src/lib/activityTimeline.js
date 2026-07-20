@@ -207,6 +207,9 @@ export function enumerateBuckets(minDate, maxDate, interval) {
 export function sessionInterval(row) {
   const start = parseStamp(row.timestamp_range)
   if (!start) return null
+  // A session that "never ended" carries `_timestamp_end` = the last activity
+  // in the file, so it counts as active (open) through then — the timeline
+  // shows the cumulative number of sessions active on each date.
   const end = parseStamp(row._timestamp_end) ?? start
   return start <= end ? { start, end } : { start: end, end: start }
 }
@@ -228,8 +231,8 @@ export function widgetInterval(row) {
   }
   // A widget that "never ended" (a ttfb/network with no completion after it)
   // carries `_widget_end` = the last activity in the file, so it counts as
-  // active through then — matching the summary tables. Only ever extends the
-  // end forward; never pulls it in.
+  // active through then — matching the sessions bar's cumulative-active count.
+  // Only ever extends the end forward; never pulls it in.
   const eff = parseStamp(row._widget_end)
   if (eff && eff > end) end = eff
   return { start, end }
@@ -257,6 +260,42 @@ export function sessionIdsInWindow(rows, headers, start, end) {
     }
   }
   return [...ids]
+}
+
+/**
+ * Distinct widget IDs whose interval overlaps the half-open window
+ * [start, end) (epoch ms). Mirrors `sessionIdsInWindow` (and the widgets bar's
+ * `countIntervals` overlap semantics) so clicking a Widgets bar scopes the
+ * Widget view to exactly the widgets that bar counted.
+ */
+export function widgetIdsInWindow(rows, headers, start, end) {
+  if (!rows?.length || !headers?.length) return []
+  const ids = new Set()
+  for (const r of aggregateByWidget(rows, headers).rows) {
+    const iv = widgetInterval(r)
+    if (iv && iv.start.getTime() < end && iv.end.getTime() >= start) {
+      ids.add(String(r.widget_id))
+    }
+  }
+  return [...ids]
+}
+
+/**
+ * `_action_timestamp` values of every action whose point falls in the half-open
+ * window [start, end) (epoch ms). Actions are one-time events, so this mirrors
+ * the actions bar's `countPoints` — clicking an Actions bar scopes the Action
+ * view to exactly the invocations that fired in the bucket.
+ */
+export function actionKeysInWindow(rows, headers, start, end) {
+  if (!rows?.length || !headers?.length) return []
+  const keys = []
+  for (const r of aggregateByAction(rows, headers).rows) {
+    const p = actionPoint(r)
+    if (p && p.getTime() >= start && p.getTime() < end) {
+      keys.push(String(r._action_timestamp))
+    }
+  }
+  return keys
 }
 
 /* ——— dimension fields (scoping filters) ——— */
@@ -366,6 +405,8 @@ export function buildActivityTimeline(rows, headers, {
     .map(sessionInterval).filter(Boolean)
   const widgets = aggregateByWidget(scoped, headers).rows
     .map(widgetInterval).filter(Boolean)
+  // Actions are one-time events — counted in the bucket they fired in (a point),
+  // NOT stretched across their session's span like sessions/widgets.
   const actions = aggregateByAction(scoped, headers).rows
     .map(actionPoint).filter(Boolean)
 
@@ -404,9 +445,9 @@ export function buildActivityTimeline(rows, headers, {
     granularityClamped: false,
     buckets,
     series: {
-      sessions: countIntervals(sessions, buckets.length, indexByKey, id),
+      sessions: countIntervals(sessions, buckets, indexByKey, id),
       actions: countPoints(actions, buckets.length, indexByKey, id),
-      widgets: countIntervals(widgets, buckets.length, indexByKey, id),
+      widgets: countIntervals(widgets, buckets, indexByKey, id),
     },
     totals: {
       sessions: sessions.filter((iv) => iv.start <= effMax && iv.end >= effMin).length,
@@ -428,17 +469,31 @@ function countPoints(points, n, indexByKey, interval) {
   return counts
 }
 
-// Difference array so an interval spanning K buckets is applied in O(1).
-function countIntervals(intervals, n, indexByKey, interval) {
+// Difference array so an interval spanning K buckets is applied in O(1). An
+// interval that extends beyond the enumerated window is CLAMPED to the window's
+// first/last bucket rather than dropped, so a session/widget still counts in
+// every visible bucket it overlaps — matching sessionIdsInWindow's overlap
+// semantics (a long or never-ended interval that straddles the zoomed window is
+// active throughout it). Intervals with no overlap at all are skipped.
+function countIntervals(intervals, buckets, indexByKey, interval) {
+  const n = buckets.length
+  const counts = new Array(n).fill(0)
+  if (n === 0) return counts
+  const windowStart = buckets[0].sort
+  const windowEnd = nextBucket(new Date(buckets[n - 1].sort), interval).getTime()
   const diff = new Array(n + 1).fill(0)
   for (const iv of intervals) {
-    const s = indexByKey.get(keyOf(iv.start, interval))
-    const e = indexByKey.get(keyOf(iv.end, interval))
-    if (s === undefined || e === undefined) continue
+    const startT = iv.start.getTime()
+    const endT = iv.end.getTime()
+    // Skip only intervals that don't overlap the window [windowStart, windowEnd).
+    if (endT < windowStart || startT >= windowEnd) continue
+    // Clamp endpoints outside the window to its first / last bucket.
+    const s = startT < windowStart ? 0 : indexByKey.get(keyOf(iv.start, interval))
+    const e = endT >= windowEnd ? n - 1 : indexByKey.get(keyOf(iv.end, interval))
+    if (s === undefined || e === undefined || s > e) continue
     diff[s]++
     diff[e + 1]--
   }
-  const counts = new Array(n).fill(0)
   let running = 0
   for (let i = 0; i < n; i++) {
     running += diff[i]

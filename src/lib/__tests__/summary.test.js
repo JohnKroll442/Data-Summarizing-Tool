@@ -78,6 +78,25 @@ describe('computeRankings', () => {
   it('returns empty rankings when there are no rows', () => {
     expect(computeRankings([], W_HEADERS)).toEqual({ slowest: [], fastest: [] })
   })
+
+  it('scopes rankings to a timeline range — only in-window entities rank', () => {
+    const headers = ['SESSION_ID', 'USER_ACTION', 'ACTION_TIMESTAMP', 'WIDGET_ID', 'WIDGET_MEASURE', 'DURATION']
+    const row = (action, ts, dur) => ({
+      SESSION_ID: 'S1', USER_ACTION: action, ACTION_TIMESTAMP: ts,
+      WIDGET_ID: 'W1', WIDGET_MEASURE: 'render', DURATION: dur,
+    })
+    const rows = [
+      row('In1', '2026-06-01 10:00:00', 500),
+      row('In2', '2026-06-01 11:00:00', 300),
+      row('Out', '2026-07-15 10:00:00', 900), // slowest overall, but outside the window
+    ]
+    // Window covering only Jun 1.
+    const range = { min: new Date(2026, 5, 1).getTime(), max: new Date(2026, 5, 2).getTime() }
+    const action = computeRankings(rows, headers, { range }).slowest.find((l) => l.id === 'action')
+    const names = action.items.map((i) => i.label)
+    expect(names).toEqual(['In1', 'In2']) // 500, 300 — the out-of-window 900 is dropped
+    expect(names).not.toContain('Out')
+  })
 })
 
 /* ——— busiest periods ——— */
@@ -112,7 +131,40 @@ describe('computeBusiest', () => {
     expect(b.month).toBeUndefined()
   })
 
+  it('drops the 30-day card for a sub-30-day span even across a month boundary', () => {
+    // Jun 29 → Jul 1 crosses the Jun/Jul boundary but is only ~2 days — the
+    // 30-day card must NOT appear (it used to, when gated on calendar months).
+    const b = computeBusiest(
+      [arow('A', '2026-06-29 10:00:00'), arow('B', '2026-07-01 10:00:00')],
+      A_HEADERS,
+    )
+    expect(b.day).toBeTruthy()
+    expect(b.week).toBeUndefined()
+    expect(b.month).toBeUndefined()
+  })
+
   it('returns null when there are no dated actions', () => {
     expect(computeBusiest([], A_HEADERS)).toBeNull()
+  })
+
+  it('scopes the tally to a timeline range and adapts which cards appear', () => {
+    const rows = [
+      arow('A', '2026-06-01 10:00:00'),
+      arow('B', '2026-06-01 11:00:00'), // Jun 1 → 2 actions
+      arow('C', '2026-06-02 10:00:00'),
+      arow('D', '2026-07-15 10:00:00'), // outside the window
+    ]
+    // Window covering only Jun 1–2.
+    const range = { min: new Date(2026, 5, 1).getTime(), max: new Date(2026, 5, 3).getTime() }
+    const b = computeBusiest(rows, A_HEADERS, { range })
+    expect(b.day.count).toBe(2) // Jun 1 (A,B); D is excluded by the range
+    expect(b.day.label).toContain('Jun 1')
+    expect(b.week).toBeUndefined() // windowed span is ~1 day (<7d)
+    expect(b.month).toBeUndefined() // single month within the window
+  })
+
+  it('returns null when the range excludes every action', () => {
+    const range = { min: new Date(2026, 0, 1).getTime(), max: new Date(2026, 0, 2).getTime() }
+    expect(computeBusiest([arow('A', '2026-06-01 10:00:00')], A_HEADERS, { range })).toBeNull()
   })
 })

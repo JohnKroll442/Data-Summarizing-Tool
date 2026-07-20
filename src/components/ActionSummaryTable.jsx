@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import DataTable from './DataTable'
@@ -34,7 +34,7 @@ const ACTION_TS = (row) => row._action_timestamp
  * Clicking the Action name cell sets the `actionFilter` (name + timestamp)
  * and routes to Widget View for the next level of drill-down.
  */
-function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
+function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsChange }) {
   const navigate = useNavigate()
   const location = useLocation()
   const {
@@ -50,6 +50,10 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
     fileName,
     timeSelections: timeFilter,
     setTimeSelections: setTimeFilter,
+    actionInvocationFilter,
+    setActionInvocationFilter,
+    actionFilterWindow,
+    setActionFilterWindow,
   } = useCsvData()
 
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
@@ -96,22 +100,26 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const [sort, setSort] = useState(null)
 
   // Faceted options: each dropdown lists only values that still apply given the
-  // OTHER active column filters plus the time filter. The session scope is
+  // OTHER active column filters, the time filter, the timeline range, and any
+  // Actions-bar drill (a set of invocation timestamps). The session scope is
   // already baked into summaryRows (rows are filtered before aggregation).
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
       (row) => matchesTimeFilter(row, ACTION_TS, timeFilter)
-        && matchesTimeRange(row, ACTION_TS, timelineRange)),
-    [summaryRows, filters, timeFilter, timelineRange],
+        && matchesTimeRange(row, ACTION_TS, timelineRange)
+        && (actionInvocationFilter.length === 0 || actionInvocationFilter.includes(String(row._action_timestamp)))),
+    [summaryRows, filters, timeFilter, timelineRange, actionInvocationFilter],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters and the timeline range (but not by time itself) so the time options
-  // track the other menus and the selected timeline window.
+  // filters, the timeline range, and the invocation drill (but not by time
+  // itself) so the time options track the other menus.
   const timeFilterRows = useMemo(
     () => summaryRows.filter((row) =>
-      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, ACTION_TS, timelineRange)),
-    [summaryRows, filters, timelineRange],
+      matchesAllMultiFilters(row, filters)
+        && matchesTimeRange(row, ACTION_TS, timelineRange)
+        && (actionInvocationFilter.length === 0 || actionInvocationFilter.includes(String(row._action_timestamp)))),
+    [summaryRows, filters, timelineRange, actionInvocationFilter],
   )
 
   const visibleRows = useMemo(() => {
@@ -120,6 +128,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, ACTION_TS, timeFilter)) return false
       if (!matchesTimeRange(row, ACTION_TS, timelineRange)) return false
+      if (actionInvocationFilter.length > 0 && !actionInvocationFilter.includes(String(row._action_timestamp))) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -127,7 +136,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -146,11 +155,21 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
 
+  // Publish the fully filtered + sorted action rows up so the Action Waterfall
+  // modal navigates exactly the actions shown in this table (respecting every
+  // column, search, time, and timeline filter) instead of the whole session
+  // scope. `sortedRows` is memoized, so this only fires when the visible set
+  // actually changes; the parent's setter is stable, so there's no loop.
+  useEffect(() => {
+    onFilteredActionsChange?.(sortedRows)
+  }, [sortedRows, onFilteredActionsChange])
+
   const activeFilterCount =
     countActiveMultiFilters(filters, search) +
     (sessionMultiFilter.length > 0 ? 1 : 0) +
     (hasTimeSelection(timeFilter) ? 1 : 0) +
-    (timelineRange ? 1 : 0)
+    (timelineRange ? 1 : 0) +
+    (actionInvocationFilter.length > 0 ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -311,6 +330,16 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
         </div>
       )}
 
+      {actionFilterWindow && actionInvocationFilter.length > 0 && (
+        <div className="summary-active-window" role="status">
+          <span className="summary-active-window-dot" aria-hidden="true" />
+          Showing actions active <strong>{actionFilterWindow}</strong>
+          <span className="summary-active-window-count">
+            · {actionInvocationFilter.length} action{actionInvocationFilter.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
+
       <div className="summary-filters">
         <input
           type="search"
@@ -373,6 +402,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall }) {
               setFilters({})
               setSessionMultiFilter([])
               setActionMultiFilter([])
+              setActionInvocationFilter([])
+              setActionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
               resetTimeline()
             }}

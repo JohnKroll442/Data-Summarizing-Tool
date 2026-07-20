@@ -7,6 +7,8 @@ import {
   granularityLabel,
   bucketSpanMs,
   sessionIdsInWindow,
+  widgetIdsInWindow,
+  actionKeysInWindow,
 } from '../lib/activityTimeline'
 import { buildActivityBarsOption, buildOverviewOption } from './charts/options/activityBars'
 import { formatTimeRangeLabel } from '../lib/format'
@@ -72,8 +74,13 @@ function ActivityTimeline() {
     setActionFilter,
     setActionMultiFilter,
     setSessionFilterWindow,
+    setWidgetMultiFilter,
+    setActionInvocationFilter,
+    setWidgetFilterWindow,
+    setActionFilterWindow,
     timelineFocus,
     setTimelineRange,
+    resetTimeline,
     timelineResetNonce,
   } = useCsvData()
   const navigate = useNavigate()
@@ -401,45 +408,78 @@ function ActivityTimeline() {
   }, [collapsed, overview, onDetailWheel, onDetailPointerDown])
 
 
-  // during that bucket's [start, end) window. Only the Sessions series is
-  // actionable; Actions/Widgets clicks are ignored. Works whether or not we're
-  // already on the Session tab: the shared sessionMultiFilter both seeds a fresh
-  // SessionSummaryTable mount and is synced live by an already-mounted one.
+  // Click a bar → drill into that series' view, scoped to exactly the entities
+  // the clicked bucket counted (over its [start, end) window), so the count you
+  // land on matches the bar. All three series are actionable: Sessions →
+  // sessions active in the window, Widgets → widgets active, Actions → actions
+  // that fired in it. We resetTimeline() so the still-active zoom doesn't
+  // re-filter the drilled set by a different rule. The shared context filters
+  // both seed a fresh table mount and sync an already-mounted one.
   const onDetailClick = useCallback((params) => {
     // Ignore the click that fires at the end of a drag-pan.
     if (didPanRef.current) { didPanRef.current = false; return }
-    if (params?.componentType !== 'series' || params.seriesName !== 'Sessions') return
+    if (params?.componentType !== 'series') return
     if (!detail || detail.empty) return
     const b = detail.buckets[params.dataIndex]
     if (!b) return
     const start = b.sort
     const end = detail.buckets[params.dataIndex + 1]?.sort
       ?? b.sort + bucketSpanMs(detail.granularity)
-    const ids = sessionIdsInWindow(rows, headers, start, end)
-    if (ids.length === 0) return
-    // Clear other drill state (mirrors SummaryView.openEntity) and scope to
-    // exactly these sessions.
-    setSessionFilter(null)
-    setActionFilter(null)
-    setActionMultiFilter([])
-    setSessionMultiFilter(ids)
-    // Record the clicked bucket's window so the Session view can show which
-    // period this filter came from.
-    setSessionFilterWindow(fmtRange({ min: start, max: end }))
-    navigate('/summary/session')
-    // Minimize the timeline and jump down to the freshly-filtered table so it's
-    // the focus. rAF runs after React commits the collapse + navigation, so the
-    // anchor sits at its final (post-collapse) position when we scroll.
-    setCollapsed(true)
-    requestAnimationFrame(() => {
-      document
-        .getElementById('summary-view-top')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    const windowLabel = fmtRange({ min: start, max: end })
+
+    // Clear every drill scope so the target view shows exactly this bucket, and
+    // drop the timeline zoom so it can't further narrow the drilled set.
+    const clearDrills = () => {
+      setSessionFilter(null)
+      setActionFilter(null)
+      setSessionMultiFilter([])
+      setActionMultiFilter([])
+      setSessionFilterWindow(null)
+      setWidgetMultiFilter([])
+      setActionInvocationFilter([])
+      setWidgetFilterWindow(null)
+      setActionFilterWindow(null)
+    }
+    const finish = (view) => {
+      resetTimeline()
+      navigate(`/summary/${view}`)
+      // Minimize the timeline and jump to the freshly-filtered table. rAF runs
+      // after React commits the collapse + navigation.
+      setCollapsed(true)
+      requestAnimationFrame(() => {
+        document
+          .getElementById('summary-view-top')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+
+    if (params.seriesName === 'Sessions') {
+      const ids = sessionIdsInWindow(rows, headers, start, end)
+      if (ids.length === 0) return
+      clearDrills()
+      setSessionMultiFilter(ids)
+      setSessionFilterWindow(windowLabel)
+      finish('session')
+    } else if (params.seriesName === 'Widgets active') {
+      const ids = widgetIdsInWindow(rows, headers, start, end)
+      if (ids.length === 0) return
+      clearDrills()
+      setWidgetMultiFilter(ids)
+      setWidgetFilterWindow(windowLabel)
+      finish('widget')
+    } else if (params.seriesName === 'Actions') {
+      const keys = actionKeysInWindow(rows, headers, start, end)
+      if (keys.length === 0) return
+      clearDrills()
+      setActionInvocationFilter(keys)
+      setActionFilterWindow(windowLabel)
+      finish('action')
+    }
   }, [
-    detail, rows, headers, navigate,
+    detail, rows, headers, navigate, resetTimeline,
     setSessionFilter, setActionFilter, setActionMultiFilter, setSessionMultiFilter,
-    setSessionFilterWindow,
+    setSessionFilterWindow, setWidgetMultiFilter, setActionInvocationFilter,
+    setWidgetFilterWindow, setActionFilterWindow,
   ])
 
   if (!hasData || !overview) return null

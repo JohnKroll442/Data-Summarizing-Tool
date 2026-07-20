@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import DataTable from './DataTable'
 import KpiStrip from './KpiStrip'
@@ -58,6 +58,10 @@ function WidgetSummaryTable({ rows, headers }) {
     fileName,
     timeSelections: timeFilter,
     setTimeSelections: setTimeFilter,
+    widgetMultiFilter,
+    setWidgetMultiFilter,
+    widgetFilterWindow,
+    setWidgetFilterWindow,
   } = useCsvData()
 
   // Scope rows BEFORE aggregating. Each multiselect filter, when active, takes
@@ -121,16 +125,33 @@ function WidgetSummaryTable({ rows, headers }) {
   const [search, setSearch] = useState('')
   // A one-shot `summaryFilters` router state (from the Summary tab's top-10
   // rows) seeds the column filters so clicking a widget lands here scoped to
-  // just that widget.
+  // just that widget. The shared widgetMultiFilter (a timeline Widgets-bar
+  // drill) also seeds the Widget-ID column filter so it shows here too.
   const [filters, setFilters] = useState(() => {
     const nav = location.state?.summaryFilters
-    return nav ? { ...nav } : {}
+    const seed = widgetMultiFilter.length > 0 ? { widget_id: widgetMultiFilter } : {}
+    return nav ? { ...seed, ...nav } : seed
   })
+
+  // Keep the Widget-ID column filter in sync when widgetMultiFilter changes from
+  // OUTSIDE this table (e.g. clicking a Widgets bar in the Activity Timeline
+  // while this view is already mounted). Idempotent; mirrors SessionSummaryTable.
+  useEffect(() => {
+    setFilters((prev) => {
+      const cur = Array.isArray(prev.widget_id) ? prev.widget_id : []
+      if (sameStringSet(cur, widgetMultiFilter)) return prev
+      const next = { ...prev }
+      if (widgetMultiFilter.length > 0) next.widget_id = widgetMultiFilter
+      else delete next.widget_id
+      return next
+    })
+  }, [widgetMultiFilter])
   const [sort, setSort] = useState(null)
-  // Clicking a widget name opens the per-widget timing modal. Holds the
-  // selected row's widget_id + display name, plus the rows we should pass
-  // to the chart builder.
-  const [timingModal, setTimingModal] = useState(null)
+  // Clicking a widget name opens the per-widget timing modal. We store the
+  // index of the selected widget within the filtered + sorted rows (null =
+  // closed) so the modal's picker/arrows can flip through exactly the widgets
+  // shown in the table.
+  const [timingIdx, setTimingIdx] = useState(null)
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters plus the time filter. The session/action scope
@@ -182,6 +203,53 @@ function WidgetSummaryTable({ rows, headers }) {
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
 
+  // Resolve one widget summary row into the rows the timing chart needs: the
+  // raw rows for that widget, plus the rows for its parent action (to anchor
+  // the Action End markLine). Same logic the widget-name click used inline.
+  const resolveWidgetTiming = useCallback((summaryRow) => {
+    const widgetId = summaryRow.widget_id
+    const idKey = mapping.widgetId
+    const rowsForWidget = idKey
+      ? scopedRows.filter((r) => String(r?.[idKey] ?? '') === String(widgetId))
+      : []
+    // Identify the parent action from the widget's own rows so the chart's
+    // Action Start / End markLines reflect just that action — not the whole
+    // session. Try the ACTION_TIMESTAMP column first, else fall back to all
+    // scoped rows.
+    const actionTsKey = findActionTimestampKey(headers)
+    let actionRows = scopedRows
+    if (actionTsKey && rowsForWidget.length) {
+      const ts = String(rowsForWidget[0]?.[actionTsKey] ?? '')
+      if (ts) {
+        actionRows = scopedRows.filter((r) => String(r?.[actionTsKey] ?? '') === ts)
+      }
+    }
+    return {
+      widgetName: summaryRow.widget_name || String(widgetId),
+      widgetRows: rowsForWidget,
+      actionRows,
+    }
+  }, [scopedRows, headers, mapping.widgetId])
+
+  // The navigable widget list for the modal's picker + the resolved rows for
+  // the currently-selected widget. Built only while the modal is open, from the
+  // filtered + sorted rows, so the picker/arrows navigate exactly what's shown.
+  const widgetPickList = useMemo(
+    () =>
+      timingIdx == null
+        ? []
+        : sortedRows.map((r) => ({
+            key: String(r.widget_id),
+            label: r.widget_name || String(r.widget_id),
+          })),
+    [timingIdx, sortedRows],
+  )
+  const timingModal = useMemo(() => {
+    if (timingIdx == null) return null
+    const row = sortedRows[timingIdx]
+    return row ? resolveWidgetTiming(row) : null
+  }, [timingIdx, sortedRows, resolveWidgetTiming])
+
   const activeFilterCount =
     countActiveMultiFilters(filters, search) +
     (sessionMultiFilter.length > 0 ? 1 : 0) +
@@ -203,8 +271,15 @@ function WidgetSummaryTable({ rows, headers }) {
     return Array.from(seen).slice(0, 8).join(', ')
   }, [scopedRows, mapping.measure])
 
-  const updateFilter = (colKey, next) =>
+  const updateFilter = (colKey, next) => {
     setFilters((prev) => ({ ...prev, [colKey]: next }))
+    if (colKey === 'widget_id') {
+      // Mirror hand-edits of the Widget-ID filter back to the shared drill state,
+      // and drop the timeline window label since it no longer describes the set.
+      setWidgetMultiFilter(next)
+      setWidgetFilterWindow(null)
+    }
+  }
 
   // Active session / action scope: the multiselect filter when set, otherwise
   // the single-value drill-down from the Session / Action views.
@@ -364,6 +439,16 @@ function WidgetSummaryTable({ rows, headers }) {
         </div>
       )}
 
+      {widgetFilterWindow && Array.isArray(filters.widget_id) && filters.widget_id.length > 0 && (
+        <div className="summary-active-window" role="status">
+          <span className="summary-active-window-dot" aria-hidden="true" />
+          Showing widgets active <strong>{widgetFilterWindow}</strong>
+          <span className="summary-active-window-count">
+            · {filters.widget_id.length} widget{filters.widget_id.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
+
       <div className="summary-filters">
         <input
           type="search"
@@ -434,6 +519,8 @@ function WidgetSummaryTable({ rows, headers }) {
               setFilters({})
               setSessionMultiFilter([])
               setActionMultiFilter([])
+              setWidgetMultiFilter([])
+              setWidgetFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
               resetTimeline()
             }}
@@ -460,37 +547,13 @@ function WidgetSummaryTable({ rows, headers }) {
                   className="cell-link"
                   title={`Open timing chart for "${row.widget_name}"`}
                   onClick={() => {
-                    const widgetId = row.widget_id
-                    const idKey = mapping.widgetId
-                    const rowsForWidget = idKey
-                      ? scopedRows.filter(
-                          (r) => String(r?.[idKey] ?? '') === String(widgetId)
-                        )
-                      : []
-
-                    // Identify the parent action from the widget's own rows so
-                    // the chart's Action Start / End markLines reflect just
-                    // that action — not the whole session. We try the
-                    // ACTION_TIMESTAMP column first (works even with no active
-                    // action filter), then fall back to scopedRows when no
-                    // ACTION_TIMESTAMP column is present.
-                    const actionTsKey = findActionTimestampKey(headers)
-                    let actionRows = scopedRows
-                    if (actionTsKey && rowsForWidget.length) {
-                      const ts = String(rowsForWidget[0]?.[actionTsKey] ?? '')
-                      if (ts) {
-                        actionRows = scopedRows.filter(
-                          (r) => String(r?.[actionTsKey] ?? '') === ts
-                        )
-                      }
-                    }
-
-                    setTimingModal({
-                      widgetId,
-                      widgetName: row.widget_name || String(widgetId),
-                      widgetRows: rowsForWidget,
-                      actionRows,
-                    })
+                    // Open on this widget's position within the filtered +
+                    // sorted rows, so the modal's arrows/picker step through
+                    // exactly the widgets shown in the table.
+                    const idx = sortedRows.findIndex(
+                      (r) => String(r.widget_id) === String(row.widget_id)
+                    )
+                    setTimingIdx(idx >= 0 ? idx : 0)
                   }}
                 >
                   {String(v)}
@@ -506,11 +569,16 @@ function WidgetSummaryTable({ rows, headers }) {
       <TablePager page={page} pageCount={pageCount} onPage={setPage} />
 
       <WidgetTimingModal
-        open={!!timingModal}
-        onClose={() => setTimingModal(null)}
+        open={timingModal != null}
+        onClose={() => setTimingIdx(null)}
         widgetName={timingModal?.widgetName}
         widgetRows={timingModal?.widgetRows ?? []}
         actionRows={timingModal?.actionRows ?? []}
+        items={widgetPickList}
+        index={timingIdx ?? 0}
+        onIndexChange={(next) =>
+          setTimingIdx(Math.max(0, Math.min(sortedRows.length - 1, next)))
+        }
       />
     </>
   )
@@ -547,6 +615,15 @@ function findActionTimestampKey(headers) {
     if (n.includes('timestamp') && !n.includes('end')) return h
   }
   return ''
+}
+
+// Order-insensitive equality for two string arrays — used to skip redundant
+// filter updates when the shared widget multi-filter already matches the local
+// widget_id column filter.
+function sameStringSet(a, b) {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((v) => set.has(v))
 }
 
 export default WidgetSummaryTable

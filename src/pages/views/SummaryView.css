@@ -7,6 +7,55 @@
   margin-bottom: 1.5rem;
 }
 
+/* Timeline-range banner — mirrors the one on the summary tables
+   (SessionSummaryTable.css) so the scoped Summary reads consistently. Centered
+   and shrink-wrapped rather than stretched full-width. */
+.summary-active-window {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg, var(--sap-surface));
+  border: 1px solid var(--sap-blue-light);
+  border-radius: var(--radius-md);
+}
+
+.summary-active-window strong {
+  font-weight: var(--weight-semibold);
+}
+
+.summary-active-window.is-centered {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.summary-active-window.is-centered .summary-active-window-clear {
+  margin-left: 0;
+}
+
+.summary-active-window-clear {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--sap-blue-darker);
+  background: transparent;
+  border: 1px solid var(--sap-blue-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.summary-active-window-clear:hover {
+  background: var(--sap-blue-light);
+}
+
 .summary-view-header .view-heading {
   margin-bottom: 0.35rem;
 }
@@ -19,8 +68,9 @@
 
 /* Busiest-periods strip — mirrors the KPI card look. */
 .summary-busiest {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 0.75rem;
   margin-bottom: 1.25rem;
 }
@@ -35,8 +85,12 @@
   border-left: 3px solid var(--sap-blue);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  /* Clickable: focuses the Activity Timeline on this period. */
-  width: 100%;
+  /* Clickable: focuses the Activity Timeline on this period. Sized so up to
+     three cards split the row evenly; with only one or two present (after the
+     7-day / 30-day cards drop), the row stays centered rather than stretching a
+     lone card full-width. Wraps and keeps a sane min-width on narrow screens. */
+  flex: 0 1 calc((100% - 1.5rem) / 3);
+  min-width: 180px;
   text-align: left;
   font: inherit;
   color: inherit;

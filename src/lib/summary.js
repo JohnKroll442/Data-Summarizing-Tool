@@ -14,9 +14,18 @@
 import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
 import { actionPoint } from './activityTimeline'
-import { bucketOf } from './timeBuckets'
+import { bucketOf, matchesTimeRange } from './timeBuckets'
 
 const TOP_N = 10
+
+// Timestamp accessors for scoping aggregated entities to a timeline range.
+// These MIRROR the summary tables so the Summary page's scoped counts agree
+// with the tables' timeline-scoped counts: ACTION_TS ↔ ActionSummaryTable,
+// WIDGET_TS ↔ WidgetSummaryTable.
+const ACTION_TS = (row) => row._action_timestamp
+const WIDGET_TS = (row) =>
+  row.render_start || row.network_start || row.backend_start ||
+  row.render_end || row.network_end || row.backend_end || ''
 
 const num = (v) => {
   if (v === '' || v === null || v === undefined) return null
@@ -46,9 +55,13 @@ function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction) {
 }
 
 /** The six category specs (shared by both the slowest and fastest rankings). */
-function categorySpecs(rows, headers) {
+function categorySpecs(rows, headers, range) {
+  // Scope the aggregated entities to the timeline window (no-op when range is
+  // null), matching how the summary tables filter their aggregated rows.
   const widgets = aggregateByWidget(rows, headers).rows
+    .filter((w) => matchesTimeRange(w, WIDGET_TS, range))
   const actions = aggregateByAction(rows, headers).rows
+    .filter((a) => matchesTimeRange(a, ACTION_TS, range))
 
   const widgetLabel = (w) => String(w.widget_name || w.widget_id || '—')
   const widgetSub = (w) =>
@@ -95,10 +108,14 @@ function categorySpecs(rows, headers) {
  * `{ slowest, fastest }` where each is an array of
  * `{ id, title, view, items:[{label, sublabel, value, nav}] }` (value in ms).
  * Categories whose metric column is absent come back with empty `items`.
+ *
+ * `opts.range` ({ min, max } epoch ms | null) scopes the ranked entities to a
+ * timeline window — only entities that started in-window are eligible, so the
+ * rankings answer "fastest/slowest within this period". Null = full data.
  */
-export function computeRankings(rows, headers) {
+export function computeRankings(rows, headers, { range = null } = {}) {
   if (!rows?.length || !headers?.length) return { slowest: [], fastest: [] }
-  const specs = categorySpecs(rows, headers)
+  const specs = categorySpecs(rows, headers, range)
   const build = (direction) =>
     specs.map((s) => ({
       id: s.id,
@@ -194,22 +211,35 @@ function busiestWindow(dates, windowDays) {
 /**
  * Busiest periods by ACTION count. Always returns the busiest day (when any
  * action has a parseable timestamp); adds the busiest rolling 7-day stretch
- * only when the data spans more than 7 days, and the busiest month only when
- * it spans more than one month. Returns null when there are no dated actions.
+ * only when the data spans at least 7 days, and the busiest rolling 30-day
+ * stretch only when it spans at least 30 days. Returns null when there are no
+ * dated actions.
  *
  * Each period carries `{ label, count, min, max }` where min/max are the epoch
  * ms bounds of that window — so a click can focus the Activity Timeline on it.
+ *
+ * `opts.range` ({ min, max } epoch ms | null) scopes the tally to a timeline
+ * window: only in-window actions are counted, and the day/week/month cards
+ * appear based on the WINDOWED span (so a 7-day view drops the 30-day card).
+ * Null = full data.
  */
-export function computeBusiest(rows, headers) {
+export function computeBusiest(rows, headers, { range = null } = {}) {
   if (!rows?.length || !headers?.length) return null
 
-  const dates = aggregateByAction(rows, headers).rows.map(actionPoint).filter(Boolean)
+  let dates = aggregateByAction(rows, headers).rows.map(actionPoint).filter(Boolean)
+  if (range) {
+    dates = dates.filter((d) => {
+      const t = d.getTime()
+      return t >= range.min && t <= range.max
+    })
+  }
   if (dates.length === 0) return null
 
   const days = bucketCounts(dates, 'day')
-  const months = bucketCounts(dates, 'month')
 
-  // Total span in whole days — a 7-day card only makes sense past a week.
+  // Total span in whole days — the 7-day card only makes sense past a week, and
+  // the 30-day card only past 30 days (both gated on the day-span, so a window
+  // that merely straddles a calendar-month boundary doesn't resurrect them).
   let minDay = Infinity
   let maxDay = -Infinity
   for (const d of dates) {
@@ -223,6 +253,6 @@ export function computeBusiest(rows, headers) {
     day: dayB ? { label: dayB.label, count: dayB.count, min: dayB.sort, max: dayB.sort + DAY_MS } : null,
   }
   if (maxDay - minDay >= 7 * DAY_MS) out.week = busiestWindow(dates, 7)
-  if (months.size > 1) out.month = busiestWindow(dates, 30)
+  if (maxDay - minDay >= 30 * DAY_MS) out.month = busiestWindow(dates, 30)
   return out
 }

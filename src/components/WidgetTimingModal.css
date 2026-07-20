@@ -56,6 +56,76 @@
   background: rgba(255, 255, 255, 0.28);
 }
 
+/* Picker + ◀ N / total ▶ stepper for flipping through the widgets shown in the
+   table. Mirrors the Action Waterfall modal's toolbar. */
+.widget-timing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--sap-border);
+  background: var(--sap-surface-muted, #f7f9fb);
+  flex-wrap: wrap;
+}
+
+.widget-timing-toolbar label {
+  font-size: var(--text-sm);
+  color: var(--sap-text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.widget-timing-select {
+  flex: 1;
+  min-width: 240px;
+  max-width: 640px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+  font-size: var(--text-sm);
+}
+
+.widget-timing-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.widget-timing-step {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--sap-text);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.widget-timing-step:hover:not(:disabled) {
+  background: var(--sap-blue);
+  border-color: var(--sap-blue);
+  color: #fff;
+}
+
+.widget-timing-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.widget-timing-position {
+  min-width: 3.5rem;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--sap-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .widget-timing-body {
   padding: 0.75rem 1rem 1rem;
   background: var(--sap-surface);

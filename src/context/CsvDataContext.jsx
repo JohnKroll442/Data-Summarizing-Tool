@@ -87,6 +87,18 @@ export function CsvDataProvider({ children }) {
   // way (or was cleared / manually edited).
   const [sessionFilterWindow, setSessionFilterWindow] = useState(null)
 
+  // Timeline bar-drill state for the Widget and Action views, parallel to
+  // sessionMultiFilter / sessionFilterWindow above. Clicking a Widgets or
+  // Actions bar scopes that view to exactly the entities the bar counted:
+  //   widgetMultiFilter      — widget_id[] active in the clicked bucket
+  //   actionInvocationFilter — _action_timestamp[] of actions in the bucket
+  // and the *FilterWindow labels hold the bucket's time-range label for the
+  // "Showing … active {window}" banner. Reset on file swap like the others.
+  const [widgetMultiFilter, setWidgetMultiFilter] = useState([])
+  const [actionInvocationFilter, setActionInvocationFilter] = useState([])
+  const [widgetFilterWindow, setWidgetFilterWindow] = useState(null)
+  const [actionFilterWindow, setActionFilterWindow] = useState(null)
+
   // A request to focus the Activity Timeline on a time window (epoch ms), set
   // by clicking a "busiest day / 7 days / month" card on the Summary view. A
   // fresh object each call so the timeline's effect re-fires even for the same
@@ -131,6 +143,10 @@ export function CsvDataProvider({ children }) {
     setSessionMultiFilter([])
     setActionMultiFilter([])
     setSessionFilterWindow(null)
+    setWidgetMultiFilter([])
+    setActionInvocationFilter([])
+    setWidgetFilterWindow(null)
+    setActionFilterWindow(null)
     setTimelineFocus(null)
     setTimelineRange(null)
     setTimeSelections(emptyTimeSelections())
@@ -306,6 +322,14 @@ export function CsvDataProvider({ children }) {
         setActionMultiFilter,
         sessionFilterWindow,
         setSessionFilterWindow,
+        widgetMultiFilter,
+        setWidgetMultiFilter,
+        actionInvocationFilter,
+        setActionInvocationFilter,
+        widgetFilterWindow,
+        setWidgetFilterWindow,
+        actionFilterWindow,
+        setActionFilterWindow,
         timelineFocus,
         focusTimeline,
         timelineRange,
@@ -338,6 +362,10 @@ export function CsvDataProvider({ children }) {
       sessionMultiFilter,
       actionMultiFilter,
       sessionFilterWindow,
+      widgetMultiFilter,
+      actionInvocationFilter,
+      widgetFilterWindow,
+      actionFilterWindow,
       timelineFocus,
       focusTimeline,
       timelineRange,

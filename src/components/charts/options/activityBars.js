@@ -53,11 +53,11 @@ export function buildActivityBarsOption(buckets, series, hidden = {}, logScale =
       ? { type: 'log', minorSplitLine: { show: true } }
       : { type: 'value', minInterval: 1 },
     series: [
-      // Only Sessions is clickable (opens the filtered Session view), so it
-      // gets the pointer cursor; the other two use the default arrow.
+      // All three series are clickable — each drills into its view scoped to
+      // the clicked bucket — so all get the pointer cursor.
       { name: 'Sessions',       type: 'bar', data: series.sessions, cursor: 'pointer', ...BAR_STYLE },
-      { name: 'Actions',        type: 'bar', data: series.actions,  cursor: 'default', ...BAR_STYLE },
-      { name: 'Widgets active', type: 'bar', data: series.widgets,  cursor: 'default', ...BAR_STYLE },
+      { name: 'Actions',        type: 'bar', data: series.actions,  cursor: 'pointer', ...BAR_STYLE },
+      { name: 'Widgets active', type: 'bar', data: series.widgets,  cursor: 'pointer', ...BAR_STYLE },
     ],
   }
 }

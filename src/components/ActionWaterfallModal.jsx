@@ -24,10 +24,11 @@ import './ActionWaterfallModal.css'
  */
 function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKey }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
-  // Which widget (if any) the user drilled into by clicking a bar. Holds the
-  // display name + the rows for that widget; null when the drill-down modal
-  // is closed.
-  const [widgetModal, setWidgetModal] = useState(null)
+  // Which widget (if any) the user drilled into by clicking a bar — an index
+  // into `actionWidgets` (the charted widgets in the current action), or null
+  // when the drill-down modal is closed. Kept as an index so the drill-down
+  // modal's arrows/picker can step through the action's widgets.
+  const [widgetIdx, setWidgetIdx] = useState(null)
 
   const total = actions?.length ?? 0
   // Clamp-step through the action list. Guarded by the caller so it never
@@ -48,6 +49,8 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   // re-render.
   useEffect(() => {
     if (!open) return
+    // A fresh open starts with no widget drill-down showing.
+    setWidgetIdx(null)
     if (initialKey && actions?.length) {
       const idx = actions.findIndex(
         (a) => `${a.name}::${a.timestamp ?? ''}` === initialKey
@@ -62,16 +65,12 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   useEffect(() => {
     if (!open) return
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        // Esc peels back one layer: close the widget drill-down first, then
-        // the waterfall itself.
-        if (widgetModal) setWidgetModal(null)
-        else onClose()
-        return
-      }
-      // Don't hijack arrows while the drill-down is open, or while the user
-      // is interacting with the action <select> (native option stepping).
-      if (widgetModal) return
+      // While the widget drill-down is open it owns Esc + arrows (stepping
+      // through the action's widgets), so the waterfall ignores keys.
+      if (widgetIdx != null) return
+      if (e.key === 'Escape') { onClose(); return }
+      // Don't hijack arrows while the user is interacting with the action
+      // <select> (native option stepping).
       if (e.target?.tagName === 'SELECT' || e.target?.tagName === 'INPUT') return
       if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
@@ -79,7 +78,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, widgetModal, total])
+  }, [open, onClose, widgetIdx, total])
 
   const selected = actions?.[selectedIdx] ?? null
 
@@ -134,19 +133,39 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
       .map((id) => names.get(id) || id)
   }, [option, actionRows, widgetIdKey, mapping.widgetName])
 
-  // Click a bar → open the per-widget timing modal for that widget, scoped to
-  // the current action (so its Action End markLine is correct).
+  // The widgets charted in this action (distinct, in chart order), so the
+  // drill-down modal can step through exactly the bars you can click.
+  const actionWidgets = useMemo(() => {
+    const durationSeries = option?.series?.find?.((s) => s?.name === 'duration')
+    const seen = new Set()
+    const list = []
+    for (const d of durationSeries?.data ?? []) {
+      if (!d || d.widgetId === undefined) continue
+      const id = String(d.widgetId)
+      if (seen.has(id)) continue
+      seen.add(id)
+      list.push({ key: id, id, label: d.widgetName || id })
+    }
+    return list
+  }, [option])
+
+  // The currently drilled-into widget + its rows, derived from the index.
+  const selectedWidget = widgetIdx != null ? actionWidgets[widgetIdx] ?? null : null
+  const widgetModalRows = useMemo(() => {
+    if (!selectedWidget || !widgetIdKey) return []
+    return actionRows.filter(
+      (r) => String(r?.[widgetIdKey] ?? '') === String(selectedWidget.id)
+    )
+  }, [selectedWidget, actionRows, widgetIdKey])
+
+  // Click a bar → drill into that widget's timing chart, scoped to the current
+  // action (so its Action End markLine is correct). Opening by index lets the
+  // drill-down modal's arrows/picker step through the action's widgets.
   const onChartClick = (params) => {
     const d = params?.data
     if (!d || typeof d !== 'object' || d.widgetId === undefined) return
-    const widgetRows = widgetIdKey
-      ? actionRows.filter((r) => String(r?.[widgetIdKey] ?? '') === String(d.widgetId))
-      : []
-    if (widgetRows.length === 0) return
-    setWidgetModal({
-      widgetName: d.widgetName || String(d.widgetId),
-      widgetRows,
-    })
+    const idx = actionWidgets.findIndex((w) => w.id === String(d.widgetId))
+    if (idx >= 0) setWidgetIdx(idx)
   }
 
   if (!open) return null
@@ -242,11 +261,16 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
     </div>
 
       <WidgetTimingModal
-        open={!!widgetModal}
-        onClose={() => setWidgetModal(null)}
-        widgetName={widgetModal?.widgetName}
-        widgetRows={widgetModal?.widgetRows ?? []}
+        open={selectedWidget != null}
+        onClose={() => setWidgetIdx(null)}
+        widgetName={selectedWidget?.label}
+        widgetRows={widgetModalRows}
         actionRows={actionRows}
+        items={actionWidgets}
+        index={widgetIdx ?? 0}
+        onIndexChange={(next) =>
+          setWidgetIdx(Math.max(0, Math.min(actionWidgets.length - 1, next)))
+        }
       />
     </>
   )

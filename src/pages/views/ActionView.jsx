@@ -4,7 +4,6 @@ import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
-import { aggregateByAction } from '../../lib/actionAggregate'
 
 /**
  * ActionView — one row per action table at the top, followed by user-added
@@ -25,22 +24,27 @@ function ActionView() {
 
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
+  // The fully filtered + sorted action rows, published up by the table so the
+  // waterfall picker navigates exactly what the table shows (every column /
+  // search / time / timeline filter applied), not the whole session scope.
+  const [filteredActionRows, setFilteredActionRows] = useState([])
 
-  // Build the picker list for the Action Waterfall modal from the same
-  // aggregation the summary table uses. Deferred until the modal is actually
-  // opened so we don't run a second full aggregateByAction pass on every
-  // Action View navigation (the table already runs one).
-  const waterfallActions = useMemo(() => {
-    if (!waterfallOpen) return []
-    const { rows: summaryRows } = aggregateByAction(scopedRows, headers)
-    return summaryRows.map((r) => ({
-      name: r.action_name,
-      timestamp: r._action_timestamp ?? '',
-      label: r._action_timestamp
-        ? `${r.action_name} — ${r._action_timestamp}`
-        : String(r.action_name),
-    }))
-  }, [waterfallOpen, scopedRows, headers])
+  // The picker list for the Action Waterfall modal mirrors the table's filtered
+  // + sorted rows, so the modal's "N / total" and its arrow navigation always
+  // match the count shown above the table. EVERY filter flows through
+  // `filteredActionRows` — the Session/User/Story/Page dropdowns, the Time
+  // menu, AND the Activity Timeline range — so all of them stay consistent.
+  const waterfallActions = useMemo(
+    () =>
+      filteredActionRows.map((r) => ({
+        name: r.action_name,
+        timestamp: r._action_timestamp ?? '',
+        label: r._action_timestamp
+          ? `${r.action_name} — ${r._action_timestamp}`
+          : String(r.action_name),
+      })),
+    [filteredActionRows],
+  )
 
   const openWaterfallFor = ({ name, timestamp }) => {
     setWaterfallInitialKey(`${name}::${timestamp ?? ''}`)
@@ -54,6 +58,7 @@ function ActionView() {
         rows={rows}
         headers={headers}
         onOpenWaterfall={openWaterfallFor}
+        onFilteredActionsChange={setFilteredActionRows}
       />
 
       <div className="chart-grid-toolbar" style={{ marginTop: '1.25rem' }}>
@@ -64,10 +69,10 @@ function ActionView() {
             setWaterfallInitialKey(null)
             setWaterfallOpen(true)
           }}
-          disabled={scopedRows.length === 0}
+          disabled={filteredActionRows.length === 0}
           title={
-            scopedRows.length === 0
-              ? 'No actions available to chart'
+            filteredActionRows.length === 0
+              ? 'No actions match the current filters'
               : 'Open the Action Waterfall Chart'
           }
         >

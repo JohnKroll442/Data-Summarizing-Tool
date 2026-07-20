@@ -9,6 +9,9 @@ import {
   listDimensionFields,
   dimensionOptions,
   buildActivityTimeline,
+  sessionIdsInWindow,
+  widgetIdsInWindow,
+  actionKeysInWindow,
   MAX_BUCKETS,
 } from '../activityTimeline'
 
@@ -110,10 +113,10 @@ describe('buildActivityTimeline', () => {
     expect(r.empty).toBe(false)
     expect(r.buckets.map((b) => b.key)).toEqual(['2026-07-01', '2026-07-02'])
     // S1 overlaps both days. S2 has a single timestamp (Jul 1), so its end is
-    // filled with the file's latest timestamp (S1's Jul 2 action) → it now spans
-    // both days too.
+    // filled with the file's latest timestamp (S1's Jul 2 action) → it stays
+    // active (open) through Jul 2 and counts on both days.
     expect(r.series.sessions).toEqual([2, 2])
-    // A + C on Jul 1, B on Jul 2.
+    // A + C on Jul 1, B on Jul 2 — actions count in the bucket they fired in.
     expect(r.series.actions).toEqual([2, 1])
     // W1,W3 on Jul 1, W2 on Jul 2.
     expect(r.series.widgets).toEqual([2, 1])
@@ -146,13 +149,52 @@ describe('buildActivityTimeline', () => {
     })
     expect(r.granularity).toBe('30min')
     expect(r.buckets.length).toBe(7) // 10:00,10:30,…,13:00
-    // Action A + widget W1 fall in the first half-hour bucket.
+    // Action A + widget W1 fall in the first half-hour bucket. Actions count in
+    // the bucket they fired in (A at 10:00); B fired Jul 2, C at 12:00.
     expect(r.series.actions[0]).toBe(1)
     expect(r.series.widgets[0]).toBe(1)
   })
 
+  it('counts sessions that overlap a zoomed sub-window even when they extend past it', () => {
+    // Zoom into Jul 1 10:00–13:00 (7 half-hour buckets). Both sessions stay
+    // active past the window's end (S1 → Jul 2; S2 is single-timestamp so its
+    // end is filled to the file's latest = Jul 2). They must still count in the
+    // buckets they overlap — not be dropped for having an out-of-window endpoint.
+    const r = buildActivityTimeline(ROWS, HEADERS, {
+      interval: '30min',
+      range: { min: new Date(2026, 6, 1, 10, 0), max: new Date(2026, 6, 1, 13, 0) },
+    })
+    // S1 starts 10:00 (bucket 0); S2 starts 12:00 (bucket 4). Both stay active
+    // through the end of the window, so from bucket 4 on there are two.
+    expect(r.series.sessions).toEqual([1, 1, 1, 1, 2, 2, 2])
+  })
+
   it('returns an empty result when there are no rows', () => {
     expect(buildActivityTimeline([], HEADERS).empty).toBe(true)
+  })
+})
+
+describe('window drill helpers', () => {
+  // Jul 1, full day.
+  const start = new Date(2026, 6, 1).getTime()
+  const end = new Date(2026, 6, 2).getTime()
+
+  it('sessionIdsInWindow returns sessions active in the window (overlap)', () => {
+    // S1 (Jul 1→2) and S2 (single Jul 1, stretched) are both active on Jul 1.
+    expect(sessionIdsInWindow(ROWS, HEADERS, start, end).sort()).toEqual(['S1', 'S2'])
+  })
+
+  it('widgetIdsInWindow returns widgets whose interval overlaps the window', () => {
+    // W1 + W3 are on Jul 1; W2 is on Jul 2 → excluded.
+    expect(widgetIdsInWindow(ROWS, HEADERS, start, end).sort()).toEqual(['W1', 'W3'])
+  })
+
+  it('actionKeysInWindow returns _action_timestamp of actions that fired in the window', () => {
+    // A (10:00) + C (12:00) fired on Jul 1; B (Jul 2) did not.
+    expect(actionKeysInWindow(ROWS, HEADERS, start, end).sort()).toEqual([
+      '2026-07-01 10:00:00',
+      '2026-07-01 12:00:00',
+    ])
   })
 })
 

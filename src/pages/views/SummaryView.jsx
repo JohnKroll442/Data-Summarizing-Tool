@@ -2,13 +2,19 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCsvData } from '../../context/useCsvData'
 import { computeRankings, computeBusiest } from '../../lib/summary'
-import { formatDurationMs, formatCount } from '../../lib/format'
+import { formatDurationMs, formatCount, formatTimeRangeLabel } from '../../lib/format'
 import './SummaryView.css'
 
 /**
  * SummaryView — the landing tab. A "busiest periods" strip (day / week / month
  * by action count), then two clearly-split ranking sections: the SLOWEST 10 and
  * the FASTEST 10 for each category. Each list row links to the entity's view.
+ *
+ * When the Activity Timeline has a focused window (`timelineRange`), everything
+ * here recomputes WITHIN that window — the busiest periods and the rankings
+ * answer "…within this time period" — matching the timeline-scoped counts in
+ * the Session / Action / Widget tables. A banner shows the active window and
+ * clears it.
  */
 function SummaryView() {
   const {
@@ -19,11 +25,19 @@ function SummaryView() {
     setSessionMultiFilter,
     setActionMultiFilter,
     focusTimeline,
+    timelineRange,
+    resetTimeline,
   } = useCsvData()
   const navigate = useNavigate()
 
-  const rankings = useMemo(() => computeRankings(rows, headers), [rows, headers])
-  const busiest = useMemo(() => computeBusiest(rows, headers), [rows, headers])
+  const rankings = useMemo(
+    () => computeRankings(rows, headers, { range: timelineRange }),
+    [rows, headers, timelineRange],
+  )
+  const busiest = useMemo(
+    () => computeBusiest(rows, headers, { range: timelineRange }),
+    [rows, headers, timelineRange],
+  )
 
   // Open a ranked row in its view with the entity pre-filtered. Clear any stale
   // drill-down scope first so the target definitely shows the clicked entity,
@@ -80,6 +94,21 @@ function SummaryView() {
       <header className="summary-view-header">
         <h2 className="view-heading">Summary</h2>
       </header>
+
+      {timelineRange && (
+        <div className="summary-active-window is-centered" role="status">
+          Busiest periods and rankings for the timeline range{' '}
+          <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={resetTimeline}
+            title="Reset the Activity Timeline to its full range"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {busiestCards.length > 0 && (
         <div className="summary-busiest" role="group" aria-label="Busiest periods">
