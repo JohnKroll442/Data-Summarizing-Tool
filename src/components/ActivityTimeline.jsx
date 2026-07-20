@@ -47,15 +47,18 @@ const LEGEND_ITEMS = [
 
 // Which series the detail bars show by default when you land on each view. The
 // active view's own series is on; the others start hidden but the header key
-// buttons can toggle them back in. Summary starts with none shown. Keyed by the
-// last path segment of /summary/<view>; views not listed here (e.g. raw) keep
-// whatever the user last had.
+// buttons can toggle them back in. Summary and Raw start with none shown and
+// collapsed. Keyed by the last path segment of /summary/<view>.
 const VIEW_SERIES_DEFAULTS = {
   session: { sessions: false, actions: true, widgets: true },
   action: { sessions: true, actions: false, widgets: true },
   widget: { sessions: true, actions: true, widgets: false },
   summary: { sessions: true, actions: true, widgets: true },
+  raw: { sessions: true, actions: true, widgets: true },
 }
+
+// Views where the timeline defaults to collapsed with no series shown.
+const COLLAPSED_VIEWS = new Set(['summary', 'raw'])
 
 /**
  * ActivityTimeline — a shared, collapsible panel mounted in the /summary shell
@@ -100,7 +103,7 @@ function ActivityTimeline() {
   const rootRef = useRef(null)
 
   const [collapsed, setCollapsed] = useState(
-    () => location.pathname.split('/').pop() === 'summary',
+    () => COLLAPSED_VIEWS.has(location.pathname.split('/').pop()),
   )
   // Which /summary/<view> we're on drives the detail bars' default series.
   const view = location.pathname.split('/').pop()
@@ -113,14 +116,13 @@ function ActivityTimeline() {
   )
   // When you move to another summary view, reset the bars to that view's
   // default (its own series on, the others off) and set its default open/closed
-  // state — Summary starts collapsed, the entity views start open. Manual
-  // toggles then persist until the next navigation. Views without a default
-  // (raw) are left alone.
+  // state — Summary and Raw start collapsed with none shown, the entity views
+  // start open. Manual toggles then persist until the next navigation.
   useEffect(() => {
     const def = VIEW_SERIES_DEFAULTS[view]
     if (def) {
       setHidden(def)
-      setCollapsed(view === 'summary')
+      setCollapsed(COLLAPSED_VIEWS.has(view))
     }
   }, [view])
   // Log y-axis makes small bars readable next to a dominant spike; off by
