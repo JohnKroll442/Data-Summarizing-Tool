@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import {
@@ -45,6 +45,18 @@ const LEGEND_ITEMS = [
   { key: 'widgets', label: 'Widgets active' },
 ]
 
+// Which series the detail bars show by default when you land on each view. The
+// active view's own series is on; the others start hidden but the header key
+// buttons can toggle them back in. Summary starts with none shown. Keyed by the
+// last path segment of /summary/<view>; views not listed here (e.g. raw) keep
+// whatever the user last had.
+const VIEW_SERIES_DEFAULTS = {
+  session: { sessions: false, actions: true, widgets: true },
+  action: { sessions: true, actions: false, widgets: true },
+  widget: { sessions: true, actions: true, widgets: false },
+  summary: { sessions: true, actions: true, widgets: true },
+}
+
 /**
  * ActivityTimeline — a shared, collapsible panel mounted in the /summary shell
  * so it appears above every view. Grouped bars show how many sessions /
@@ -84,12 +96,33 @@ function ActivityTimeline() {
     timelineResetNonce,
   } = useCsvData()
   const navigate = useNavigate()
+  const location = useLocation()
   const rootRef = useRef(null)
 
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(
+    () => location.pathname.split('/').pop() === 'summary',
+  )
+  // Which /summary/<view> we're on drives the detail bars' default series.
+  const view = location.pathname.split('/').pop()
   // Series toggled off via the header color key — hidden ones drop out of the
   // detail bars (the remaining bars re-center) just like the old legend clicks.
-  const [hidden, setHidden] = useState({ sessions: false, actions: false, widgets: false })
+  // Seeded from the current view's default so the first paint already matches.
+  const [hidden, setHidden] = useState(
+    () => VIEW_SERIES_DEFAULTS[location.pathname.split('/').pop()]
+      ?? { sessions: false, actions: false, widgets: false },
+  )
+  // When you move to another summary view, reset the bars to that view's
+  // default (its own series on, the others off) and set its default open/closed
+  // state — Summary starts collapsed, the entity views start open. Manual
+  // toggles then persist until the next navigation. Views without a default
+  // (raw) are left alone.
+  useEffect(() => {
+    const def = VIEW_SERIES_DEFAULTS[view]
+    if (def) {
+      setHidden(def)
+      setCollapsed(view === 'summary')
+    }
+  }, [view])
   // Log y-axis makes small bars readable next to a dominant spike; off by
   // default since a linear axis reads more naturally for exact counts.
   const [logScale, setLogScale] = useState(false)
@@ -217,28 +250,12 @@ function ActivityTimeline() {
     [rows, headers, hasData, effRange, overview],
   )
 
-  // Navigator bars use the SAME bucket size the detail resolved to (honored
-  // verbatim over the wider context range), so the strip visually matches the
-  // activity timeline view instead of auto-picking a coarser size.
-  const navInterval = detail && !detail.empty ? detail.granularity : undefined
-  const nav = useMemo(
-    () =>
-      hasData && effView
-        ? buildActivityTimeline(rows, headers, { interval: navInterval, coarsen: false, range: effView })
-        : overview,
-    [rows, headers, hasData, navInterval, effView, overview],
-  )
-
+  // Overview navigator is a slim range slider (no bars), so it just needs the
+  // context span (axis extent) and the focused window (handle positions).
   const overviewOption = useMemo(() => {
-    if (!nav || nav.empty || !effView || !effRange) return { series: [] }
-    // Center each bar within its bucket so bars sit inside the interval.
-    const half = bucketSpanMs(nav.granularity) / 2
-    const points = nav.buckets.map((b, i) => [
-      b.sort + half,
-      nav.series.sessions[i] + nav.series.actions[i] + nav.series.widgets[i],
-    ])
-    return buildOverviewOption(points, effView.min, effView.max, effRange)
-  }, [nav, effView, effRange])
+    if (!effView || !effRange) return { series: [] }
+    return buildOverviewOption(effView.min, effView.max, effRange)
+  }, [effView, effRange])
 
   const detailOption = useMemo(
     () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series, hidden, logScale) : { series: [] }),
@@ -579,12 +596,9 @@ function ActivityTimeline() {
                     onEvents={{ click: onDetailClick }}
                   />
                 </div>
-                <div className="activity-timeline-overview-label">
-                  Drag the window below to focus a day, hour, or minute range
-                </div>
                 <ReactECharts
                   option={overviewOption}
-                  style={{ height: 128, width: '100%' }}
+                  style={{ height: 40, width: '100%', marginTop: -16 }}
                   notMerge
                   lazyUpdate
                   onEvents={{ dataZoom: onOverviewZoom }}

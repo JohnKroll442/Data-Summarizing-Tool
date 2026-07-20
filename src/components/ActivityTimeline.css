@@ -131,13 +131,6 @@
   cursor: grabbing;
 }
 
-.activity-timeline-overview-label {
-  margin: 0.25rem 0 0;
-  font-size: 0.72rem;
-  color: var(--sap-text-muted);
-  text-align: center;
-}
-
 .activity-timeline-reset {
   padding: 0.4rem 0.6rem;
   font: inherit;

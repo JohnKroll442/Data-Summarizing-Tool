@@ -3,9 +3,7 @@ import {
   BASE_TEXT_STYLE,
   BASE_TOOLTIP,
   SAP_BLUE,
-  SAP_BLUE_LIGHT,
   SAP_GOLD,
-  SAP_GOLD_LIGHT,
   SAP_SUCCESS,
   SAP_TEXT,
 } from '../../../lib/chartColors'
@@ -74,122 +72,98 @@ const BAR_STYLE = {
 }
 
 /**
- * Overview navigator — one discrete bar per day (or per auto bucket) across the
- * full span, on a continuous TIME axis so the drag window can still focus any
- * sub-range (a day, an hour, a 30-minute slice). Taller bars = busier days.
- * The selection box overlays the bars so it's clear which days you're on.
+ * Overview navigator — a slim range slider, NOT a bar chart. A light track line
+ * spans the full context on a continuous TIME axis; two circular handles mark
+ * the focused window, with a blue segment filling the range between them. Drag a
+ * circle to grow/shrink the window, drag the segment to pan. There are no
+ * activity bars — it's purely a navigation control (per design: the bars read as
+ * too busy).
  *
- * @param points   [[epochMs, total]] one per bucket, x centered in the bucket
- * @param spanMin  epoch ms of the data start (axis min)
- * @param spanMax  epoch ms of the data end (axis max)
- * @param range    { min, max } current window in epoch ms (slider position)
+ * @param spanMin  epoch ms of the context start (axis min)
+ * @param spanMax  epoch ms of the context end (axis max)
+ * @param range    { min, max } current window in epoch ms (handle positions)
  */
-export function buildOverviewOption(points, spanMin, spanMax, range) {
-  if (!points || points.length === 0) return { series: [] }
+export function buildOverviewOption(spanMin, spanMax, range) {
+  if (spanMin == null || spanMax == null || !range) return { series: [] }
 
-  const fmt = (ms) => {
+  const dateLabel = (ms) => {
     const d = new Date(ms)
-    const p = (n) => String(n).padStart(2, '0')
-    return `${MONTHS[d.getMonth()]} ${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`
+    return `${MONTHS[d.getMonth()]} ${d.getDate()}`
   }
 
   return {
-    color: [SAP_BLUE],
     textStyle: BASE_TEXT_STYLE,
-    tooltip: {
-      ...BASE_TOOLTIP,
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      valueFormatter: (v) => `${v} active`,
-    },
-    // Slider overlays this exact rect (same left/right/top/bottom) so the drag
-    // window sits directly ON the day bars rather than in a separate track.
-    grid: { left: 10, right: 10, top: 16, bottom: 30 },
-    // Two identical time axes over the SAME grid rect. Axis 0 draws the bars and
-    // the date labels and is NEVER zoomed, so the strip always shows the full
-    // context span. Axis 1 is invisible and exists only for the slider to act
-    // on. Pointing the slider at axis 0 (the old setup) zoomed the strip itself:
-    // the bars/labels stretched to the selected window while the handles stayed
-    // mapped to the full extent, so the window you dragged no longer matched the
-    // dates printed beneath it. With a dedicated hidden axis sharing the same
-    // [min,max] and pixel rect, the handles line up exactly with the bars below.
+    grid: { left: 28, right: 28, top: 8, bottom: 6 },
+    // No visible axis — the navigator is purely a line + two circles. Two hidden
+    // time axes share the same [min,max]; the slider acts on axis 1. The scatter
+    // series (below) rides axis 0 to print each dot's date directly beneath it.
     xAxis: [
-      {
-        type: 'time',
-        min: spanMin,
-        max: spanMax,
-        axisTick: { show: false },
-        axisLabel: {
-          hideOverlap: true,
-          // Match the time axis's natural levels but enlarge month boundaries.
-          // A tick at midnight is a day/month gridline: the 1st reads as a
-          // section header (large, bold month name), other days a small number.
-          // Intra-day ticks (when zoomed to hours/minutes) show the time. Keyed
-          // off the date itself, so it applies to every month, not just Jul.
-          formatter: (value) => {
-            const d = new Date(value)
-            const p = (n) => String(n).padStart(2, '0')
-            if (d.getHours() !== 0 || d.getMinutes() !== 0) {
-              return `{day|${p(d.getHours())}:${p(d.getMinutes())}}`
-            }
-            return d.getDate() === 1
-              ? `{month|${MONTHS[d.getMonth()]}}`
-              : `{day|${d.getDate()}}`
-          },
-          rich: {
-            month: { fontSize: 15, fontWeight: 'bold', color: SAP_TEXT },
-            day: { fontSize: 11, color: SAP_TEXT },
-          },
-        },
-      },
+      { type: 'time', min: spanMin, max: spanMax, show: false },
       { type: 'time', min: spanMin, max: spanMax, show: false },
     ],
-    yAxis: { type: 'value', show: false, minInterval: 1 },
+    yAxis: { type: 'value', min: 0, max: 1, show: false },
     dataZoom: [
       {
         type: 'slider',
         xAxisIndex: 1,
-        // Selection-only: never filter/zoom any rendered series — the strip is a
-        // fixed-extent overview and the window is just a reported range.
+        // Selection-only: never filter/zoom a series — the window is just a
+        // reported range.
         filterMode: 'none',
         startValue: range.min,
         endValue: range.max,
-        left: 10,
-        right: 10,
-        top: 16,
-        bottom: 30,
+        left: 28,
+        right: 28,
+        // Sit near the top of the strip so the line hugs the chart above it.
+        // Thin band so the track reads as a LINE; the circle handles are larger
+        // than the band, so they sit ON the line like beads.
+        top: 8,
+        height: 6,
         brushSelect: false,
-        // Never let the window collapse below 4 min, so it stays clearly
-        // visible and grabbable.
+        // Never let the window collapse below 4 min, so it stays grabbable.
         minValueSpan: 4 * 60 * 1000,
         showDataShadow: false,
-        backgroundColor: 'transparent',
+        // Handle labels are off — they clip at the edges. The scatter labels
+        // below show each dot's date and follow it; the rail shows the live
+        // window range.
+        showDetail: false,
+        backgroundColor: '#dce3ee',             // the track line
         borderColor: 'transparent',
+        fillerColor: 'rgba(0, 112, 242, 0.22)', // selected segment between circles
         dataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } },
         selectedDataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } },
-        fillerColor: 'rgba(0, 112, 242, 0.16)',
-        // Big, solid, clearly grabbable edge handles.
-        handleSize: 22,
-        handleStyle: { color: SAP_BLUE, borderColor: '#fff', borderWidth: 2 },
-        moveHandleSize: 8,
-        moveHandleStyle: { color: SAP_BLUE, opacity: 0.85 },
+        // Two circular handles at the window edges.
+        handleIcon: 'circle',
+        handleSize: 18,
+        handleStyle: {
+          color: SAP_BLUE,
+          borderColor: '#fff',
+          borderWidth: 2,
+          shadowBlur: 3,
+          shadowColor: 'rgba(0,0,0,0.25)',
+        },
+        // No separate move bar — drag the segment between the circles to pan.
+        moveHandleSize: 0,
         emphasis: { handleStyle: { color: SAP_BLUE, borderColor: '#fff' } },
-        labelFormatter: (value) => fmt(value),
-        textStyle: { color: SAP_TEXT },
       },
     ],
+    // Two invisible points at the window edges, on the SAME axis extent as the
+    // slider, so each date label sits directly under its dot and follows it as
+    // you drag.
     series: [
       {
-        name: 'Total activity',
-        type: 'bar',
+        type: 'scatter',
         xAxisIndex: 0,
-        data: points,
-        barWidth: '62%',
-        itemStyle: { color: SAP_BLUE_LIGHT, borderRadius: [2, 2, 0, 0] },
-        // Hover pops in the gold accent so it stands out from the pale-blue
-        // bars and the blue selection handles/filler in this same strip.
-        emphasis: {
-          itemStyle: { color: SAP_GOLD, borderColor: SAP_GOLD_LIGHT, borderWidth: 1 },
+        yAxisIndex: 0,
+        silent: true,
+        symbolSize: 0,
+        data: [[range.min, 1], [range.max, 1]],
+        label: {
+          show: true,
+          position: 'bottom',
+          distance: 18,
+          formatter: (p) => dateLabel(p.value[0]),
+          color: SAP_TEXT,
+          fontSize: 11,
         },
       },
     ],
