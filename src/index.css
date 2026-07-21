@@ -55,6 +55,12 @@
   --font-mono: 'Geist Mono Variable', ui-monospace, 'IBM Plex Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
   font-family: var(--font-sans);
+  /* Fluid root size: the whole type scale is built from rem, so scaling the
+     root scales every label, table cell, heading and KPI in step. Pinned at
+     16px on laptop-class widths, then grows smoothly with the viewport up to
+     20px on large/full monitors (~2560px+) — bigger, easier to read as the
+     page expands, without ever shrinking below today's size. */
+  font-size: clamp(16px, 13.6px + 0.25vw, 20px);
   line-height: 1.5;
   font-weight: var(--weight-regular);
   color: var(--sap-text);
