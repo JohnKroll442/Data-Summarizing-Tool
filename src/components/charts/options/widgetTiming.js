@@ -6,6 +6,7 @@ import {
   SAP_BLUE_DARK,
   SAP_GOLD,
   SAP_TEXT_MUTED,
+  chartFontSizes,
 } from '../../../lib/chartColors'
 
 /**
@@ -198,6 +199,10 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
   // "Action Start/End Timestamp" tag just below it. Middle x-axis ticks
   // (500 ms, 1.00 s, etc.) stay below the plot as usual.
   const xMax = totalDuration * 1.12
+
+  // Responsive type sizes, derived from the current root font-size.
+  const f = chartFontSizes()
+
   const markLineData = [
     // Action Start — line + "Action Start Timestamp" tag above
     {
@@ -207,7 +212,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         position: 'end',
         distance: [0, 6],
         color: '#1d2d3e',
-        fontSize: 11,
+        fontSize: f.markLine,
         rotate: 0,
         align: 'center',
         verticalAlign: 'bottom',
@@ -221,9 +226,9 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       label: {
         formatter: fmtMs(0),
         position: 'end',
-        distance: [0, 22],
+        distance: [0, f.markLine + 10],
         color: '#1d2d3e',
-        fontSize: 11,
+        fontSize: f.markLine,
         fontWeight: 600,
         rotate: 0,
         align: 'center',
@@ -239,7 +244,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         position: 'end',
         distance: [0, 6],
         color: '#1d2d3e',
-        fontSize: 11,
+        fontSize: f.markLine,
         rotate: 0,
         align: 'center',
         verticalAlign: 'bottom',
@@ -252,9 +257,9 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       label: {
         formatter: fmtMs(totalDuration),
         position: 'end',
-        distance: [0, 22],
+        distance: [0, f.markLine + 10],
         color: '#1d2d3e',
-        fontSize: 11,
+        fontSize: f.markLine,
         fontWeight: 600,
         rotate: 0,
         align: 'center',
@@ -289,7 +294,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         return lines.join('<br/>')
       },
     },
-    grid: { ...BASE_GRID, left: 180, right: 32, top: 80, bottom: 56 },
+    grid: { ...BASE_GRID, left: 210, right: 32, top: 80, bottom: 56 },
     xAxis: {
       type: 'value',
       min: 0,
@@ -300,6 +305,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       // trailing empty space, since they read as "there's more time after
       // the action ended." Hide both past totalDuration.
       axisLabel: {
+        fontSize: f.axis,
         formatter: (v) => (v > totalDuration + 1e-6 ? '' : fmtMs(v)),
       },
       splitLine: {
@@ -313,7 +319,7 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       data: yLabels.slice().reverse(),
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: '#1d2d3e', fontSize: 12 },
+      axisLabel: { color: '#1d2d3e', fontSize: f.axis },
     },
     series: [
       {

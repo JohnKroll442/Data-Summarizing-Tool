@@ -4,6 +4,7 @@ import {
   BASE_TOOLTIP,
   SAP_BLUE,
   SAP_TEXT_MUTED,
+  chartFontSizes,
 } from '../../../lib/chartColors'
 
 /**
@@ -135,6 +136,9 @@ export function buildActionSequenceOption(actionRows) {
 
   const totalDuration = cursor
 
+  // Responsive type sizes, derived from the current root font-size.
+  const f = chartFontSizes()
+
   // Two vertical markLines anchor the sequence to the action's start (x=0) and
   // end (x=totalDuration), mirroring the per-widget timing chart. Each line
   // carries two stacked labels above the plot: the "Action Start/End Timestamp"
@@ -146,7 +150,7 @@ export function buildActionSequenceOption(actionRows) {
       label: {
         formatter: 'Action Start Timestamp',
         position: 'end', distance: [0, 6], color: '#1d2d3e',
-        fontSize: 11, align: 'center', verticalAlign: 'bottom',
+        fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },
       lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
     },
@@ -154,8 +158,8 @@ export function buildActionSequenceOption(actionRows) {
       xAxis: 0,
       label: {
         formatter: fmtMs(0),
-        position: 'end', distance: [0, 22], color: '#1d2d3e',
-        fontSize: 11, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
+        position: 'end', distance: [0, f.markLine + 10], color: '#1d2d3e',
+        fontSize: f.markLine, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
       },
       lineStyle: { color: 'transparent', width: 0 },
     },
@@ -164,7 +168,7 @@ export function buildActionSequenceOption(actionRows) {
       label: {
         formatter: 'Action End Timestamp',
         position: 'end', distance: [0, 6], color: '#1d2d3e',
-        fontSize: 11, align: 'center', verticalAlign: 'bottom',
+        fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },
       lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
     },
@@ -172,8 +176,8 @@ export function buildActionSequenceOption(actionRows) {
       xAxis: totalDuration,
       label: {
         formatter: fmtMs(totalDuration),
-        position: 'end', distance: [0, 22], color: '#1d2d3e',
-        fontSize: 11, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
+        position: 'end', distance: [0, f.markLine + 10], color: '#1d2d3e',
+        fontSize: f.markLine, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
       },
       lineStyle: { color: 'transparent', width: 0 },
     },
@@ -188,7 +192,7 @@ export function buildActionSequenceOption(actionRows) {
         { name: 'Local',  icon: 'rect', itemStyle: { color: LOCAL } },
         { name: 'Remote', icon: 'rect', itemStyle: { color: REMOTE } },
       ],
-      textStyle: { color: '#1d2d3e', fontSize: 12 },
+      textStyle: { color: '#1d2d3e', fontSize: f.legend },
     },
     tooltip: {
       ...BASE_TOOLTIP,
@@ -206,15 +210,17 @@ export function buildActionSequenceOption(actionRows) {
         ].join('<br/>')
       },
     },
-    grid: { ...BASE_GRID, left: 260, right: 96, top: 76, bottom: 56 },
+    grid: { ...BASE_GRID, left: 288, right: 96, top: 76, bottom: 56 },
     xAxis: {
       type: 'value',
       min: 0,
       max: totalDuration * 1.15,
       name: 'Elapsed time',
       nameLocation: 'middle',
-      nameGap: 32,
+      nameGap: 36,
+      nameTextStyle: { fontSize: f.axisName, color: '#1d2d3e' },
       axisLabel: {
+        fontSize: f.axis,
         formatter: (v) => (v > totalDuration + 1e-6 ? '' : fmtMs(v)),
       },
       splitLine: { show: true, lineStyle: { color: '#e6ecf2' } },
@@ -227,7 +233,7 @@ export function buildActionSequenceOption(actionRows) {
       data: yLabels.slice().reverse(),
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: '#1d2d3e', fontSize: 11 },
+      axisLabel: { color: '#1d2d3e', fontSize: f.axis },
     },
     series: [
       {
@@ -275,7 +281,7 @@ export function buildActionSequenceOption(actionRows) {
           position: 'right',
           formatter: (p) => fmtMs(p?.data?.durationMs ?? p?.value ?? 0),
           color: '#1d2d3e',
-          fontSize: 11,
+          fontSize: f.barLabel,
         },
       },
     ],

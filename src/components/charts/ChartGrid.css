@@ -48,7 +48,7 @@
   font-weight: var(--weight-medium);
   color: var(--sap-text);
   background: var(--color-surface);
-  border: 1px dashed var(--sap-border);
+  border: var(--border-width) dashed var(--sap-border);
   border-radius: var(--radius-lg);
   margin-bottom: 1rem;
 }

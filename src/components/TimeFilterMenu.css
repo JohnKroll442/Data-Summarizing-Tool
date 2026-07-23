@@ -16,7 +16,7 @@
   font: inherit;
   font-size: var(--text-xs);
   padding: 0.3rem 0.4rem;
-  border: 1px solid var(--sap-border);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-md);
   background: var(--sap-surface-alt);
   color: var(--sap-text);
@@ -83,7 +83,7 @@
   font: inherit;
   font-size: var(--text-sm);
   padding: 0.3rem 0.35rem;
-  border: 1px solid var(--sap-border);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-md);
   background: #fff;
   color: var(--sap-text);

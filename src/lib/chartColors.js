@@ -33,11 +33,44 @@ export const SAP_PALETTE = [
   SAP_BLUE_DARKER,
 ]
 
+// Chart font stack — pulled from the app's --font-sans token (Geist) so charts
+// match the rest of the UI. The old '72' family was never loaded here, so it
+// silently fell back to a plain system font; using the real app font makes
+// chart text look cleaner and consistent with everything around it.
+export const CHART_FONT_FAMILY = readVar(
+  '--font-sans',
+  "'Geist Variable', -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif",
+)
+
 // Shared base option fragments — every chart spreads these so tooltips,
 // grids, and titles look the same across the app.
 export const BASE_TEXT_STYLE = {
-  fontFamily: "'72', -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif",
+  fontFamily: CHART_FONT_FAMILY,
   color: SAP_TEXT,
+}
+
+/**
+ * Responsive chart type sizes. ECharts needs pixel sizes, so we scale off the
+ * document root font-size — which is itself fluid (clamp 16→20px across
+ * viewport widths, see index.css) — and recompute at option-build time. Charts
+ * therefore read bigger on larger screens, in step with the rest of the UI,
+ * instead of being pinned at a tiny fixed px. All values are well above the old
+ * hardcoded 11–12px so axis ticks, left-hand names, and annotations are
+ * comfortably readable.
+ */
+export function chartFontSizes() {
+  let root = 16
+  if (typeof window !== 'undefined') {
+    const px = parseFloat(getComputedStyle(document.documentElement).fontSize)
+    if (Number.isFinite(px) && px > 0) root = px
+  }
+  return {
+    axis:     Math.round(root * 0.875),   // tick labels + left-hand category names
+    axisName: Math.round(root * 0.875),   // axis title, e.g. "Elapsed time"
+    legend:   Math.round(root * 0.875),
+    barLabel: Math.round(root * 0.8125),  // in-bar duration readouts
+    markLine: Math.round(root * 0.8125),  // Action Start/End annotations
+  }
 }
 
 export const BASE_TOOLTIP = {

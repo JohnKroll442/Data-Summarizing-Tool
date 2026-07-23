@@ -1,6 +1,6 @@
 .echart-card {
   background: var(--color-surface);
-  border: 1px solid var(--sap-border);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 1rem 1rem 1rem;
@@ -59,7 +59,7 @@
   color: var(--sap-text-muted);
   font-size: var(--text-sm);
   background: var(--sap-surface-alt);
-  border: 1px dashed var(--sap-border);
+  border: var(--border-width) dashed var(--sap-border);
   border-radius: var(--radius-md);
   padding: 1rem;
 }

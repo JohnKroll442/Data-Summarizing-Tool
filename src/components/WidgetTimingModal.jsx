@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { buildWidgetTimingOption } from './charts/options/widgetTiming'
+import { useViewportWidth } from '../lib/useViewportWidth'
 import './WidgetTimingModal.css'
 
 /**
@@ -37,6 +38,10 @@ function WidgetTimingModal({
 }) {
   const total = items?.length ?? 0
   const canNavigate = !!onIndexChange && total > 1
+
+  // Track viewport width so the chart's responsive font sizes rescale live
+  // when the window is resized while the modal is open.
+  useViewportWidth()
 
   // Close on Esc; arrow-key stepping when navigable (mirrors the Action
   // Waterfall modal). Don't hijack arrows while a SELECT/INPUT is focused so

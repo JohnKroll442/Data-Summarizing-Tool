@@ -27,7 +27,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.9rem 1.1rem;
-  border-bottom: 1px solid var(--sap-border);
+  border-bottom: var(--border-width) solid var(--sap-border);
   background: var(--sap-blue);
   color: #fff;
 }
@@ -63,7 +63,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--sap-border);
+  border-bottom: var(--border-width) solid var(--sap-border);
   background: var(--sap-surface-muted, #f7f9fb);
   flex-wrap: wrap;
 }
@@ -79,7 +79,7 @@
   min-width: 240px;
   max-width: 640px;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--sap-border);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-md);
   background: #fff;
   color: var(--sap-text);
@@ -98,7 +98,7 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  border: 1px solid var(--sap-border);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-md);
   background: #fff;
   color: var(--sap-text);

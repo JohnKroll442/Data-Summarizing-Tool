@@ -4,6 +4,7 @@ import ReactECharts from 'echarts-for-react'
 import { buildActionSequenceOption, detectMapping } from './charts/options/actionSequence'
 import WidgetTimingModal from './WidgetTimingModal'
 import { applyActionFilter } from '../lib/drillDown'
+import { useViewportWidth } from '../lib/useViewportWidth'
 import './ActionWaterfallModal.css'
 
 /**
@@ -90,9 +91,17 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
     })
   }, [rows, headers, selected])
 
+  // Track viewport width so the chart's responsive font sizes rescale live
+  // when the window is resized while the modal is open.
+  const viewportWidth = useViewportWidth()
+
   const option = useMemo(
     () => buildActionSequenceOption(actionRows),
-    [actionRows]
+    // viewportWidth is an intentional dependency: the option builder reads the
+    // fluid root font-size at build time, so we rebuild on resize to rescale
+    // the chart text. The linter can't see that use inside the builder.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [actionRows, viewportWidth]
   )
 
   // Column keys for this CSV shape. Used to slice the action's rows down to a
