@@ -1,0 +1,71 @@
+.duration-filter-panel {
+  width: 220px;
+}
+
+/* Subtle active affordance on the trigger when a boundary is set. */
+.multi-filter-trigger.has-selection {
+  border-color: var(--sap-blue);
+  color: var(--sap-blue);
+  font-weight: 600;
+}
+
+.duration-filter-ops {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.duration-filter-op {
+  flex: 1;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 0.3rem 0.4rem;
+  border: var(--border-width) solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface-alt);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.duration-filter-op:hover {
+  background: var(--sap-blue-bg);
+}
+
+.duration-filter-op.is-active {
+  background: var(--sap-blue-bg);
+  border-color: var(--sap-blue);
+  color: var(--sap-blue);
+  font-weight: 600;
+}
+
+.duration-filter-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.duration-filter-amount {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.35rem 0.5rem;
+  border: var(--border-width) solid var(--sap-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.duration-filter-unit {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.35rem 0.4rem;
+  border: var(--border-width) solid var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface);
+  cursor: pointer;
+}
+
+.duration-filter-amount:focus,
+.duration-filter-unit:focus {
+  border-color: var(--sap-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
+}

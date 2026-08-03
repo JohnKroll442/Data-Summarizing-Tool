@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useCsvData } from '../../context/useCsvData'
 import { computeRankings, computeBusiest } from '../../lib/summary'
 import { formatDurationMs, formatCount, formatTimeRangeLabel } from '../../lib/format'
@@ -27,8 +27,10 @@ function SummaryView() {
     focusTimeline,
     timelineRange,
     resetTimeline,
+    pushNavSnapshot,
   } = useCsvData()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const rankings = useMemo(
     () => computeRankings(rows, headers, { range: timelineRange }),
@@ -44,6 +46,8 @@ function SummaryView() {
   // then pass the column filters as router state — a one-shot the target table
   // seeds from on mount (survives StrictMode; not re-applied on tab clicks).
   const openEntity = (nav) => {
+    // Record the Summary view so Back can return to it.
+    pushNavSnapshot(location.pathname)
     setSessionFilter(null)
     setActionFilter(null)
     setSessionMultiFilter([])

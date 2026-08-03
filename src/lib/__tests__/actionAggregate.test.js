@@ -74,7 +74,7 @@ describe('aggregateByAction', () => {
     const rows = [
       row({ WIDGET_MEASURE: 'render',  DURATION: 100 }),
       row({ WIDGET_MEASURE: 'render',  DURATION: 250 }),
-      row({ WIDGET_MEASURE: 'network', DURATION: 500 }),
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 500 }),
       row({ WIDGET_MEASURE: 'backend', DURATION: 40  }),
     ]
     const { rows: out } = aggregateByAction(rows, HEADERS)
@@ -84,15 +84,39 @@ describe('aggregateByAction', () => {
     expect(out[0].max_backend).toBe(40)
   })
 
-  // The measure column may use "network_ttfb" as a folded submeasure — must
-  // still count for the network bucket.
-  it('accepts <target>_<suffix> as a folded measure match', () => {
+  // Network counts the ttfb round-trip only. A larger 'waiting'/incomplete
+  // network sub-measure (which can span the whole session) must NOT win the
+  // network bucket — otherwise every widget shows the same giant value.
+  it('counts only the ttfb sub-measure for max_network', () => {
+    const rows = [
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb',    DURATION: 300 }),
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'waiting', DURATION: 900000 }),
+    ]
+    const { rows: out } = aggregateByAction(rows, HEADERS)
+    expect(out[0].max_network).toBe(300)
+  })
+
+  // The ttfb marker may instead be folded into WIDGET_MEASURE as
+  // 'network_ttfb' — that still counts for the network bucket, while
+  // 'network_full' (a non-ttfb sub-measure) does not.
+  it('accepts network_ttfb as a folded ttfb match', () => {
     const rows = [
       row({ WIDGET_MEASURE: 'network_ttfb', DURATION: 300 }),
       row({ WIDGET_MEASURE: 'network_full', DURATION: 800 }),
     ]
     const { rows: out } = aggregateByAction(rows, HEADERS)
-    expect(out[0].max_network).toBe(800)
+    expect(out[0].max_network).toBe(300)
+  })
+
+  // When the CSV has no WIDGET_SUBMEASURE column we can't distinguish
+  // sub-measures, so fall back to the max across all network rows.
+  it('falls back to all-network max when there is no submeasure column', () => {
+    const headers = HEADERS.filter((h) => h !== 'WIDGET_SUBMEASURE')
+    const rows = [
+      row({ WIDGET_MEASURE: 'network', DURATION: 500 }),
+    ].map((r) => { delete r.WIDGET_SUBMEASURE; return r })
+    const { rows: out } = aggregateByAction(rows, headers)
+    expect(out[0].max_network).toBe(500)
   })
 
   it('counts distinct widget ids for widget_count', () => {

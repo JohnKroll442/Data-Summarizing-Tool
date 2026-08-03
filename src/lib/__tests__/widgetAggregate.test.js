@@ -77,8 +77,24 @@ describe('aggregateByWidget', () => {
     expect(out[0].render_end).toBe('winner-end')
   })
 
-  it('network/backend timestamps come from WIDGET_TIMESTAMP_START/WIDGET_TIMESTAMP', () => {
+  // When a WIDGET_SUBMEASURE column exists, Network counts the ttfb round-trip
+  // only — a larger 'waiting'/incomplete network sub-measure (which can span
+  // the whole session) must not win, and its timestamps must not surface.
+  it('picks the ttfb sub-measure for network when a submeasure column exists', () => {
+    const headers = [...HEADERS, 'WIDGET_SUBMEASURE']
     const rows = [
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 300,
+            WIDGET_TIMESTAMP_START: 'ttfb-start', WIDGET_TIMESTAMP: 'ttfb-end' }),
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'waiting', DURATION: 900000,
+            WIDGET_TIMESTAMP_START: 'wait-start', WIDGET_TIMESTAMP: 'wait-end' }),
+    ]
+    const { rows: out } = aggregateByWidget(rows, headers)
+    expect(out[0].network).toBe(300)
+    expect(out[0].network_start).toBe('ttfb-start')
+    expect(out[0].network_end).toBe('ttfb-end')
+  })
+
+  it('network/backend timestamps come from WIDGET_TIMESTAMP_START/WIDGET_TIMESTAMP', () => {    const rows = [
       row({ WIDGET_MEASURE: 'network', DURATION: 400,
             WIDGET_TIMESTAMP_START: 'n-start', WIDGET_TIMESTAMP: 'n-end' }),
       row({ WIDGET_MEASURE: 'backend', DURATION: 30,

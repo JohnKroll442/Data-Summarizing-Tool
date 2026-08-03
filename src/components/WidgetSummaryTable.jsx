@@ -3,10 +3,10 @@ import { useLocation } from 'react-router-dom'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
+import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
-import SortMenu from './SortMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { widgetKpisFromAgg } from '../lib/kpis'
@@ -62,6 +62,8 @@ function WidgetSummaryTable({ rows, headers }) {
     setWidgetMultiFilter,
     widgetFilterWindow,
     setWidgetFilterWindow,
+    viewUi,
+    setViewUi,
   } = useCsvData()
 
   // Scope rows BEFORE aggregating. Each multiselect filter, when active, takes
@@ -122,15 +124,19 @@ function WidgetSummaryTable({ rows, headers }) {
     [scopedRows, headers]
   )
 
-  const [search, setSearch] = useState('')
-  // A one-shot `summaryFilters` router state (from the Summary tab's top-10
-  // rows) seeds the column filters so clicking a widget lands here scoped to
-  // just that widget. The shared widgetMultiFilter (a timeline Widgets-bar
-  // drill) also seeds the Widget-ID column filter so it shows here too.
+  const [search, setSearch] = useState(() => viewUi.widget.search)
+  // Seed the local UI filters from the persisted per-view state so they stay
+  // constant across navigation (tab switches, drill + Back). When nothing's
+  // persisted yet, fall back to the shared widgetMultiFilter for the Widget-ID
+  // column. A one-shot `summaryFilters` router state (from the Summary tab's
+  // top-10 rows) always layers on top, scoping to just the clicked widget.
   const [filters, setFilters] = useState(() => {
     const nav = location.state?.summaryFilters
-    const seed = widgetMultiFilter.length > 0 ? { widget_id: widgetMultiFilter } : {}
-    return nav ? { ...seed, ...nav } : seed
+    const persisted = viewUi.widget.filters
+    const base = (persisted && Object.keys(persisted).length > 0)
+      ? persisted
+      : (widgetMultiFilter.length > 0 ? { widget_id: widgetMultiFilter } : {})
+    return nav ? { ...base, ...nav } : base
   })
 
   // Keep the Widget-ID column filter in sync when widgetMultiFilter changes from
@@ -146,7 +152,14 @@ function WidgetSummaryTable({ rows, headers }) {
       return next
     })
   }, [widgetMultiFilter])
-  const [sort, setSort] = useState(null)
+  const [sort, setSort] = useState(() => viewUi.widget.sort)
+
+  // Persist UI-filter changes so they survive this view unmounting (see the
+  // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
+  // and writing back doesn't change these local values.
+  useEffect(() => {
+    setViewUi('widget', { search, filters, sort })
+  }, [search, filters, sort, setViewUi])
   // Clicking a widget name opens the per-widget timing modal. We store the
   // index of the selected widget within the filtered + sorted rows (null =
   // closed) so the modal's picker/arrows can flip through exactly the widgets
@@ -340,7 +353,12 @@ function WidgetSummaryTable({ rows, headers }) {
       }))
     }),
   ]
-  const pills = <FilterPills items={pillItems} />
+  const pills = (
+    <>
+      <BackButton />
+      <FilterPills items={pillItems} />
+    </>
+  )
 
   if (!mapping.widgetId) {
     return (
@@ -493,7 +511,6 @@ function WidgetSummaryTable({ rows, headers }) {
           value={timeFilter}
           onChange={setTimeFilter}
         />
-        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>

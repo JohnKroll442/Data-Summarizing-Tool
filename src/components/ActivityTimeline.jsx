@@ -97,6 +97,7 @@ function ActivityTimeline() {
     setTimelineRange,
     resetTimeline,
     timelineResetNonce,
+    pushNavSnapshot,
   } = useCsvData()
   const navigate = useNavigate()
   const location = useLocation()
@@ -460,6 +461,10 @@ function ActivityTimeline() {
       setActionFilterWindow(null)
     }
     const finish = (view) => {
+      // Record the view we're leaving (route + pre-drill filters) so Back can
+      // restore it. The clearDrills()/setters above are queued but not yet
+      // applied, so the snapshot still reflects the pre-drill state.
+      pushNavSnapshot(location.pathname)
       resetTimeline()
       navigate(`/summary/${view}`)
       // Minimize the timeline and jump to the freshly-filtered table. rAF runs
@@ -499,6 +504,7 @@ function ActivityTimeline() {
     setSessionFilter, setActionFilter, setActionMultiFilter, setSessionMultiFilter,
     setSessionFilterWindow, setWidgetMultiFilter, setActionInvocationFilter,
     setWidgetFilterWindow, setActionFilterWindow,
+    pushNavSnapshot, location.pathname,
   ])
 
   if (!hasData || !overview) return null

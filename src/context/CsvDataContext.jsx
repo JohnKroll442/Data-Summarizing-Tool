@@ -47,6 +47,18 @@ export const CsvDataContext = createContext(null)
 const MAX_RECENT_FILES = 5
 const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
 
+// Fresh, empty per-view UI filter state. Each view keeps its own search text,
+// column dropdown selections, sort, and (Session only) duration threshold.
+// Each view opens sorted by its headline duration column, descending, so the
+// slowest rows lead by default (users can click any header to re-sort).
+function makeEmptyViewUi() {
+  return {
+    session: { search: '', filters: {}, sort: { key: 'total_action_duration', dir: 'desc' }, durationFilter: null },
+    action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' } },
+    widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' } },
+  }
+}
+
 let nextUid = 1
 
 export function CsvDataProvider({ children }) {
@@ -99,6 +111,28 @@ export function CsvDataProvider({ children }) {
   const [widgetFilterWindow, setWidgetFilterWindow] = useState(null)
   const [actionFilterWindow, setActionFilterWindow] = useState(null)
 
+  // Back-navigation history. Each drill-down (a row/bar/card click that both
+  // changes the drill filters AND navigates to another view) pushes a snapshot
+  // of the view it LEFT — its route plus the full drill-down state — so a Back
+  // button can restore the previous view exactly as it was, filters and all.
+  // Plain browser back can't do this: the drill state lives here, not in the
+  // URL. Capped so it can't grow without bound. Reset on file swap/clear.
+  const [navHistory, setNavHistory] = useState([])
+
+  // Per-view UI filter state (the local search box, column dropdown filters,
+  // sort, and — Session view only — the duration threshold). These used to be
+  // each table's own useState, so they reset every time the view unmounted
+  // (a tab switch, or drilling to another view and coming back). Lifting them
+  // here keeps each view's filters CONSTANT as the user navigates: they only
+  // reset on a file swap or an explicit Clear. The shared drill filters
+  // (session/action/widget multi-filters, timeline, time selections) already
+  // persist above; this covers the remaining per-view controls.
+  const [viewUi, setViewUiState] = useState(makeEmptyViewUi)
+  const setViewUi = useCallback((view, partial) => {
+    setViewUiState((prev) => ({ ...prev, [view]: { ...prev[view], ...partial } }))
+  }, [])
+
+
   // A request to focus the Activity Timeline on a time window (epoch ms), set
   // by clicking a "busiest day / 7 days / month" card on the Summary view. A
   // fresh object each call so the timeline's effect re-fires even for the same
@@ -150,7 +184,67 @@ export function CsvDataProvider({ children }) {
     setTimelineFocus(null)
     setTimelineRange(null)
     setTimeSelections(emptyTimeSelections())
+    setNavHistory([])
+    setViewUiState(makeEmptyViewUi())
   }, [])
+
+  // Snapshot of every drill-down filter — the complete "where am I looking"
+  // state. Depends on all of them so, when a drill handler calls it, it always
+  // captures the CURRENT (pre-mutation) values. timelineFocus / reset nonces are
+  // transient triggers, not view state, so they're deliberately excluded.
+  const captureDrillState = useCallback(() => ({
+    sessionFilter,
+    actionFilter,
+    sessionMultiFilter,
+    actionMultiFilter,
+    sessionFilterWindow,
+    widgetMultiFilter,
+    actionInvocationFilter,
+    widgetFilterWindow,
+    actionFilterWindow,
+    timelineRange,
+    timeSelections,
+  }), [
+    sessionFilter, actionFilter, sessionMultiFilter, actionMultiFilter,
+    sessionFilterWindow, widgetMultiFilter, actionInvocationFilter,
+    widgetFilterWindow, actionFilterWindow, timelineRange, timeSelections,
+  ])
+
+  // Apply a captured snapshot back onto the live state (used by Back).
+  const restoreDrillState = useCallback((s) => {
+    if (!s) return
+    setSessionFilter(s.sessionFilter ?? null)
+    setActionFilter(s.actionFilter ?? null)
+    setSessionMultiFilter(s.sessionMultiFilter ?? [])
+    setActionMultiFilter(s.actionMultiFilter ?? [])
+    setSessionFilterWindow(s.sessionFilterWindow ?? null)
+    setWidgetMultiFilter(s.widgetMultiFilter ?? [])
+    setActionInvocationFilter(s.actionInvocationFilter ?? [])
+    setWidgetFilterWindow(s.widgetFilterWindow ?? null)
+    setActionFilterWindow(s.actionFilterWindow ?? null)
+    setTimelineRange(s.timelineRange ?? null)
+    setTimeSelections(s.timeSelections ?? emptyTimeSelections())
+  }, [])
+
+  // Record the view being left (route + drill snapshot) so Back can return to
+  // it. Call this from a drill-down BEFORE it mutates filters + navigates, so
+  // the snapshot reflects the departing view, not the destination. Capped at 50.
+  const pushNavSnapshot = useCallback((fromPath) => {
+    if (!fromPath) return
+    setNavHistory((prev) => [...prev.slice(-49), { path: fromPath, state: captureDrillState() }])
+  }, [captureDrillState])
+
+  // Pop the most recent snapshot, restore its filters, and return its route so
+  // the caller can navigate there. Returns null when there's nothing to go back
+  // to. Reads the current history via the closure, so the returned path is
+  // synchronous even though the state update that removes the entry is not.
+  const goBack = useCallback(() => {
+    if (navHistory.length === 0) return null
+    const popped = navHistory[navHistory.length - 1]
+    restoreDrillState(popped.state)
+    setNavHistory((prev) => prev.slice(0, -1))
+    return popped.path
+  }, [navHistory, restoreDrillState])
 
   const setCsvData = useCallback(({ headers, rows, fileName, fileSize }) => {
     const entry = {
@@ -338,6 +432,11 @@ export function CsvDataProvider({ children }) {
         setTimeSelections,
         resetTimeline,
         timelineResetNonce,
+        pushNavSnapshot,
+        goBack,
+        canGoBack: navHistory.length > 0,
+        viewUi,
+        setViewUi,
         baselineId,
         currentId,
         setBaselineId,
@@ -372,6 +471,11 @@ export function CsvDataProvider({ children }) {
       timeSelections,
       resetTimeline,
       timelineResetNonce,
+      pushNavSnapshot,
+      goBack,
+      navHistory,
+      viewUi,
+      setViewUi,
       baselineId,
       currentId,
       setBaselineId,

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
+import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
-import SortMenu from './SortMenu'
+import DurationFilterMenu from './DurationFilterMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
 import { sessionKpisFromAgg } from '../lib/kpis'
 import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
@@ -14,6 +15,7 @@ import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesDurationFilter } from '../lib/durationFilter'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -32,20 +34,34 @@ const SESSION_TS = (row) => row.timestamp_range
  */
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
-  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName, timeSelections: timeFilter, setTimeSelections: setTimeFilter } = useCsvData()
+  const location = useLocation()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName, timeSelections: timeFilter, setTimeSelections: setTimeFilter, pushNavSnapshot, viewUi, setViewUi } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
     [rows, headers]
   )
 
-  const [search, setSearch] = useState('')
-  // Seed the Session column filter from the shared sessionMultiFilter so a
-  // selection made elsewhere (drill-down or Action View) shows here too.
-  const [filters, setFilters] = useState(() =>
-    sessionMultiFilter.length > 0 ? { session: sessionMultiFilter } : {}
-  )
-  const [sort, setSort] = useState(null)
+  // Seed the local UI filters from the persisted per-view state so they stay
+  // constant across navigation (tab switches, drill + Back) — they only reset
+  // on a file swap or an explicit Clear. Fall back to the shared
+  // sessionMultiFilter for the Session column when nothing's persisted yet.
+  const [search, setSearch] = useState(() => viewUi.session.search)
+  const [filters, setFilters] = useState(() => {
+    const persisted = viewUi.session.filters
+    if (persisted && Object.keys(persisted).length > 0) return persisted
+    return sessionMultiFilter.length > 0 ? { session: sessionMultiFilter } : {}
+  })
+  const [sort, setSort] = useState(() => viewUi.session.sort)
+  // Threshold filter for the Total action duration column: { op, ms } or null.
+  const [durationFilter, setDurationFilter] = useState(() => viewUi.session.durationFilter)
+
+  // Write UI-filter changes back to the persisted store so they survive this
+  // view unmounting. setViewUi is stable and only touches the session slice,
+  // so this can't loop: writing back doesn't change these local values.
+  useEffect(() => {
+    setViewUi('session', { search, filters, sort, durationFilter })
+  }, [search, filters, sort, durationFilter, setViewUi])
 
   // Keep the Session column filter in sync when sessionMultiFilter changes from
   // OUTSIDE this table (e.g. clicking a Sessions bar in the Activity Timeline
@@ -70,17 +86,20 @@ function SessionSummaryTable({ rows, headers }) {
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
       (row) => matchesTimeFilter(row, SESSION_TS, timeFilter)
-        && matchesTimeRange(row, SESSION_TS, timelineRange)),
-    [summaryRows, filters, timeFilter, timelineRange],
+        && matchesTimeRange(row, SESSION_TS, timelineRange)
+        && matchesDurationFilter(row, 'total_action_duration', durationFilter)),
+    [summaryRows, filters, timeFilter, timelineRange, durationFilter],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters and the timeline range (but not by time itself) so the time options
-  // track the other menus and the selected timeline window.
+  // filters, the duration filter, and the timeline range (but not by time
+  // itself) so the time options track the other menus and the selected window.
   const timeFilterRows = useMemo(
     () => summaryRows.filter((row) =>
-      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, SESSION_TS, timelineRange)),
-    [summaryRows, filters, timelineRange],
+      matchesAllMultiFilters(row, filters)
+        && matchesTimeRange(row, SESSION_TS, timelineRange)
+        && matchesDurationFilter(row, 'total_action_duration', durationFilter)),
+    [summaryRows, filters, timelineRange, durationFilter],
   )
 
   const visibleRows = useMemo(() => {
@@ -89,6 +108,7 @@ function SessionSummaryTable({ rows, headers }) {
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, SESSION_TS, timeFilter)) return false
       if (!matchesTimeRange(row, SESSION_TS, timelineRange)) return false
+      if (!matchesDurationFilter(row, 'total_action_duration', durationFilter)) return false
       if (!needle) return true
       return columns.some((c) => {
         const v = row[c.key]
@@ -96,7 +116,7 @@ function SessionSummaryTable({ rows, headers }) {
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, durationFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -117,7 +137,7 @@ function SessionSummaryTable({ rows, headers }) {
 
   const activeFilterCount =
     countActiveMultiFilters(filters, search) + (hasTimeSelection(timeFilter) ? 1 : 0) +
-    (timelineRange ? 1 : 0)
+    (timelineRange ? 1 : 0) + (durationFilter ? 1 : 0)
 
   // Update a column's selected values, mirroring the Session column into the
   // shared multi-filter that Action View reads (matches the drill-down flow).
@@ -191,6 +211,7 @@ function SessionSummaryTable({ rows, headers }) {
         </div>
       )}
 
+      <BackButton />
       <FilterPills items={pillItems} />
 
       <div className="summary-filters">
@@ -221,7 +242,11 @@ function SessionSummaryTable({ rows, headers }) {
           value={timeFilter}
           onChange={setTimeFilter}
         />
-        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
+        <DurationFilterMenu
+          label="Total duration"
+          value={durationFilter}
+          onChange={setDurationFilter}
+        />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
@@ -248,6 +273,7 @@ function SessionSummaryTable({ rows, headers }) {
               setSessionMultiFilter([])
               setSessionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
+              setDurationFilter(null)
               resetTimeline()
             }}
           >
@@ -305,6 +331,8 @@ function SessionSummaryTable({ rows, headers }) {
                   className="cell-link"
                   title={`Show actions for session ${row.session}`}
                   onClick={() => {
+                    // Record this Session View so Back can return to it.
+                    pushNavSnapshot(location.pathname)
                     setSessionFilter(String(row.session))
                     // Preselect this session in Action View's Sessions filter
                     // so the dropdown reflects the drill-down ("1 selected").

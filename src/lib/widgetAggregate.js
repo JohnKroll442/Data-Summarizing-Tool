@@ -78,7 +78,17 @@ function aggregateByWidgetImpl(rows, headers) {
   const latestStamp = latestWidgetTimestamp(rows, mapping)
   for (const [widgetId, groupRows] of groups) {
     const renderPick  = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['render', 'frontend'])
-    const networkPick = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])
+    // Network = the TTFB round-trip only. Other network sub-measures
+    // ('waiting', contentDownload) can be open/incomplete loads whose DURATION
+    // balloons to span the whole session — that one giant value would then
+    // repeat identically across every widget in the action. Restricting to
+    // ttfb keeps each widget's Network a real, bounded per-request time (and
+    // distinct across widgets). When the CSV has no WIDGET_SUBMEASURE column we
+    // can't tell sub-measures apart, so fall back to the max across all network
+    // rows (preserves behavior for CSV shapes without that column).
+    const networkPick = mapping.submeasure
+      ? pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
+      : pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])
     const backendPick = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['backend'])
     const offsetPick  = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['offset'])
 
@@ -248,21 +258,17 @@ function phaseStart(pick, mapping, phase) {
 function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) {
   if (!durationKey || !measureKey) return { row: null, value: '' }
   const wanted = targets.map((t) => t.toLowerCase())
-  const subWanted = subTargets && subTargets.length
-    ? new Set(subTargets.map((t) => t.toLowerCase()))
+  const subPatterns = subTargets && subTargets.length
+    ? subTargets.map((t) => normSub(t))
     : null
-  if (subWanted && !subKey) return { row: null, value: '' }
   let max = -Infinity
   let pick = null
   for (const r of rows) {
     const m = r?.[measureKey]
     if (m === undefined || m === null) continue
-    if (!measureMatches(String(m).toLowerCase(), wanted)) continue
-    if (subWanted) {
-      const s = r?.[subKey]
-      if (s === undefined || s === null) continue
-      if (!subWanted.has(String(s).toLowerCase())) continue
-    }
+    const mv = String(m).toLowerCase()
+    if (!measureMatches(mv, wanted)) continue
+    if (subPatterns && !subMatches(mv, subKey ? r?.[subKey] : '', subPatterns)) continue
     const n = Number(r?.[durationKey])
     if (Number.isFinite(n) && n > max) {
       max = n
@@ -270,6 +276,28 @@ function pickMaxRow(rows, durationKey, measureKey, targets, subKey, subTargets) 
     }
   }
   return pick ? { row: pick, value: max } : { row: null, value: '' }
+}
+
+// Normalize a sub-measure/measure fragment for matching: lowercase and strip
+// spaces/underscores/dashes/dots so 'Content Download', 'content-download' and
+// 'contentDownload' all compare equal.
+function normSub(s) {
+  return String(s ?? '').toLowerCase().replace(/[\s_\-.]+/g, '')
+}
+
+// Does a row match one of the wanted sub-measures? True when either the
+// dedicated WIDGET_SUBMEASURE value contains the target (real SAP shape, e.g.
+// submeasure = 'ttfb'), OR the target is folded into WIDGET_MEASURE as
+// `<measure>_<target>` (alternate shape, e.g. measure = 'network_ttfb').
+function subMatches(measureVal, subVal, subPatterns) {
+  const s = normSub(subVal)
+  if (s && subPatterns.some((p) => s.includes(p))) return true
+  const idx = measureVal.indexOf('_')
+  if (idx >= 0) {
+    const folded = normSub(measureVal.slice(idx + 1))
+    if (folded && subPatterns.some((p) => folded.includes(p))) return true
+  }
+  return false
 }
 
 // Match measure values against target names, accepting either exact equality

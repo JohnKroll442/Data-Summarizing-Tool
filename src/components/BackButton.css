@@ -1,0 +1,34 @@
+/* Row wrapping the Back button, placed just above a view's scope indicator. */
+.back-button-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+/* Same pill treatment as the Home link, but a native button — it restores
+   drill-down state, not just a route change. */
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--sap-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.back-button:hover {
+  background: var(--sap-blue-bg);
+  color: var(--sap-blue-darker);
+}
+
+.back-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.25);
+}

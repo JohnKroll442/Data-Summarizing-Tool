@@ -4,10 +4,10 @@ import WaterfallIcon from './icons/WaterfallIcon'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
+import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
-import SortMenu from './SortMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { actionKpisFromAgg } from '../lib/kpis'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
@@ -54,6 +54,9 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     setActionInvocationFilter,
     actionFilterWindow,
     setActionFilterWindow,
+    pushNavSnapshot,
+    viewUi,
+    setViewUi,
   } = useCsvData()
 
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
@@ -86,18 +89,28 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     [scopedRows, headers]
   )
 
-  const [search, setSearch] = useState('')
-  // Seed the Action column filter from the shared actionMultiFilter so a
-  // selection made elsewhere (drill-down or Widget View) shows here too —
-  // matching how the Session column filter carries over. A one-shot
-  // `summaryFilters` router state (from the Summary tab's top-10 rows) layers
-  // on top, pre-selecting the clicked action + its story.
+  const [search, setSearch] = useState(() => viewUi.action.search)
+  // Seed the local UI filters from the persisted per-view state so they stay
+  // constant across navigation (tab switches, drill + Back). When nothing's
+  // persisted yet, fall back to the shared actionMultiFilter for the Action
+  // column. A one-shot `summaryFilters` router state (from the Summary tab's
+  // top-10 rows) always layers on top, pre-selecting the clicked action + story.
   const [filters, setFilters] = useState(() => {
-    const seed = actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {}
     const nav = location.state?.summaryFilters
-    return nav ? { ...seed, ...nav } : seed
+    const persisted = viewUi.action.filters
+    const base = (persisted && Object.keys(persisted).length > 0)
+      ? persisted
+      : (actionMultiFilter.length > 0 ? { action_name: actionMultiFilter } : {})
+    return nav ? { ...base, ...nav } : base
   })
-  const [sort, setSort] = useState(null)
+  const [sort, setSort] = useState(() => viewUi.action.sort)
+
+  // Persist UI-filter changes so they survive this view unmounting (see the
+  // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
+  // and writing back doesn't change these local values.
+  useEffect(() => {
+    setViewUi('action', { search, filters, sort })
+  }, [search, filters, sort, setViewUi])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters, the time filter, the timeline range, and any
@@ -239,7 +252,12 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
       }))
     }),
   ]
-  const pill = <FilterPills items={pillItems} />
+  const pill = (
+    <>
+      <BackButton />
+      <FilterPills items={pillItems} />
+    </>
+  )
 
   if (!mapping.actionName) {
     return (
@@ -376,7 +394,6 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
           value={timeFilter}
           onChange={setTimeFilter}
         />
-        <SortMenu columns={columns} sort={sort} onSortChange={setSort} />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
@@ -431,13 +448,27 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
                     className="cell-link"
                     title={`Show widgets for "${row.action_name}"`}
                     onClick={() => {
+                      // Record this Action View (route + filters) so Back can
+                      // return to it exactly as it is now, before we drill.
+                      pushNavSnapshot(location.pathname)
+                      // Pin the SAME session as this action row so Widget View
+                      // shows only that session's widgets. Actions are grouped
+                      // by name + timestamp (not session), so an action name
+                      // that recurs across sessions would otherwise pull in
+                      // widgets from every session and the session id would
+                      // appear to "change" on drill-down. Mirror into the
+                      // multiselect too so the Sessions dropdown/pill reflects
+                      // the scope — matching the Session → Action drill-down.
+                      if (row.session_id) {
+                        setSessionFilter(String(row.session_id))
+                        setSessionMultiFilter([String(row.session_id)])
+                      }
                       setActionFilter({
                         name: row.action_name,
                         timestamp: row._action_timestamp ?? '',
                       })
                       // Preselect this action in Widget View's Actions filter
                       // so the dropdown reflects the drill-down ("1 selected").
-                      // The Sessions scope carries over automatically.
                       setActionMultiFilter([String(row.action_name)])
                       navigate('/summary/widget')
                     }}

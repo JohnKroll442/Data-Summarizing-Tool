@@ -101,7 +101,14 @@ function aggregateByActionImpl(rows, headers) {
       story_page:   firstNonEmpty(groupRows, mapping.storyPage),
       widget_count: distinctCount(groupRows, mapping.widgetId),
       max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
-      max_network:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network']),
+      // Network = TTFB round-trip only (see widgetAggregate for the full
+      // rationale): other network sub-measures can be open/incomplete loads
+      // that span the whole session, showing the same giant value on every
+      // widget. Fall back to all-network max when there's no WIDGET_SUBMEASURE
+      // column to distinguish them.
+      max_network:  mapping.submeasure
+        ? maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
+        : maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network']),
       max_backend:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['backend']),
     })
   }
@@ -149,32 +156,26 @@ function maxNumeric(rows, key) {
 
 /**
  * Max of `durationKey` across rows whose `measureKey` value (case-insensitive)
- * is one of `targets`. If `subKey`/`subTargets` are provided, also requires
- * the row's sub-measure value to match one of those (e.g. only count
- * network rows whose WIDGET_SUBMEASURE = 'ttfb').
+ * is one of `targets`. If `subTargets` are provided, also requires the row to
+ * match one of those sub-measures — via the WIDGET_SUBMEASURE column (`subKey`)
+ * or a folded `<measure>_<sub>` value (e.g. only count network rows that are
+ * 'ttfb', whether tagged as WIDGET_SUBMEASURE='ttfb' or WIDGET_MEASURE='network_ttfb').
  * Returns '' when no matching row has a finite duration.
  */
 function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTargets) {
   if (!durationKey || !measureKey) return ''
   const wanted = targets.map((t) => t.toLowerCase())
-  const subWanted = subTargets && subTargets.length
-    ? new Set(subTargets.map((t) => t.toLowerCase()))
+  const subPatterns = subTargets && subTargets.length
+    ? subTargets.map((t) => normSub(t))
     : null
-  // If a sub-measure filter was requested but the CSV has no such column,
-  // we can't match anything — bail out with no value rather than silently
-  // ignoring the filter.
-  if (subWanted && !subKey) return ''
   let max = -Infinity
   let found = false
   for (const r of rows) {
     const m = r?.[measureKey]
     if (m === undefined || m === null) continue
-    if (!measureMatches(String(m).toLowerCase(), wanted)) continue
-    if (subWanted) {
-      const s = r?.[subKey]
-      if (s === undefined || s === null) continue
-      if (!subWanted.has(String(s).toLowerCase())) continue
-    }
+    const mv = String(m).toLowerCase()
+    if (!measureMatches(mv, wanted)) continue
+    if (subPatterns && !subMatches(mv, subKey ? r?.[subKey] : '', subPatterns)) continue
     const n = Number(r?.[durationKey])
     if (Number.isFinite(n)) {
       if (n > max) max = n
@@ -182,6 +183,28 @@ function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTarg
     }
   }
   return found ? max : ''
+}
+
+// Normalize a sub-measure/measure fragment for matching: lowercase and strip
+// spaces/underscores/dashes/dots so 'Content Download', 'content-download' and
+// 'contentDownload' all compare equal.
+function normSub(s) {
+  return String(s ?? '').toLowerCase().replace(/[\s_\-.]+/g, '')
+}
+
+// Does a row match one of the wanted sub-measures? True when either the
+// dedicated WIDGET_SUBMEASURE value contains the target (real SAP shape, e.g.
+// submeasure = 'ttfb'), OR the target is folded into WIDGET_MEASURE as
+// `<measure>_<target>` (alternate shape, e.g. measure = 'network_ttfb').
+function subMatches(measureVal, subVal, subPatterns) {
+  const s = normSub(subVal)
+  if (s && subPatterns.some((p) => s.includes(p))) return true
+  const idx = measureVal.indexOf('_')
+  if (idx >= 0) {
+    const folded = normSub(measureVal.slice(idx + 1))
+    if (folded && subPatterns.some((p) => folded.includes(p))) return true
+  }
+  return false
 }
 
 // Match measure values against target names, accepting either exact equality
