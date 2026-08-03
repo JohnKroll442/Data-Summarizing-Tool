@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import DataTable from './DataTable'
+import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
@@ -281,7 +281,7 @@ function SessionSummaryTable({ rows, headers }) {
         </div>
       )}
 
-      <DataTable
+      <AnalyticalDataTable
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}

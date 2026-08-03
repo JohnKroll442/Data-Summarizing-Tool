@@ -48,6 +48,7 @@ function aggregateByActionImpl(rows, headers) {
     { key: 'user',            label: 'User' },
     { key: 'action_name',     label: 'Action name' },
     { key: 'story_name',      label: 'Story name' },
+    { key: 'action_duration', label: 'Action duration', sortType: 'duration' },
     { key: 'story_page',      label: 'Story page' },
     { key: 'widget_count',    label: 'Widget count', sortType: 'number' },
     { key: 'max_frontend',    label: 'Max frontend', sortType: 'duration' },
@@ -93,6 +94,10 @@ function aggregateByActionImpl(rows, headers) {
       user:         stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),
+      // The action's duration: max(DURATION) across its rows. This is exactly
+      // the per-action value Session View sums into "Total action duration",
+      // so summing this column for a session matches that session's total.
+      action_duration: maxNumeric(groupRows, mapping.duration),
       story_page:   firstNonEmpty(groupRows, mapping.storyPage),
       widget_count: distinctCount(groupRows, mapping.widgetId),
       max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
@@ -124,6 +129,22 @@ function distinctCount(rows, key) {
     seen.add(String(v))
   }
   return seen.size
+}
+
+// Max of `key` (a numeric measure) across rows. Returns '' when no row has a
+// finite value — mirrors the helper Session View uses for its per-action max.
+function maxNumeric(rows, key) {
+  if (!key) return ''
+  let max = -Infinity
+  let found = false
+  for (const r of rows) {
+    const n = Number(r?.[key])
+    if (Number.isFinite(n)) {
+      if (n > max) max = n
+      found = true
+    }
+  }
+  return found ? max : ''
 }
 
 /**

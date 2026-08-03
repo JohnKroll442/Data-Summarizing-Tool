@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
-import DataTable from './DataTable'
+import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
 import { FilterPills } from './FilterPill'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
@@ -413,7 +413,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         )}
       </div>
 
-      <DataTable
+      <AnalyticalDataTable
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}
@@ -481,6 +481,6 @@ const FILTERABLE_COLUMNS = [
   { key: 'story_name',  label: 'Story' },
   { key: 'story_page',  label: 'Page' },
 ]
-const DURATION_COLUMNS = new Set(['max_frontend', 'max_network', 'max_backend'])
+const DURATION_COLUMNS = new Set(['action_duration', 'max_frontend', 'max_network', 'max_backend'])
 
 export default ActionSummaryTable

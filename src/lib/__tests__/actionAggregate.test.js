@@ -28,7 +28,7 @@ describe('aggregateByAction', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'session_id', 'action_timestamp', 'user', 'action_name', 'story_name', 'story_page', 'widget_count',
+      'session_id', 'action_timestamp', 'user', 'action_name', 'story_name', 'action_duration', 'story_page', 'widget_count',
       'max_frontend', 'max_network', 'max_backend',
     ])
   })
@@ -162,5 +162,25 @@ describe('aggregateByAction', () => {
     expect(mapping.storyPage).toBe('')
     expect(out[0].story_name).toBe('')
     expect(out[0].story_page).toBe('')
+  })
+
+  it('sets action_duration to the max DURATION across the action\'s rows', () => {
+    // This is the per-action value Session View sums into "Total action
+    // duration", so the two views stay consistent.
+    const rows = [
+      row({ USER_ACTION: 'A', ACTION_TIMESTAMP: 't1', WIDGET_MEASURE: 'render',  DURATION: 100 }),
+      row({ USER_ACTION: 'A', ACTION_TIMESTAMP: 't1', WIDGET_MEASURE: 'network', DURATION: 450 }),
+      row({ USER_ACTION: 'A', ACTION_TIMESTAMP: 't1', WIDGET_MEASURE: 'backend', DURATION: 60  }),
+    ]
+    const { rows: out } = aggregateByAction(rows, HEADERS)
+    expect(out[0].action_duration).toBe(450)
+  })
+
+  it('leaves action_duration blank when there is no DURATION column', () => {
+    const headers = HEADERS.filter((h) => h !== 'DURATION')
+    const rows = [row({ USER_ACTION: 'A' })].map((r) => { delete r.DURATION; return r })
+    const { rows: out, mapping } = aggregateByAction(rows, headers)
+    expect(mapping.duration).toBe('')
+    expect(out[0].action_duration).toBe('')
   })
 })

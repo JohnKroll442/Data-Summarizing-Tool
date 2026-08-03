@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import DataTable from '../../components/DataTable'
+import AnalyticalDataTable from '../../components/AnalyticalDataTable'
 import { usePagination, PageSizeSelect, TablePager } from '../../components/Pagination'
 import { useCsvData } from '../../context/useCsvData'
 import { sortRows } from '../../lib/sortRows'
@@ -13,9 +13,12 @@ import '../../components/SessionSummaryTable.css'
  * column's sortType is sniffed from the actual data: numeric if every
  * non-empty cell parses as a finite number, else string.
  *
- * Rows are paginated so the DOM never mounts more than one page of <tr>s —
+ * Rows are paginated so the DOM never mounts more than one page of rows —
  * a huge file would otherwise render millions of nodes and crash the tab.
  * Sorting and Export CSV operate on the FULL dataset, not just the page.
+ *
+ * The grid is SAP's `AnalyticalTable` via the shared AnalyticalDataTable
+ * adapter, which keeps sorting/paging behavior identical to the old table.
  */
 function RawDataView() {
   const { rows, headers, fileName } = useCsvData()
@@ -66,7 +69,7 @@ function RawDataView() {
         </button>
       </div>
 
-      <DataTable
+      <AnalyticalDataTable
         rows={pageRows}
         columns={columns}
         sort={sort}

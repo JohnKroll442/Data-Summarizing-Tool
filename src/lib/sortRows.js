@@ -51,6 +51,16 @@ export function sortRows(rows, key, dir, sortType = 'string') {
   if (!key || !dir) return rows
   const mult = dir === 'desc' ? -1 : 1
   const copy = rows.slice()
-  copy.sort((ra, rb) => mult * compareValues(ra?.[key], rb?.[key], sortType))
+  copy.sort((ra, rb) => {
+    const a = ra?.[key]
+    const b = rb?.[key]
+    // Empty / null / undefined ("—") cells always sort LAST, in BOTH
+    // directions — decide them here so the direction multiplier below can't
+    // flip them to the top on a descending sort.
+    const aEmpty = EMPTY(a)
+    const bEmpty = EMPTY(b)
+    if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
+    return mult * compareValues(a, b, sortType)
+  })
   return copy
 }
