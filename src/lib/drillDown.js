@@ -65,6 +65,22 @@ export function findActionNameKey(headers) {
 }
 
 /**
+ * Pick the CSV column that holds the action timestamp — the value paired with
+ * the action name to identify one specific invocation. Rejects the *_END
+ * flavor so we key off the action's start. Shared so every caller (drill-down
+ * filters, the Summary's re-derivation) agrees on the same column and builds
+ * the same `name::timestamp` action key.
+ */
+export function findActionTimestampKey(headers) {
+  if (!headers?.length) return ''
+  return headers.find((h) => norm(h) === 'actiontimestamp') ||
+         headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end')) ||
+         headers.find((h) => norm(h) === 'timestamp') ||
+         headers.find((h) => norm(h).includes('timestamp') && !norm(h).includes('end')) ||
+         ''
+}
+
+/**
  * Filter rows to those belonging to one specific action invocation.
  * actionFilter is { name, timestamp } where timestamp may be '' if the
  * source row lacked one.
@@ -79,10 +95,7 @@ function applyActionFilterImpl(rows, headers, actionFilter) {
   if (!actionFilter) return rows
   const nameKey = findActionNameKey(headers)
   if (!nameKey) return rows
-  const tsKey = headers.find((h) => norm(h) === 'actiontimestamp') ||
-                headers.find((h) => norm(h).includes('actiontimestamp') && !norm(h).includes('end')) ||
-                headers.find((h) => norm(h) === 'timestamp') ||
-                headers.find((h) => norm(h).includes('timestamp') && !norm(h).includes('end'))
+  const tsKey = findActionTimestampKey(headers)
   return rows.filter((r) => {
     if (String(r?.[nameKey] ?? '') !== String(actionFilter.name)) return false
     if (actionFilter.timestamp && tsKey) {

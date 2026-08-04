@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCsvData } from '../../context/useCsvData'
 import { computeRankings, computeBusiest } from '../../lib/summary'
+import { computeSummaryScope, activeDurationBounds } from '../../lib/viewFilters'
 import { formatDurationMs, formatCount, formatTimeRangeLabel } from '../../lib/format'
 import './SummaryView.css'
 
@@ -10,11 +11,13 @@ import './SummaryView.css'
  * by action count), then two clearly-split ranking sections: the SLOWEST 10 and
  * the FASTEST 10 for each category. Each list row links to the entity's view.
  *
- * When the Activity Timeline has a focused window (`timelineRange`), everything
- * here recomputes WITHIN that window — the busiest periods and the rankings
- * answer "…within this time period" — matching the timeline-scoped counts in
- * the Session / Action / Widget tables. A banner shows the active window and
- * clears it.
+ * Everything here recomputes over the SAME entities the view tables currently
+ * show: the busiest periods and rankings reflect the filters set in the
+ * Session / Action / Widget views (intersected — a Session filter drops that
+ * session's actions and widgets, etc.) AND the Activity Timeline window
+ * (`timelineRange`), which compose together. `computeSummaryScope` re-derives
+ * each view's filtered set from persisted context state (the tables aren't
+ * mounted here) and narrows the raw rows once before re-aggregation.
  */
 function SummaryView() {
   const {
@@ -28,17 +31,55 @@ function SummaryView() {
     timelineRange,
     resetTimeline,
     pushNavSnapshot,
+    viewUi,
+    sessionFilter,
+    actionFilter,
+    sessionMultiFilter,
+    actionMultiFilter,
+    actionInvocationFilter,
+    widgetMultiFilter,
+    timeSelections,
   } = useCsvData()
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Re-derive the entities each view currently shows and intersect them into a
+  // scoped raw-row set, so the Summary rebuilds from exactly what's filtered.
+  const { scopedRows } = useMemo(
+    () => computeSummaryScope(rows, headers, {
+      viewUi,
+      sessionFilter,
+      actionFilter,
+      sessionMultiFilter,
+      actionMultiFilter,
+      actionInvocationFilter,
+      widgetMultiFilter,
+      timeSelections,
+      timelineRange,
+    }),
+    [
+      rows, headers, viewUi, sessionFilter, actionFilter, sessionMultiFilter,
+      actionMultiFilter, actionInvocationFilter, widgetMultiFilter,
+      timeSelections, timelineRange,
+    ],
+  )
+
+  // The active duration threshold (from Session/Action View's duration filter)
+  // applies to the rankings by each entity's OWN value — so "< 2 min" hides
+  // long entities everywhere and "> 2 min" surfaces the long ttfb/incomplete
+  // ones — rather than by session membership (excluded from the scope above).
+  const durationBounds = useMemo(
+    () => activeDurationBounds({ viewUi }),
+    [viewUi],
+  )
+
   const rankings = useMemo(
-    () => computeRankings(rows, headers, { range: timelineRange }),
-    [rows, headers, timelineRange],
+    () => computeRankings(scopedRows, headers, { range: timelineRange, durationBounds }),
+    [scopedRows, headers, timelineRange, durationBounds],
   )
   const busiest = useMemo(
-    () => computeBusiest(rows, headers, { range: timelineRange }),
-    [rows, headers, timelineRange],
+    () => computeBusiest(scopedRows, headers, { range: timelineRange }),
+    [scopedRows, headers, timelineRange],
   )
 
   // Open a ranked row in its view with the entity pre-filtered. Clear any stale

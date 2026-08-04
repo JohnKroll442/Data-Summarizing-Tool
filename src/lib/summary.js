@@ -15,6 +15,7 @@ import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
 import { actionPoint } from './activityTimeline'
 import { bucketOf, matchesTimeRange } from './timeBuckets'
+import { valueMatchesDuration } from './durationFilter'
 
 const TOP_N = 10
 
@@ -37,12 +38,18 @@ const num = (v) => {
  * Score `items`, drop those with no value, sort by `direction` ('desc' =
  * slowest first, 'asc' = fastest first) and keep the top N as display rows.
  * Each row carries a `nav` payload describing how to open it in its view.
+ *
+ * `durationBounds` ({ minMs, maxMs } | null) drops any entity whose ranked
+ * value falls outside the active duration threshold — so "< 2 min" hides
+ * entities longer than that in EVERY category (by that category's own metric),
+ * and "> 2 min" keeps only the longer ones.
  */
-function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction) {
+function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction, durationBounds) {
   const scored = []
   for (const it of items) {
     const value = valueOf(it)
     if (value == null) continue
+    if (durationBounds && !valueMatchesDuration(value, durationBounds)) continue
     scored.push({
       value,
       label: labelOf(it),
@@ -112,8 +119,11 @@ function categorySpecs(rows, headers, range) {
  * `opts.range` ({ min, max } epoch ms | null) scopes the ranked entities to a
  * timeline window — only entities that started in-window are eligible, so the
  * rankings answer "fastest/slowest within this period". Null = full data.
+ *
+ * `opts.durationBounds` ({ minMs, maxMs } | null) applies the active duration
+ * threshold to each category by its own ranked value (see `rankBy`).
  */
-export function computeRankings(rows, headers, { range = null } = {}) {
+export function computeRankings(rows, headers, { range = null, durationBounds = null } = {}) {
   if (!rows?.length || !headers?.length) return { slowest: [], fastest: [] }
   const specs = categorySpecs(rows, headers, range)
   const build = (direction) =>
@@ -121,7 +131,7 @@ export function computeRankings(rows, headers, { range = null } = {}) {
       id: s.id,
       title: s.title,
       view: s.view,
-      items: rankBy(s.items, s.valueOf, s.labelOf, s.sublabelOf, s.navOf, direction),
+      items: rankBy(s.items, s.valueOf, s.labelOf, s.sublabelOf, s.navOf, direction, durationBounds),
     }))
   return { slowest: build('desc'), fastest: build('asc') }
 }

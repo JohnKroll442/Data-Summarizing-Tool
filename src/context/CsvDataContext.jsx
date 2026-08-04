@@ -56,7 +56,10 @@ function makeEmptyViewUi() {
   return {
     session: { search: '', filters: {}, sort: { key: 'total_action_duration', dir: 'desc' }, durationFilter: null },
     action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' }, durationFilter: null },
-    widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' } },
+    // Widget View has no duration-filter UI, but we keep the `durationFilter`
+    // key for a uniform per-view shape so generic readers (viewUi[view].durationFilter)
+    // never hit `undefined`. Nothing sets it for widget.
+    widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' }, durationFilter: null },
   }
 }
 

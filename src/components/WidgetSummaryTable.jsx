@@ -24,14 +24,9 @@ import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { filterAggRows, WIDGET_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
-
-// Row timestamp field for the Time filter — the earliest phase time available
-// on the aggregated widget row (stable ref).
-const WIDGET_TS = (row) =>
-  row.render_start || row.network_start || row.backend_start ||
-  row.render_end || row.network_end || row.backend_end || ''
 
 /**
  * WidgetSummaryTable — one row per distinct widget, columns:
@@ -187,20 +182,16 @@ function WidgetSummaryTable({ rows, headers }) {
     [summaryRows, filters, timelineRange],
   )
 
-  const visibleRows = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
-      if (!matchesTimeFilter(row, WIDGET_TS, timeFilter)) return false
-      if (!matchesTimeRange(row, WIDGET_TS, timelineRange)) return false
-      if (!needle) return true
-      return columns.some((c) => {
-        const v = row[c.key]
-        if (v === undefined || v === null || v === '') return false
-        return String(v).toLowerCase().startsWith(needle)
-      })
-    })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange])
+  const visibleRows = useMemo(
+    () => filterAggRows(summaryRows, columns, {
+      tsAccessor: WIDGET_TS,
+      timeFilter,
+      timelineRange,
+      filters,
+      search,
+    }),
+    [summaryRows, search, filters, columns, timeFilter, timelineRange],
+  )
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows

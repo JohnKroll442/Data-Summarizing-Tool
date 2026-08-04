@@ -16,12 +16,9 @@ import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { matchesDurationFilter } from '../lib/durationFilter'
+import { filterAggRows, SESSION_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
-
-// Which field carries the row's timestamp for the Time filter (stable ref so
-// the menu's bucket memo doesn't recompute every render).
-const SESSION_TS = (row) => row.timestamp_range
 
 /**
  * SessionSummaryTable — one row per session, columns:
@@ -102,21 +99,18 @@ function SessionSummaryTable({ rows, headers }) {
     [summaryRows, filters, timelineRange, durationFilter],
   )
 
-  const visibleRows = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
-      if (!matchesTimeFilter(row, SESSION_TS, timeFilter)) return false
-      if (!matchesTimeRange(row, SESSION_TS, timelineRange)) return false
-      if (!matchesDurationFilter(row, 'total_action_duration', durationFilter)) return false
-      if (!needle) return true
-      return columns.some((c) => {
-        const v = row[c.key]
-        if (v === undefined || v === null || v === '') return false
-        return String(v).toLowerCase().startsWith(needle)
-      })
-    })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, durationFilter])
+  const visibleRows = useMemo(
+    () => filterAggRows(summaryRows, columns, {
+      tsAccessor: SESSION_TS,
+      timeFilter,
+      timelineRange,
+      filters,
+      durationKey: 'total_action_duration',
+      durationFilter,
+      search,
+    }),
+    [summaryRows, search, filters, columns, timeFilter, timelineRange, durationFilter],
+  )
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows

@@ -18,11 +18,9 @@ import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { matchesDurationFilter } from '../lib/durationFilter'
+import { filterAggRows, ACTION_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
-
-// Row timestamp field for the Time filter (stable ref).
-const ACTION_TS = (row) => row._action_timestamp
 
 /**
  * ActionSummaryTable — one row per action, columns:
@@ -146,22 +144,19 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     [summaryRows, filters, timelineRange, actionInvocationFilter, durationFilter],
   )
 
-  const visibleRows = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    return summaryRows.filter((row) => {
-      if (!matchesAllMultiFilters(row, filters)) return false
-      if (!matchesTimeFilter(row, ACTION_TS, timeFilter)) return false
-      if (!matchesTimeRange(row, ACTION_TS, timelineRange)) return false
-      if (!matchesDurationFilter(row, 'action_duration', durationFilter)) return false
-      if (actionInvocationFilter.length > 0 && !actionInvocationFilter.includes(String(row._action_timestamp))) return false
-      if (!needle) return true
-      return columns.some((c) => {
-        const v = row[c.key]
-        if (v === undefined || v === null || v === '') return false
-        return String(v).toLowerCase().startsWith(needle)
-      })
-    })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter, durationFilter])
+  const visibleRows = useMemo(
+    () => filterAggRows(summaryRows, columns, {
+      tsAccessor: ACTION_TS,
+      timeFilter,
+      timelineRange,
+      filters,
+      durationKey: 'action_duration',
+      durationFilter,
+      invocationFilter: actionInvocationFilter,
+      search,
+    }),
+    [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter, durationFilter],
+  )
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
