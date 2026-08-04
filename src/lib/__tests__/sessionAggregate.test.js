@@ -66,6 +66,29 @@ describe('aggregateBySession', () => {
     expect(out[0].max_action_duration).toBe(500)
   })
 
+  // When a WIDGET_RENDER_TIMESTAMP column exists, total/max action duration are
+  // built from per-action render-durations (MAX render − ACTION_TIMESTAMP),
+  // matching Action View's action_duration — not the raw DURATION column.
+  it('sums/maxes per-action render-durations when a render-timestamp column exists', () => {
+    const headers = ['SESSION_ID', 'USER_NAME', 'STORY_NAME', 'USER_ACTION', 'ACTION_TIMESTAMP', 'WIDGET_RENDER_TIMESTAMP', 'DURATION']
+    const r = (over) => ({
+      SESSION_ID: 's1', USER_NAME: 'a', STORY_NAME: 'S', USER_ACTION: 'A',
+      ACTION_TIMESTAMP: '2026-07-01 10:00:00.000',
+      WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:00.000', DURATION: 1, ...over,
+    })
+    const rows = [
+      // action A @ 10:00:00 — latest render is +1000 ms
+      r({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:01.000' }),
+      r({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:00.400' }),
+      // action B @ 10:05:00 — latest render is +3000 ms
+      r({ USER_ACTION: 'B', ACTION_TIMESTAMP: '2026-07-01 10:05:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:05:03.000' }),
+    ]
+    const { rows: out } = aggregateBySession(rows, headers)
+    const s1 = out.find((x) => x.session === 's1')
+    expect(s1.total_action_duration).toBe(4000) // 1000 + 3000
+    expect(s1.max_action_duration).toBe(3000)
+  })
+
   it('leaves max_action_duration empty when no rows have a finite duration', () => {
     const rows = [
       makeRows([['s1', 'a', 'A', 'oops']])[0],

@@ -13,10 +13,13 @@
  * it stayed open until the last recorded activity — so it renders a range and
  * counts as active through then on the Activity Timeline.
  *
- * "Total action duration" sums the per-action max DURATION within each
- * session — actions are grouped by USER_ACTION + ACTION_TIMESTAMP so two
- * fires of the same action name at different times stay separate, matching
- * how Action View counts them.
+ * "Total action duration" sums each action's duration within the session, and
+ * "Max action duration" is the largest. An action's duration is the span from
+ * its ACTION_TIMESTAMP to the LATEST WIDGET_RENDER_TIMESTAMP among its widgets
+ * (matching Action View's `action_duration`); actions are grouped by
+ * USER_ACTION + ACTION_TIMESTAMP so two fires of the same action name at
+ * different times stay separate. When the CSV has no render-timestamp column,
+ * both fall back to the per-action max DURATION.
  *
  * Auto-detects the grouping column + the field columns by name, normalizing
  * case and separators so "SESSION_ID", "session_id", "Session ID" all
@@ -28,6 +31,7 @@
  * can render predictable columns and surface what was detected.
  */
 
+import { actionRenderDurations } from './actionAggregate'
 import { stripUserPrefix } from './format'
 import { memoizeAggregate } from './memoize'
 import { parseStrictTimestamp } from './timeBuckets'
@@ -78,6 +82,13 @@ function aggregateBySessionImpl(rows, headers) {
       neverEnded && laterStamp(latestStamp, rawEnd)
         ? latestStamp
         : rawEnd
+    // Per-action render-durations (MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP
+    // per action) when the CSV carries a render-timestamp column, so Session
+    // View's total/max match Action View's new `action_duration`. Falls back to
+    // the DURATION-based per-action max when there's no render-timestamp column.
+    const renderDurations = mapping.renderTimestamp
+      ? actionRenderDurations(groupRows, mapping.renderTimestamp, mapping.actionTimestamp, mapping.actionName)
+      : null
     outRows.push({
       session: sessionId,
       user: stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
@@ -87,14 +98,18 @@ function aggregateBySessionImpl(rows, headers) {
       // recomputing.
       timestamp_range: start,
       _timestamp_end: end,
-      total_action_duration: sumMaxPerAction(
-        groupRows,
-        mapping.duration,
-        mapping.actionName,
-        mapping.actionTimestamp,
-      ),
+      total_action_duration: renderDurations
+        ? sumMapValues(renderDurations)
+        : sumMaxPerAction(
+            groupRows,
+            mapping.duration,
+            mapping.actionName,
+            mapping.actionTimestamp,
+          ),
       action_count: groupRows.length,
-      max_action_duration: maxNumeric(groupRows, mapping.duration),
+      max_action_duration: renderDurations
+        ? maxMapValues(renderDurations)
+        : maxNumeric(groupRows, mapping.duration),
     })
   }
 
@@ -124,6 +139,23 @@ function maxNumeric(rows, key) {
     }
   }
   return found ? max : ''
+}
+
+// Sum / max of a Map's numeric values (the per-action render-durations). Return
+// '' for an empty map so an all-unparseable session renders blank, matching the
+// DURATION-based helpers' "nothing finite ⇒ ''" convention.
+function sumMapValues(map) {
+  if (!map || map.size === 0) return ''
+  let total = 0
+  for (const v of map.values()) total += v
+  return total
+}
+
+function maxMapValues(map) {
+  if (!map || map.size === 0) return ''
+  let max = -Infinity
+  for (const v of map.values()) if (v > max) max = v
+  return max
 }
 
 // Earliest / latest REAL timestamp seen in a session group, plus whether the
@@ -295,6 +327,13 @@ function detectMapping(headers, rows) {
       ['actiontimestamp'],
       ['actiontimestamp'],
       (h) => norm(h).includes('end'),
+    ),
+    // Render END timestamp — the latest of these across an action's widgets,
+    // minus ACTION_TIMESTAMP, is the per-action duration (see actionAggregate).
+    renderTimestamp: find(
+      ['widgetrendertimestamp'],
+      ['widgetrendertimestamp'],
+      (h) => norm(h).includes('start'),
     ),
   }
 }

@@ -188,9 +188,10 @@ describe('aggregateByAction', () => {
     expect(out[0].story_page).toBe('')
   })
 
-  it('sets action_duration to the max DURATION across the action\'s rows', () => {
-    // This is the per-action value Session View sums into "Total action
-    // duration", so the two views stay consistent.
+  it('sets action_duration to the max DURATION when there is no render-timestamp column', () => {
+    // Fallback path: with no WIDGET_RENDER_TIMESTAMP column, action_duration is
+    // the per-action max DURATION — the value Session View sums, keeping the
+    // two views consistent for CSV shapes that lack render timestamps.
     const rows = [
       row({ USER_ACTION: 'A', ACTION_TIMESTAMP: 't1', WIDGET_MEASURE: 'render',  DURATION: 100 }),
       row({ USER_ACTION: 'A', ACTION_TIMESTAMP: 't1', WIDGET_MEASURE: 'network', DURATION: 450 }),
@@ -198,6 +199,31 @@ describe('aggregateByAction', () => {
     ]
     const { rows: out } = aggregateByAction(rows, HEADERS)
     expect(out[0].action_duration).toBe(450)
+  })
+
+  it('computes action_duration as MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP', () => {
+    // The latest-rendering widget in the action decides the duration: the span
+    // from ACTION_TIMESTAMP to that widget's render timestamp, in ms. DURATION
+    // is ignored on this path.
+    const headers = [...HEADERS, 'WIDGET_RENDER_TIMESTAMP']
+    const rows = [
+      row({ WIDGET_ID: 'w1', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:00.500', DURATION: 999 }),
+      row({ WIDGET_ID: 'w2', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:02.000', DURATION: 999 }),
+      row({ WIDGET_ID: 'w3', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:01.000', DURATION: 999 }),
+    ]
+    const { rows: out, mapping } = aggregateByAction(rows, headers)
+    expect(mapping.renderTimestamp).toBe('WIDGET_RENDER_TIMESTAMP')
+    expect(out).toHaveLength(1)
+    expect(out[0].action_duration).toBe(2000) // 10:00:02.000 − 10:00:00.000
+  })
+
+  it('leaves action_duration blank when the render timestamp is present but unparseable', () => {
+    const headers = [...HEADERS, 'WIDGET_RENDER_TIMESTAMP']
+    const rows = [
+      row({ ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', WIDGET_RENDER_TIMESTAMP: 'ttfb' }),
+    ]
+    const { rows: out } = aggregateByAction(rows, headers)
+    expect(out[0].action_duration).toBe('')
   })
 
   it('leaves action_duration blank when there is no DURATION column', () => {

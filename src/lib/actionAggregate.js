@@ -32,6 +32,7 @@ export const RECOGNIZED_MEASURES = ['render', 'frontend', 'network', 'backend', 
 import { detectSessionKey } from './drillDown'
 import { stripUserPrefix } from './format'
 import { memoizeAggregate } from './memoize'
+import { parseStrictTimestamp } from './timeBuckets'
 
 export const aggregateByAction = memoizeAggregate(aggregateByActionImpl)
 
@@ -94,10 +95,16 @@ function aggregateByActionImpl(rows, headers) {
       user:         stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),
-      // The action's duration: max(DURATION) across its rows. This is exactly
-      // the per-action value Session View sums into "Total action duration",
-      // so summing this column for a session matches that session's total.
-      action_duration: maxNumeric(groupRows, mapping.duration),
+      // The action's duration: the span from ACTION_TIMESTAMP to the LATEST
+      // WIDGET_RENDER_TIMESTAMP among the action's widgets — i.e. how long
+      // until the last widget in this action finished rendering. Per the data
+      // owner this is more robust than max(DURATION) (which mixes measures and
+      // is prone to the incomplete-load inconsistencies). Falls back to
+      // max(DURATION) only when the CSV carries no WIDGET_RENDER_TIMESTAMP
+      // column at all. Session View sums/maxes this same per-action value.
+      action_duration: mapping.renderTimestamp
+        ? actionRenderDuration(groupRows, mapping.renderTimestamp, mapping.actionTimestamp)
+        : maxNumeric(groupRows, mapping.duration),
       story_page:   firstNonEmpty(groupRows, mapping.storyPage),
       widget_count: distinctCount(groupRows, mapping.widgetId),
       max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
@@ -152,6 +159,69 @@ function maxNumeric(rows, key) {
     }
   }
   return found ? max : ''
+}
+
+/**
+ * The action's render-based duration:
+ *   MAX(WIDGET_RENDER_TIMESTAMP) across the action's widget rows − ACTION_TIMESTAMP.
+ * Both sides are parsed strictly to epoch ms (so "ttfb"-style sentinels never
+ * masquerade as a real timestamp), and the result is a millisecond span — the
+ * same unit as DURATION, so it sorts and filters like the old value did.
+ *
+ * `groupRows` are the rows for one action (one SESSION/ACTION/ACTION_TIMESTAMP
+ * combo — the same grouping the table drills into), so the max render timestamp
+ * is exactly "the widget within this action that rendered last". The action
+ * timestamp is constant across the group, so any row's copy is fine.
+ *
+ * Returns '' when the action has no parseable ACTION_TIMESTAMP or no parseable
+ * WIDGET_RENDER_TIMESTAMP (the span can't be computed). The raw difference is
+ * returned as-is even if negative, so an inconsistent row (a render stamp
+ * before the action stamp) is visible rather than silently hidden.
+ */
+export function actionRenderDuration(groupRows, renderTsKey, actionTsKey) {
+  if (!renderTsKey || !actionTsKey || !groupRows?.length) return ''
+  let actionMs = null
+  let maxRenderMs = -Infinity
+  for (const r of groupRows) {
+    if (actionMs === null) {
+      const a = parseStrictTimestamp(r?.[actionTsKey])
+      if (a) actionMs = a.getTime()
+    }
+    const d = parseStrictTimestamp(r?.[renderTsKey])
+    if (d) {
+      const t = d.getTime()
+      if (t > maxRenderMs) maxRenderMs = t
+    }
+  }
+  if (actionMs === null || maxRenderMs === -Infinity) return ''
+  return maxRenderMs - actionMs
+}
+
+/**
+ * Per-action render-durations for a set of rows, keyed by action name +
+ * ACTION_TIMESTAMP (the same composite key Action View groups on, so the two
+ * views count actions identically). Returns a Map of key → ms. Actions whose
+ * duration can't be computed (no parseable render/action stamp) are omitted.
+ * Used by Session View to sum/max per-action durations consistently with
+ * Action View's `action_duration` column.
+ */
+export function actionRenderDurations(rows, renderTsKey, actionTsKey, actionNameKey) {
+  const byKey = new Map()
+  if (!renderTsKey || !actionNameKey || !rows?.length) return byKey
+  const groups = new Map()
+  for (const r of rows) {
+    const name = r?.[actionNameKey]
+    if (name === undefined || name === null || name === '') continue
+    const ts = actionTsKey ? (r?.[actionTsKey] ?? '') : ''
+    const key = `${name}${ts}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(r)
+  }
+  for (const [key, groupRows] of groups) {
+    const d = actionRenderDuration(groupRows, renderTsKey, actionTsKey)
+    if (d !== '') byKey.set(key, d)
+  }
+  return byKey
 }
 
 /**
@@ -295,6 +365,16 @@ function detectMapping(headers) {
   const storyName = find(['storyname'], ['storyname'])
   const storyPage = find(['storypage'], ['storypage'])
 
+  // WIDGET_RENDER_TIMESTAMP is when a widget finished rendering. The action's
+  // duration is the span from ACTION_TIMESTAMP to the LATEST of these across
+  // the action's widgets. Exact-match first, and reject the *_START flavor so
+  // we take the render END, not its start.
+  const renderTimestamp = find(
+    ['widgetrendertimestamp'],
+    ['widgetrendertimestamp'],
+    (h) => norm(h).includes('start'),
+  )
+
   return {
     user: find(['username', 'user'], ['user']),
     actionName,
@@ -305,5 +385,6 @@ function detectMapping(headers) {
     duration,
     storyName,
     storyPage,
+    renderTimestamp,
   }
 }
