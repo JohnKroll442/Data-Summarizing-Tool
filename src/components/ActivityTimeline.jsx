@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
+import { ColumnChart } from '@ui5/webcomponents-react-charts/ColumnChart'
 import {
   buildActivityTimeline,
   granularityLabel,
@@ -10,7 +11,10 @@ import {
   widgetIdsInWindow,
   actionKeysInWindow,
 } from '../lib/activityTimeline'
-import { buildActivityBarsOption, buildOverviewOption } from './charts/options/activityBars'
+// Only the overview navigator still uses ECharts (its slider option lives here);
+// the detail bars below are a UI5 ColumnChart. Leave this import intact.
+import { buildOverviewOption } from './charts/options/activityBars'
+import { SAP_BLUE, SAP_GOLD, SAP_SUCCESS } from '../lib/chartColors'
 import { formatTimeRangeLabel } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import './ActivityTimeline.css'
@@ -36,9 +40,35 @@ function clampToSpanPure(lo, hi, min, max) {
   return [Math.max(min, lo), Math.min(max, hi)]
 }
 
+// The UI5 ColumnChart (Recharts under the hood) doesn't expose ECharts' pixel
+// conversion, so for wheel-zoom / drag-pan we read the plot rectangle straight
+// off the rendered SVG to map cursor-x → timestamp. The cartesian grid spans the
+// plot area; fall back to the chart surface, then the container. Returns null if
+// nothing measurable is mounted yet — every caller null-checks, so it can't crash.
+function getPlotRect(container) {
+  if (!container) return null
+  const el =
+    container.querySelector('.recharts-cartesian-grid') ??
+    container.querySelector('.recharts-surface') ??
+    container
+  const rect = el.getBoundingClientRect()
+  return rect.width > 0 ? rect : null
+}
+
+// Detail column-chart measures — one vertical column per activity metric.
+// `accessor` matches BOTH the dataset key and the `hidden` state field, so
+// filtering this list by `hidden` drops a series' columns and re-centers the
+// rest (same effect the old ECharts legend toggle had). Colors mirror the
+// header color key. `hideDataLabel` keeps the count numbers off the columns.
+const DETAIL_MEASURES = [
+  { accessor: 'sessions', label: 'Sessions', color: SAP_BLUE, hideDataLabel: true },
+  { accessor: 'actions', label: 'Actions', color: SAP_GOLD, hideDataLabel: true },
+  { accessor: 'widgets', label: 'Widgets active', color: SAP_SUCCESS, hideDataLabel: true },
+]
+
 // Header color key ⇄ detail series. `key` doubles as the swatch modifier class
-// (swatch-<key>) and the `hidden` state field; `label` matches the series name
-// in buildActivityBarsOption so toggling drives the chart's legend selection.
+// (swatch-<key>) and the `hidden` state field; toggling it filters DETAIL_MEASURES
+// so the series' columns drop out (and the rest re-center).
 const LEGEND_ITEMS = [
   { key: 'sessions', label: 'Sessions' },
   { key: 'actions', label: 'Actions' },
@@ -260,9 +290,27 @@ function ActivityTimeline() {
     return buildOverviewOption(effView.min, effView.max, effRange)
   }, [effView, effRange])
 
-  const detailOption = useMemo(
-    () => (detail && !detail.empty ? buildActivityBarsOption(detail.buckets, detail.series, hidden, logScale) : { series: [] }),
-    [detail, hidden, logScale],
+  // Detail bars as a UI5 ColumnChart: one row per bucket, one numeric column
+  // per metric. `sort`/`index` ride along in each row so a column click can
+  // recover the bucket's time window for drill-down.
+  const detailDataset = useMemo(() => {
+    if (!detail || detail.empty) return []
+    const { buckets, series } = detail
+    return buckets.map((b, i) => ({
+      label: b.label,
+      sessions: series.sessions[i] ?? 0,
+      actions: series.actions[i] ?? 0,
+      widgets: series.widgets[i] ?? 0,
+      sort: b.sort,
+      index: i,
+    }))
+  }, [detail])
+
+  // Hidden series drop out of the columns (the rest re-center) — same effect as
+  // the old legend toggle, driven by the header color key.
+  const detailMeasures = useMemo(
+    () => DETAIL_MEASURES.filter((m) => !hidden[m.accessor]),
+    [hidden],
   )
 
   // ECharts reports the slider window in epoch ms (fall back to mapping the
@@ -292,7 +340,6 @@ function ActivityTimeline() {
   // pans the window through time. Both mutate effRange, so they feel like one
   // continuous navigation and stay in sync with the overview strip. Handlers
   // are stable and read live state from a ref, so DOM listeners attach once.
-  const detailChartRef = useRef(null)
   const detailWrapRef = useRef(null)
   const stateRef = useRef({})
   stateRef.current = { collapsed, effRange, spanMin, spanMax, hasSpan: !!span, detail }
@@ -330,19 +377,13 @@ function ActivityTimeline() {
     const s = stateRef.current
     if (s.collapsed || !s.hasSpan || !s.effRange || !s.detail || s.detail.empty) return
     e.preventDefault()
-    // Anchor = the timestamp under the cursor (falls back to window center).
+    // Anchor = the timestamp under the cursor, from its x-position across the
+    // plot area (falls back to the window center when geometry isn't ready).
     let anchor = (s.effRange.min + s.effRange.max) / 2
-    const inst = detailChartRef.current?.getEchartsInstance?.()
-    const n = s.detail.buckets.length
-    if (inst && n > 0) {
-      const rect = inst.getDom().getBoundingClientRect()
-      let idx = inst.convertFromPixel({ xAxisIndex: 0 }, e.clientX - rect.left)
-      if (Array.isArray(idx)) idx = idx[0]
-      if (Number.isFinite(idx)) {
-        idx = Math.max(0, Math.min(n - 1, idx))
-        const i = Math.floor(idx)
-        anchor = s.detail.buckets[i].sort + (idx - i) * bucketSpanMs(s.detail.granularity)
-      }
+    const plot = getPlotRect(detailWrapRef.current)
+    if (plot) {
+      const frac = Math.max(0, Math.min(1, (e.clientX - plot.left) / plot.width))
+      anchor = s.effRange.min + frac * (s.effRange.max - s.effRange.min)
     }
     wheelAnchor.current = anchor
     wheelAccum.current *= e.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP
@@ -383,23 +424,11 @@ function ActivityTimeline() {
     if (e.button !== 0) return
     const s = stateRef.current
     if (s.collapsed || !s.hasSpan || !s.effRange || !s.detail || s.detail.empty) return
-    const inst = detailChartRef.current?.getEchartsInstance?.()
-    if (!inst) return
-    const buckets = s.detail.buckets
-    const n = buckets.length
-    const rect = inst.getDom().getBoundingClientRect()
-    let msPerPx
-    if (n >= 2) {
-      const px0 = inst.convertToPixel({ xAxisIndex: 0 }, 0)
-      const pxN = inst.convertToPixel({ xAxisIndex: 0 }, n - 1)
-      const dpx = pxN - px0
-      if (Number.isFinite(dpx) && Math.abs(dpx) > 1) {
-        msPerPx = (buckets[n - 1].sort - buckets[0].sort) / dpx
-      }
-    }
-    if (!Number.isFinite(msPerPx) || msPerPx <= 0) {
-      msPerPx = (s.effRange.max - s.effRange.min) / (rect.width || 1)
-    }
+    // ms-per-pixel from the plot width: buckets span the focused window evenly,
+    // so the window width over the plot width tracks the cursor 1:1.
+    const plot = getPlotRect(detailWrapRef.current)
+    const plotW = plot?.width || detailWrapRef.current?.getBoundingClientRect().width || 1
+    const msPerPx = (s.effRange.max - s.effRange.min) / plotW
     didPanRef.current = false
     dragRef.current = {
       startX: e.clientX,
@@ -428,22 +457,28 @@ function ActivityTimeline() {
   }, [collapsed, overview, onDetailWheel, onDetailPointerDown])
 
 
-  // Click a bar → drill into that series' view, scoped to exactly the entities
-  // the clicked bucket counted (over its [start, end) window), so the count you
-  // land on matches the bar. All three series are actionable: Sessions →
-  // sessions active in the window, Widgets → widgets active, Actions → actions
+  // Click a column → drill into that series' view, scoped to exactly the
+  // entities the clicked bucket counted (over its [start, end) window), so the
+  // count you land on matches the bar. All three series are actionable: Sessions
+  // → sessions active in the window, Widgets → widgets active, Actions → actions
   // that fired in it. We resetTimeline() so the still-active zoom doesn't
   // re-filter the drilled set by a different rule. The shared context filters
   // both seed a fresh table mount and sync an already-mounted one.
-  const onDetailClick = useCallback((params) => {
+  //
+  // `hit` is the UI5 ColumnChart onDataPointClick detail:
+  // { value, dataKey, payload, dataIndex } — dataKey is the measure accessor
+  // ('sessions' | 'actions' | 'widgets'), dataIndex the bucket.
+  const onDetailClick = useCallback((hit) => {
     // Ignore the click that fires at the end of a drag-pan.
     if (didPanRef.current) { didPanRef.current = false; return }
-    if (params?.componentType !== 'series') return
     if (!detail || detail.empty) return
-    const b = detail.buckets[params.dataIndex]
+    const dataKey = hit?.dataKey
+    const dataIndex = hit?.dataIndex
+    if (dataKey == null || dataIndex == null) return
+    const b = detail.buckets[dataIndex]
     if (!b) return
     const start = b.sort
-    const end = detail.buckets[params.dataIndex + 1]?.sort
+    const end = detail.buckets[dataIndex + 1]?.sort
       ?? b.sort + bucketSpanMs(detail.granularity)
     const windowLabel = fmtRange({ min: start, max: end })
 
@@ -477,21 +512,21 @@ function ActivityTimeline() {
       })
     }
 
-    if (params.seriesName === 'Sessions') {
+    if (dataKey === 'sessions') {
       const ids = sessionIdsInWindow(rows, headers, start, end)
       if (ids.length === 0) return
       clearDrills()
       setSessionMultiFilter(ids)
       setSessionFilterWindow(windowLabel)
       finish('session')
-    } else if (params.seriesName === 'Widgets active') {
+    } else if (dataKey === 'widgets') {
       const ids = widgetIdsInWindow(rows, headers, start, end)
       if (ids.length === 0) return
       clearDrills()
       setWidgetMultiFilter(ids)
       setWidgetFilterWindow(windowLabel)
       finish('widget')
-    } else if (params.seriesName === 'Actions') {
+    } else if (dataKey === 'actions') {
       const keys = actionKeysInWindow(rows, headers, start, end)
       if (keys.length === 0) return
       clearDrills()
@@ -595,13 +630,23 @@ function ActivityTimeline() {
             ) : (
               <>
                 <div className="activity-timeline-detail" ref={detailWrapRef}>
-                  <ReactECharts
-                    ref={detailChartRef}
-                    option={detailOption}
+                  <ColumnChart
+                    dataset={detailDataset}
+                    dimensions={[{ accessor: 'label' }]}
+                    measures={detailMeasures}
+                    onDataPointClick={(e) => onDetailClick(e.detail)}
+                    noLegend
+                    noAnimation
                     style={{ height: 300, width: '100%' }}
-                    notMerge
-                    lazyUpdate
-                    onEvents={{ click: onDetailClick }}
+                    chartConfig={{
+                      margin: { top: 8, right: 16, bottom: 8, left: 8 },
+                      // Match the old axes: integer count ticks, or a log scale
+                      // when toggled so a small bar stays visible next to a spike
+                      // (zero-count bars simply don't render on a log axis).
+                      yAxisConfig: logScale
+                        ? { scale: 'log', domain: [1, 'auto'], allowDataOverflow: true, allowDecimals: false }
+                        : { allowDecimals: false },
+                    }}
                   />
                 </div>
                 <ReactECharts

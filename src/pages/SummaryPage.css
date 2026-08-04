@@ -110,58 +110,15 @@
 
 .summary-tabs {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.35rem;
-  background: var(--color-surface);
-  border: var(--border-width) solid var(--sap-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  gap: 0.5rem;
 }
 
+/* Each ToggleButton stretches to share the row evenly. The button's own
+   appearance (fill, hover, pressed state) comes from the default UI5
+   ToggleButton styling — those live in its shadow DOM, so we only control
+   layout here. */
 .summary-tab {
   flex: 1;
-  text-align: center;
-  padding: 0.6rem 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--sap-text-muted);
-  text-decoration: none;
-  transition: background-color 0.15s ease, color 0.15s ease;
-  position: relative;
-}
-
-.summary-tab:hover {
-  background: var(--sap-blue-light);
-  color: var(--sap-blue-darker);
-}
-
-/* Subtle vertical divider between adjacent tabs, drawn in the flex gap so the
-   segmented control reads as distinct sections. Sits behind nothing (it's in
-   the gap, not over a tab), so hover/active backgrounds never cover it. */
-.summary-tab + .summary-tab::before {
-  content: '';
-  position: absolute;
-  left: -0.125rem;
-  top: 25%;
-  bottom: 25%;
-  width: 1px;
-  background: var(--sap-border);
-  pointer-events: none;
-}
-
-.summary-tab.active {
-  background: var(--sap-blue);
-  color: #fff;
-  border-color: var(--sap-blue);
-}
-
-/* Hide the divider on both sides of the active tab so its solid fill reads as
-   one clean block. */
-.summary-tab.active::before,
-.summary-tab.active + .summary-tab::before {
-  display: none;
 }
 
 .summary-content {

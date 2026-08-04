@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import { buildDefaultCharts } from '../lib/defaultCharts'
 import { loadCache, saveCache, clearCache } from '../lib/csvCache'
 import { emptyTimeSelections } from '../lib/timeBuckets'
+import { emptyViewedItems, addViewed } from '../lib/viewedItems'
 
 /**
  * CsvDataContext — in-memory store for the parsed CSV, per-view charts,
@@ -54,7 +55,7 @@ const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
 function makeEmptyViewUi() {
   return {
     session: { search: '', filters: {}, sort: { key: 'total_action_duration', dir: 'desc' }, durationFilter: null },
-    action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' } },
+    action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' }, durationFilter: null },
     widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' } },
   }
 }
@@ -91,6 +92,16 @@ export function CsvDataProvider({ children }) {
   //   action names. Reset on file swap like the single filters.
   const [sessionMultiFilter, setSessionMultiFilter] = useState([])
   const [actionMultiFilter, setActionMultiFilter] = useState([])
+
+  // Which entities the user has drilled into this app session, per view. Stored
+  // as plain object maps ({ [id]: true }) so each update yields a new reference
+  // and consumers re-render (a mutated Set wouldn't). Ephemeral: reset on file
+  // swap and never persisted, so it starts blank on reload and stays blank when
+  // re-entering. Drives the "already viewed" row tint in the summary tables.
+  const [viewedItems, setViewedItems] = useState(emptyViewedItems)
+  const markViewed = useCallback((view, id) => {
+    setViewedItems((prev) => addViewed(prev, view, id))
+  }, [])
 
   // When the session filter was seeded by clicking a Sessions bar in the
   // Activity Timeline, this holds a human label for that bucket's time window
@@ -176,6 +187,7 @@ export function CsvDataProvider({ children }) {
     setActionFilter(null)
     setSessionMultiFilter([])
     setActionMultiFilter([])
+    setViewedItems(emptyViewedItems())
     setSessionFilterWindow(null)
     setWidgetMultiFilter([])
     setActionInvocationFilter([])
@@ -414,6 +426,8 @@ export function CsvDataProvider({ children }) {
         setSessionMultiFilter,
         actionMultiFilter,
         setActionMultiFilter,
+        viewedItems,
+        markViewed,
         sessionFilterWindow,
         setSessionFilterWindow,
         widgetMultiFilter,
@@ -460,6 +474,8 @@ export function CsvDataProvider({ children }) {
       actionFilter,
       sessionMultiFilter,
       actionMultiFilter,
+      viewedItems,
+      markViewed,
       sessionFilterWindow,
       widgetMultiFilter,
       actionInvocationFilter,

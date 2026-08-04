@@ -1,45 +1,26 @@
 .duration-filter-panel {
-  width: 220px;
+  width: 240px;
 }
 
-/* Subtle active affordance on the trigger when a boundary is set. */
+/* Subtle active affordance on the trigger when a range is set. */
 .multi-filter-trigger.has-selection {
   border-color: var(--sap-blue);
   color: var(--sap-blue);
   font-weight: 600;
 }
 
-.duration-filter-ops {
+/* min < x < max on one row: two amount inputs flanking the comparator hint. */
+.duration-filter-range {
   display: flex;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.duration-filter-op {
-  flex: 1;
-  font: inherit;
+.duration-filter-sep {
+  flex: 0 0 auto;
   font-size: var(--text-xs);
-  padding: 0.3rem 0.4rem;
-  border: var(--border-width) solid var(--sap-border);
-  border-radius: var(--radius-md);
-  background: var(--sap-surface-alt);
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.duration-filter-op:hover {
-  background: var(--sap-blue-bg);
-}
-
-.duration-filter-op.is-active {
-  background: var(--sap-blue-bg);
-  border-color: var(--sap-blue);
-  color: var(--sap-blue);
-  font-weight: 600;
-}
-
-.duration-filter-row {
-  display: flex;
-  gap: 0.35rem;
+  color: var(--sap-text-muted);
+  white-space: nowrap;
 }
 
 .duration-filter-amount {
@@ -54,7 +35,10 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Unit selector sits on its own row below the range and spans the width. */
 .duration-filter-unit {
+  width: 100%;
+  margin-top: 0.4rem;
   font: inherit;
   font-size: var(--text-sm);
   padding: 0.35rem 0.4rem;

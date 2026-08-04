@@ -64,6 +64,8 @@ function WidgetSummaryTable({ rows, headers }) {
     setWidgetFilterWindow,
     viewUi,
     setViewUi,
+    viewedItems,
+    markViewed,
   } = useCsvData()
 
   // Scope rows BEFORE aggregating. Each multiselect filter, when active, takes
@@ -551,6 +553,7 @@ function WidgetSummaryTable({ rows, headers }) {
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}
+        isRowViewed={(row) => Boolean(viewedItems.widget[String(row.widget_id)])}
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {
@@ -564,6 +567,8 @@ function WidgetSummaryTable({ rows, headers }) {
                   className="cell-link"
                   title={`Open timing chart for "${row.widget_name}"`}
                   onClick={() => {
+                    // Mark this widget as viewed so its row stays tinted.
+                    markViewed('widget', row.widget_id)
                     // Open on this widget's position within the filtered +
                     // sorted rows, so the modal's arrows/picker step through
                     // exactly the widgets shown in the table.

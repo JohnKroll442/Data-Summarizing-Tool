@@ -34,25 +34,39 @@ describe('matchesDurationFilter', () => {
     expect(matchesDurationFilter(row(''), KEY, null)).toBe(true)
   })
 
-  it('below keeps values strictly under the boundary', () => {
-    const f = { op: 'below', ms: 120_000 }
-    expect(matchesDurationFilter(row(60_000), KEY, f)).toBe(true)
-    expect(matchesDurationFilter(row(120_000), KEY, f)).toBe(false) // exactly at boundary
-    expect(matchesDurationFilter(row(180_000), KEY, f)).toBe(false)
+  it('matches every row when both bounds are open', () => {
+    const f = { minMs: null, maxMs: null }
+    expect(matchesDurationFilter(row(120_000), KEY, f)).toBe(true)
   })
 
-  it('above keeps values strictly over the boundary', () => {
-    const f = { op: 'above', ms: 120_000 }
+  it('keeps values strictly between min and max', () => {
+    const f = { minMs: 60_000, maxMs: 180_000 }
+    expect(matchesDurationFilter(row(120_000), KEY, f)).toBe(true)
+    expect(matchesDurationFilter(row(60_000), KEY, f)).toBe(false)  // exactly at min
+    expect(matchesDurationFilter(row(180_000), KEY, f)).toBe(false) // exactly at max
+    expect(matchesDurationFilter(row(30_000), KEY, f)).toBe(false)
+    expect(matchesDurationFilter(row(200_000), KEY, f)).toBe(false)
+  })
+
+  it('open upper bound keeps values strictly over min', () => {
+    const f = { minMs: 120_000, maxMs: null }
     expect(matchesDurationFilter(row(180_000), KEY, f)).toBe(true)
     expect(matchesDurationFilter(row(120_000), KEY, f)).toBe(false)
     expect(matchesDurationFilter(row(60_000), KEY, f)).toBe(false)
   })
 
+  it('open lower bound keeps values strictly under max', () => {
+    const f = { minMs: null, maxMs: 120_000 }
+    expect(matchesDurationFilter(row(60_000), KEY, f)).toBe(true)
+    expect(matchesDurationFilter(row(120_000), KEY, f)).toBe(false)
+    expect(matchesDurationFilter(row(180_000), KEY, f)).toBe(false)
+  })
+
   it('blank / non-numeric durations never match an active filter', () => {
-    const below = { op: 'below', ms: 120_000 }
-    expect(matchesDurationFilter(row(''), KEY, below)).toBe(false)
-    expect(matchesDurationFilter(row(null), KEY, below)).toBe(false)
-    expect(matchesDurationFilter(row(undefined), KEY, below)).toBe(false)
-    expect(matchesDurationFilter({}, KEY, below)).toBe(false)
+    const f = { minMs: null, maxMs: 120_000 }
+    expect(matchesDurationFilter(row(''), KEY, f)).toBe(false)
+    expect(matchesDurationFilter(row(null), KEY, f)).toBe(false)
+    expect(matchesDurationFilter(row(undefined), KEY, f)).toBe(false)
+    expect(matchesDurationFilter({}, KEY, f)).toBe(false)
   })
 })

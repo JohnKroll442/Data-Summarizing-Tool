@@ -35,7 +35,7 @@ const SESSION_TS = (row) => row.timestamp_range
 function SessionSummaryTable({ rows, headers }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName, timeSelections: timeFilter, setTimeSelections: setTimeFilter, pushNavSnapshot, viewUi, setViewUi } = useCsvData()
+  const { setSessionFilter, setActionFilter, sessionMultiFilter, setSessionMultiFilter, sessionFilterWindow, setSessionFilterWindow, timelineRange, resetTimeline, fileName, timeSelections: timeFilter, setTimeSelections: setTimeFilter, pushNavSnapshot, viewUi, setViewUi, viewedItems, markViewed } = useCsvData()
 
   const { rows: summaryRows, columns, mapping, sessionKey } = useMemo(
     () => aggregateBySession(rows, headers),
@@ -311,6 +311,7 @@ function SessionSummaryTable({ rows, headers }) {
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}
+        isRowViewed={(row) => Boolean(viewedItems.session[String(row.session)])}
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {
@@ -333,6 +334,8 @@ function SessionSummaryTable({ rows, headers }) {
                   onClick={() => {
                     // Record this Session View so Back can return to it.
                     pushNavSnapshot(location.pathname)
+                    // Mark this session as viewed so its row stays tinted.
+                    markViewed('session', row.session)
                     setSessionFilter(String(row.session))
                     // Preselect this session in Action View's Sessions filter
                     // so the dropdown reflects the drill-down ("1 selected").

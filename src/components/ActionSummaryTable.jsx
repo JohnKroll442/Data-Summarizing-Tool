@@ -8,6 +8,7 @@ import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
+import DurationFilterMenu from './DurationFilterMenu'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { actionKpisFromAgg } from '../lib/kpis'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
@@ -16,6 +17,7 @@ import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesDurationFilter } from '../lib/durationFilter'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
 
@@ -34,6 +36,10 @@ const ACTION_TS = (row) => row._action_timestamp
  * Clicking the Action name cell sets the `actionFilter` (name + timestamp)
  * and routes to Widget View for the next level of drill-down.
  */
+// Stable per-invocation key for an action row: actions are grouped by name +
+// invocation timestamp (not session), so both are needed to identify one.
+const actionKey = (r) => `${r.action_name}::${r._action_timestamp ?? ''}`
+
 function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsChange }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -57,6 +63,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     pushNavSnapshot,
     viewUi,
     setViewUi,
+    viewedItems,
+    markViewed,
   } = useCsvData()
 
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
@@ -104,13 +112,14 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     return nav ? { ...base, ...nav } : base
   })
   const [sort, setSort] = useState(() => viewUi.action.sort)
+  const [durationFilter, setDurationFilter] = useState(() => viewUi.action.durationFilter)
 
   // Persist UI-filter changes so they survive this view unmounting (see the
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('action', { search, filters, sort })
-  }, [search, filters, sort, setViewUi])
+    setViewUi('action', { search, filters, sort, durationFilter })
+  }, [search, filters, sort, durationFilter, setViewUi])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters, the time filter, the timeline range, and any
@@ -120,8 +129,9 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
       (row) => matchesTimeFilter(row, ACTION_TS, timeFilter)
         && matchesTimeRange(row, ACTION_TS, timelineRange)
+        && matchesDurationFilter(row, 'action_duration', durationFilter)
         && (actionInvocationFilter.length === 0 || actionInvocationFilter.includes(String(row._action_timestamp)))),
-    [summaryRows, filters, timeFilter, timelineRange, actionInvocationFilter],
+    [summaryRows, filters, timeFilter, timelineRange, actionInvocationFilter, durationFilter],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
@@ -131,8 +141,9 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     () => summaryRows.filter((row) =>
       matchesAllMultiFilters(row, filters)
         && matchesTimeRange(row, ACTION_TS, timelineRange)
+        && matchesDurationFilter(row, 'action_duration', durationFilter)
         && (actionInvocationFilter.length === 0 || actionInvocationFilter.includes(String(row._action_timestamp)))),
-    [summaryRows, filters, timelineRange, actionInvocationFilter],
+    [summaryRows, filters, timelineRange, actionInvocationFilter, durationFilter],
   )
 
   const visibleRows = useMemo(() => {
@@ -141,6 +152,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
       if (!matchesAllMultiFilters(row, filters)) return false
       if (!matchesTimeFilter(row, ACTION_TS, timeFilter)) return false
       if (!matchesTimeRange(row, ACTION_TS, timelineRange)) return false
+      if (!matchesDurationFilter(row, 'action_duration', durationFilter)) return false
       if (actionInvocationFilter.length > 0 && !actionInvocationFilter.includes(String(row._action_timestamp))) return false
       if (!needle) return true
       return columns.some((c) => {
@@ -149,7 +161,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         return String(v).toLowerCase().startsWith(needle)
       })
     })
-  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter])
+  }, [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter, durationFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -182,7 +194,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     (sessionMultiFilter.length > 0 ? 1 : 0) +
     (hasTimeSelection(timeFilter) ? 1 : 0) +
     (timelineRange ? 1 : 0) +
-    (actionInvocationFilter.length > 0 ? 1 : 0)
+    (actionInvocationFilter.length > 0 ? 1 : 0) +
+    (durationFilter ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -394,6 +407,11 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
           value={timeFilter}
           onChange={setTimeFilter}
         />
+        <DurationFilterMenu
+          label="Action duration"
+          value={durationFilter}
+          onChange={setDurationFilter}
+        />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
@@ -422,6 +440,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
               setActionInvocationFilter([])
               setActionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
+              setDurationFilter(null)
               resetTimeline()
             }}
           >
@@ -434,6 +453,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}
+        isRowViewed={(row) => Boolean(viewedItems.action[actionKey(row)])}
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {
@@ -451,6 +471,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
                       // Record this Action View (route + filters) so Back can
                       // return to it exactly as it is now, before we drill.
                       pushNavSnapshot(location.pathname)
+                      // Mark this action as viewed so its row stays tinted.
+                      markViewed('action', actionKey(row))
                       // Pin the SAME session as this action row so Widget View
                       // shows only that session's widgets. Actions are grouped
                       // by name + timestamp (not session), so an action name
@@ -483,6 +505,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
                       aria-label={`Open Action Waterfall Chart for ${row.action_name}`}
                       onClick={(e) => {
                         e.stopPropagation()
+                        // Opening the waterfall also counts as viewing.
+                        markViewed('action', actionKey(row))
                         onOpenWaterfall({
                           name: row.action_name,
                           timestamp: row._action_timestamp ?? '',

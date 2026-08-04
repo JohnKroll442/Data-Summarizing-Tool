@@ -5,39 +5,37 @@ import { formatDurationMs } from '../lib/format'
 import './MultiFilterMenu.css'
 import './DurationFilterMenu.css'
 
-const OPS = [
-  { id: 'below', label: 'Below', sign: '<' },
-  { id: 'above', label: 'Above', sign: '>' },
-]
-
 /**
- * DurationFilterMenu — a threshold filter for a duration column. The user picks
- * a comparator (Below / Above) and types a boundary with a unit (seconds /
- * minutes); the row's value is compared in milliseconds. Emits `{ op, ms }`
- * while a valid boundary is set, or `null` when the amount is cleared/invalid.
+ * DurationFilterMenu — a range filter for a duration column. The user types a
+ * minimum and/or a maximum with a shared unit (seconds / minutes); the row's
+ * value is kept when it sits strictly between them (min < value < max). Either
+ * side may be left blank for an open-ended range. Emits `{ minMs, maxMs }` (with
+ * `null` for an open side) while at least one bound is set, or `null` when both
+ * are cleared/invalid.
  *
- * This component owns the control state (op / amount / unit); the parent owns
- * only the resulting `{ op, ms }` filter. When the parent clears the filter
- * from outside (e.g. a toolbar "Clear" button), we reset the amount so the
+ * This component owns the control state (min / max / unit); the parent owns only
+ * the resulting `{ minMs, maxMs }` filter. When the parent clears the filter
+ * from outside (e.g. a toolbar "Clear" button), we reset the inputs so the
  * trigger returns to "any".
  *
  * Props:
  *   label:    trigger prefix, e.g. "Total duration"
- *   value:    the active `{ op, ms }` filter or null
+ *   value:    the active `{ minMs, maxMs }` filter or null
  *   onChange: (nextFilter | null) => void
  */
 function DurationFilterMenu({ label = 'Duration', value, onChange }) {
   const [open, setOpen] = useState(false)
-  const [op, setOp] = useState(value?.op ?? 'below')
-  const [amount, setAmount] = useState('')
-  const [unit, setUnit] = useState('min')
+  const init = deriveControls(value)
+  const [min, setMin] = useState(init.min)
+  const [max, setMax] = useState(init.max)
+  const [unit, setUnit] = useState(init.unit)
   const rootRef = useRef(null)
 
-  // If the parent clears the filter externally, blank the amount so the trigger
+  // If the parent clears the filter externally, blank the inputs so the trigger
   // shows "any" again. (We're the only writer while active, so we don't try to
-  // reverse-engineer amount/unit from ms — just reset on clear.)
+  // reverse-engineer the amounts from ms on every change — just reset on clear.)
   useEffect(() => {
-    if (!value) setAmount('')
+    if (!value) { setMin(''); setMax('') }
   }, [value])
 
   useEffect(() => {
@@ -54,19 +52,18 @@ function DurationFilterMenu({ label = 'Duration', value, onChange }) {
     }
   }, [open])
 
-  // Any control change rebuilds the filter (or clears it when the amount is
+  // Any control change rebuilds the range (or clears it when both bounds are
   // blank/invalid) and pushes it up immediately — no separate "Apply" step.
-  const apply = (nextOp, nextAmount, nextUnit) => {
-    setOp(nextOp)
-    setAmount(nextAmount)
+  const apply = (nextMin, nextMax, nextUnit) => {
+    setMin(nextMin)
+    setMax(nextMax)
     setUnit(nextUnit)
-    const ms = toMs(nextAmount, nextUnit)
-    onChange(ms === null ? null : { op: nextOp, ms })
+    const minMs = toMs(nextMin, nextUnit)
+    const maxMs = toMs(nextMax, nextUnit)
+    onChange(minMs === null && maxMs === null ? null : { minMs, maxMs })
   }
 
-  const triggerText = value
-    ? `${label}: ${value.op === 'below' ? '<' : '>'} ${formatDurationMs(value.ms)}`
-    : `${label}: any`
+  const triggerText = value ? `${label}: ${rangeText(value)}` : `${label}: any`
 
   return (
     <div className="multi-filter" ref={rootRef}>
@@ -83,49 +80,49 @@ function DurationFilterMenu({ label = 'Duration', value, onChange }) {
 
       {open && (
         <div className="multi-filter-panel duration-filter-panel" role="dialog" aria-label={`${label} filter`}>
-          <div className="duration-filter-ops" role="group" aria-label="Comparator">
-            {OPS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                className={`duration-filter-op${o.id === op ? ' is-active' : ''}`}
-                onClick={() => apply(o.id, amount, unit)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="duration-filter-row">
+          <div className="duration-filter-range">
             <input
               type="number"
               min="0"
               step="any"
               inputMode="decimal"
               className="duration-filter-amount"
-              placeholder="e.g. 2"
-              value={amount}
-              onChange={(e) => apply(op, e.target.value, unit)}
-              aria-label="Boundary amount"
+              placeholder="min"
+              value={min}
+              onChange={(e) => apply(e.target.value, max, unit)}
+              aria-label="Minimum duration"
             />
-            <select
-              className="duration-filter-unit"
-              value={unit}
-              onChange={(e) => apply(op, amount, e.target.value)}
-              aria-label="Boundary unit"
-            >
-              {DURATION_UNITS.map((u) => (
-                <option key={u.id} value={u.id}>{u.label}</option>
-              ))}
-            </select>
+            <span className="duration-filter-sep" aria-hidden="true">&lt; x &lt;</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              className="duration-filter-amount"
+              placeholder="max"
+              value={max}
+              onChange={(e) => apply(min, e.target.value, unit)}
+              aria-label="Maximum duration"
+            />
           </div>
+
+          <select
+            className="duration-filter-unit"
+            value={unit}
+            onChange={(e) => apply(min, max, e.target.value)}
+            aria-label="Range unit"
+          >
+            {DURATION_UNITS.map((u) => (
+              <option key={u.id} value={u.id}>{u.label}</option>
+            ))}
+          </select>
 
           <div className="multi-filter-actions">
             <button
               type="button"
               className="multi-filter-action"
               disabled={!value}
-              onClick={() => apply(op, '', unit)}
+              onClick={() => apply('', '', unit)}
             >
               Clear
             </button>
@@ -134,6 +131,29 @@ function DurationFilterMenu({ label = 'Duration', value, onChange }) {
       )}
     </div>
   )
+}
+
+// Trigger summary of the active range: "2m – 5m" for a closed range, or the
+// one-sided "> 2m" / "< 5m" when only a single bound is set.
+function rangeText({ minMs = null, maxMs = null }) {
+  if (minMs !== null && maxMs !== null) {
+    return `${formatDurationMs(minMs)} – ${formatDurationMs(maxMs)}`
+  }
+  if (minMs !== null) return `> ${formatDurationMs(minMs)}`
+  return `< ${formatDurationMs(maxMs)}`
+}
+
+// Seed the input controls from a persisted `{ minMs, maxMs }` filter so the
+// panel reflects an active range after the menu remounts (tab switch / drill +
+// Back). Picks the coarsest unit that keeps both bounds whole; falls back to
+// seconds otherwise. Empty filter → blank inputs, minutes by default.
+function deriveControls(value) {
+  if (!value) return { min: '', max: '', unit: 'min' }
+  const bounds = [value.minMs, value.maxMs].filter((x) => x !== null && x !== undefined)
+  const unit = bounds.every((x) => x % 60_000 === 0) ? 'min' : 'sec'
+  const div = unit === 'min' ? 60_000 : 1000
+  const fmt = (x) => (x === null || x === undefined ? '' : String(x / div))
+  return { min: fmt(value.minMs), max: fmt(value.maxMs), unit }
 }
 
 export default DurationFilterMenu

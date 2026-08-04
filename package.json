@@ -20,6 +20,7 @@
     "@ui5/webcomponents": "^2.25.0",
     "@ui5/webcomponents-fiori": "^2.25.0",
     "@ui5/webcomponents-react": "^2.25.0",
+    "@ui5/webcomponents-react-charts": "^2.25.0",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "lucide-react": "^1.23.0",
