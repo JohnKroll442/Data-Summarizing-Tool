@@ -7,7 +7,7 @@ import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
-import TimeFilterMenu from './TimeFilterMenu'
+import ColumnChooserMenu from './ColumnChooserMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByWidget } from '../lib/widgetAggregate'
@@ -24,7 +24,7 @@ import {
 import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
-import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
+import { countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { filterAggRows, WIDGET_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
@@ -172,13 +172,36 @@ function WidgetSummaryTable({ rows, headers }) {
     })
   }, [widgetMultiFilter])
   const [sort, setSort] = useState(() => viewUi.widget.sort)
+  // Which columns are hidden (display-only preference). The first column is
+  // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
+  const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.widget.hiddenColumns ?? [])
+
+  // Widget name is always shown and never offered as a toggle (see
+  // WIDGET_LOCKED_COLUMNS). `chooserColumns` is the toggleable set the dropdown
+  // lists; `visibleColumns` is what the table renders — locked columns plus any
+  // the user hasn't hidden. The full `columns` list stays intact for CSV
+  // export, sorting, and faceted filters — only the rendered set shrinks.
+  const chooserColumns = useMemo(
+    () => displayColumns.filter((c) => !WIDGET_LOCKED_COLUMNS.includes(c.key)),
+    [displayColumns],
+  )
+  const visibleColumns = useMemo(() => {
+    const shown = displayColumns.filter(
+      (c) => WIDGET_LOCKED_COLUMNS.includes(c.key) || !hiddenColumns.includes(c.key),
+    )
+    // Surface the locked label column(s) on the far left so the clickable
+    // widget name leads every row — matching the Session view.
+    const locked = shown.filter((c) => WIDGET_LOCKED_COLUMNS.includes(c.key))
+    const rest = shown.filter((c) => !WIDGET_LOCKED_COLUMNS.includes(c.key))
+    return [...locked, ...rest]
+  }, [displayColumns, hiddenColumns])
 
   // Persist UI-filter changes so they survive this view unmounting (see the
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('widget', { search, filters, sort })
-  }, [search, filters, sort, setViewUi])
+    setViewUi('widget', { search, filters, sort, hiddenColumns })
+  }, [search, filters, sort, hiddenColumns, setViewUi])
   // Clicking a widget name opens the per-widget timing modal. We store the
   // index of the selected widget within the filtered + sorted rows (null =
   // closed) so the modal's picker/arrows can flip through exactly the widgets
@@ -198,12 +221,6 @@ function WidgetSummaryTable({ rows, headers }) {
   // Rows the Time filter derives its buckets from — narrowed by the column
   // filters and the timeline range (but not by time itself) so the time options
   // track the other menus and the selected timeline window.
-  const timeFilterRows = useMemo(
-    () => summaryRows.filter((row) =>
-      matchesAllMultiFilters(row, filters) && matchesTimeRange(row, WIDGET_TS, timelineRange)),
-    [summaryRows, filters, timelineRange],
-  )
-
   const visibleRows = useMemo(
     () => filterAggRows(summaryRows, columns, {
       tsAccessor: WIDGET_TS,
@@ -522,11 +539,10 @@ function WidgetSummaryTable({ rows, headers }) {
             />
           )
         })}
-        <TimeFilterMenu
-          rows={timeFilterRows}
-          getTimestamp={WIDGET_TS}
-          value={timeFilter}
-          onChange={setTimeFilter}
+        <ColumnChooserMenu
+          columns={chooserColumns}
+          hidden={hiddenColumns}
+          onChange={setHiddenColumns}
         />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
@@ -571,7 +587,7 @@ function WidgetSummaryTable({ rows, headers }) {
         sort={sort}
         onSortChange={setSort}
         isRowViewed={(row) => Boolean(viewedItems.widget[String(row.widget_id)])}
-        columns={displayColumns.map((c) => ({
+        columns={visibleColumns.map((c) => ({
           ...c,
           render: (v, row) => {
             if (c.key === 'widget_name') {
@@ -643,6 +659,10 @@ const FILTERABLE_COLUMNS = [
   { key: 'widget_name', label: 'Widget name' },
 ]
 const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'total', 'offset'])
+
+// Widget name always shows and can't be hidden, so it's excluded from the
+// column-chooser dropdown (a row must always keep its label).
+const WIDGET_LOCKED_COLUMNS = ['widget_name']
 
 // The columns the table actually renders, in order. Session ID · Widget ID ·
 // Widget name · Render · Network · Backend · Offset · Total. The phase

@@ -8,7 +8,7 @@ import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
-import TimeFilterMenu from './TimeFilterMenu'
+import ColumnChooserMenu from './ColumnChooserMenu'
 import DurationFilterMenu from './DurationFilterMenu'
 import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
@@ -17,7 +17,7 @@ import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '.
 import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
-import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
+import { countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { matchesDurationFilter } from '../lib/durationFilter'
 import { filterAggRows, ACTION_TS } from '../lib/viewFilters'
@@ -113,13 +113,36 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   })
   const [sort, setSort] = useState(() => viewUi.action.sort)
   const [durationFilter, setDurationFilter] = useState(() => viewUi.action.durationFilter)
+  // Which columns are hidden (display-only preference). The first column is
+  // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
+  const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.action.hiddenColumns ?? [])
+
+  // Action name is always shown and never offered as a toggle (see
+  // ACTION_LOCKED_COLUMNS). `chooserColumns` is the toggleable set the dropdown
+  // lists; `visibleColumns` is what the table renders — locked columns plus any
+  // the user hasn't hidden. The full `columns` list stays intact for CSV
+  // export, sorting, and faceted filters — only the rendered set shrinks.
+  const chooserColumns = useMemo(
+    () => columns.filter((c) => !ACTION_LOCKED_COLUMNS.includes(c.key)),
+    [columns],
+  )
+  const visibleColumns = useMemo(() => {
+    const shown = columns.filter(
+      (c) => ACTION_LOCKED_COLUMNS.includes(c.key) || !hiddenColumns.includes(c.key),
+    )
+    // Surface the locked label column(s) on the far left so the clickable
+    // action name leads every row — matching the Session view.
+    const locked = shown.filter((c) => ACTION_LOCKED_COLUMNS.includes(c.key))
+    const rest = shown.filter((c) => !ACTION_LOCKED_COLUMNS.includes(c.key))
+    return [...locked, ...rest]
+  }, [columns, hiddenColumns])
 
   // Persist UI-filter changes so they survive this view unmounting (see the
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('action', { search, filters, sort, durationFilter })
-  }, [search, filters, sort, durationFilter, setViewUi])
+    setViewUi('action', { search, filters, sort, durationFilter, hiddenColumns })
+  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters, the time filter, the timeline range, and any
@@ -137,15 +160,6 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   // Rows the Time filter derives its buckets from — narrowed by the column
   // filters, the timeline range, and the invocation drill (but not by time
   // itself) so the time options track the other menus.
-  const timeFilterRows = useMemo(
-    () => summaryRows.filter((row) =>
-      matchesAllMultiFilters(row, filters)
-        && matchesTimeRange(row, ACTION_TS, timelineRange)
-        && matchesDurationFilter(row, 'action_duration', durationFilter)
-        && (actionInvocationFilter.length === 0 || actionInvocationFilter.includes(String(row._action_timestamp)))),
-    [summaryRows, filters, timelineRange, actionInvocationFilter, durationFilter],
-  )
-
   const visibleRows = useMemo(
     () => filterAggRows(summaryRows, columns, {
       tsAccessor: ACTION_TS,
@@ -400,16 +414,15 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
             />
           )
         })}
-        <TimeFilterMenu
-          rows={timeFilterRows}
-          getTimestamp={ACTION_TS}
-          value={timeFilter}
-          onChange={setTimeFilter}
-        />
         <DurationFilterMenu
           label="Action duration"
           value={durationFilter}
           onChange={setDurationFilter}
+        />
+        <ColumnChooserMenu
+          columns={chooserColumns}
+          hidden={hiddenColumns}
+          onChange={setHiddenColumns}
         />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
@@ -453,7 +466,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         sort={sort}
         onSortChange={setSort}
         isRowViewed={(row) => Boolean(viewedItems.action[actionKey(row)])}
-        columns={columns.map((c) => ({
+        columns={visibleColumns.map((c) => ({
           ...c,
           render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
@@ -547,5 +560,9 @@ const FILTERABLE_COLUMNS = [
   { key: 'story_name',  label: 'Story' },
 ]
 const DURATION_COLUMNS = new Set(['action_duration', 'max_frontend', 'max_network', 'max_backend'])
+
+// Action name always shows and can't be hidden, so it's excluded from the
+// column-chooser dropdown (a row must always keep its label).
+const ACTION_LOCKED_COLUMNS = ['action_name']
 
 export default ActionSummaryTable

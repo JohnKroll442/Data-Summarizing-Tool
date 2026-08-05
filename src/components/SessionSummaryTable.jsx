@@ -7,6 +7,7 @@ import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
+import ColumnChooserMenu from './ColumnChooserMenu'
 import TimeFilterMenu from './TimeFilterMenu'
 import PhaseHoverCell from './PhaseHoverCell'
 import DurationFilterMenu from './DurationFilterMenu'
@@ -54,13 +55,36 @@ function SessionSummaryTable({ rows, headers }) {
   const [sort, setSort] = useState(() => viewUi.session.sort)
   // Threshold filter for the Total action duration column: { op, ms } or null.
   const [durationFilter, setDurationFilter] = useState(() => viewUi.session.durationFilter)
+  // Which columns are hidden (display-only preference). The first column is
+  // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
+  const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.session.hiddenColumns ?? [])
+
+  // Session is always shown and never offered as a toggle (see
+  // SESSION_LOCKED_COLUMNS). `chooserColumns` is the toggleable set the dropdown
+  // lists; `visibleColumns` is what the table renders — locked columns plus any
+  // the user hasn't hidden. The full `columns` list stays intact for CSV
+  // export, sorting, and faceted filters — only the rendered set shrinks.
+  const chooserColumns = useMemo(
+    () => columns.filter((c) => !SESSION_LOCKED_COLUMNS.includes(c.key)),
+    [columns],
+  )
+  const visibleColumns = useMemo(() => {
+    const shown = columns.filter(
+      (c) => SESSION_LOCKED_COLUMNS.includes(c.key) || !hiddenColumns.includes(c.key),
+    )
+    // Keep the locked label column(s) on the far left so the clickable session
+    // leads every row (already the case here; kept uniform with the other views).
+    const locked = shown.filter((c) => SESSION_LOCKED_COLUMNS.includes(c.key))
+    const rest = shown.filter((c) => !SESSION_LOCKED_COLUMNS.includes(c.key))
+    return [...locked, ...rest]
+  }, [columns, hiddenColumns])
 
   // Write UI-filter changes back to the persisted store so they survive this
   // view unmounting. setViewUi is stable and only touches the session slice,
   // so this can't loop: writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('session', { search, filters, sort, durationFilter })
-  }, [search, filters, sort, durationFilter, setViewUi])
+    setViewUi('session', { search, filters, sort, durationFilter, hiddenColumns })
+  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
 
   // Keep the Session column filter in sync when sessionMultiFilter changes from
   // OUTSIDE this table (e.g. clicking a Sessions bar in the Activity Timeline
@@ -245,6 +269,11 @@ function SessionSummaryTable({ rows, headers }) {
           value={durationFilter}
           onChange={setDurationFilter}
         />
+        <ColumnChooserMenu
+          columns={chooserColumns}
+          hidden={hiddenColumns}
+          onChange={setHiddenColumns}
+        />
         <span className="summary-filter-count">
           {visibleRows.length} of {summaryRows.length}
         </span>
@@ -310,7 +339,7 @@ function SessionSummaryTable({ rows, headers }) {
         sort={sort}
         onSortChange={setSort}
         isRowViewed={(row) => Boolean(viewedItems.session[String(row.session)])}
-        columns={columns.map((c) => ({
+        columns={visibleColumns.map((c) => ({
           ...c,
           render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
@@ -373,6 +402,10 @@ const FILTERABLE_COLUMNS = [
   { key: 'user',    label: 'User' },
   { key: 'story',   label: 'Story' },
 ]
+
+// Session always shows and can't be hidden, so it's excluded from the
+// column-chooser dropdown (a row must always keep its label).
+const SESSION_LOCKED_COLUMNS = ['session']
 
 // Order-insensitive equality for two string arrays — used to skip redundant
 // filter updates when the external multi-filter already matches the local one.

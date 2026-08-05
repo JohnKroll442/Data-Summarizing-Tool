@@ -125,11 +125,16 @@ export function isDurationColumn(key) {
 export function formatDurationMs(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return ''
-  if (n < 1) return `${n.toFixed(2)} ms`
-  if (n < 1000) return `${Math.round(n)} ms`
-  if (n < 60_000) return `${(n / 1000).toFixed(1)} s`
-  const totalSec = Math.round(n / 1000)
+  // Choose the unit from the magnitude so negative durations (e.g. a negative
+  // average) still read in seconds/minutes instead of falling through to the
+  // sub-millisecond branch and printing a huge raw ms number. Sign is kept.
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n)
+  if (abs < 1) return `${sign}${abs.toFixed(2)} ms`
+  if (abs < 1000) return `${sign}${Math.round(abs)} ms`
+  if (abs < 60_000) return `${sign}${(abs / 1000).toFixed(1)} s`
+  const totalSec = Math.round(abs / 1000)
   const m = Math.floor(totalSec / 60)
   const s = totalSec % 60
-  return `${m}m ${s}s`
+  return `${sign}${m}m ${s}s`
 }
