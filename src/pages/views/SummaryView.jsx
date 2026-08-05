@@ -83,33 +83,21 @@ function SummaryView() {
     [scopedRows, headers, timelineRange],
   )
 
-  // Open a ranked row in its view with the entity pre-filtered. Clear any stale
-  // drill-down scope first so the target definitely shows the clicked entity,
-  // then pass the column filters as router state — a one-shot the target table
-  // seeds from on mount (survives StrictMode; not re-applied on tab clicks).
+  // Open a ranked row in its view with the entity pre-filtered. A widget ranking
+  // also carries a `scope` (the session + activity where that phase's max
+  // occurred); we set those as the shared session/action filters so the target
+  // view shows them as pills under the Back button, while the `columns` (widget
+  // id) still narrow it to exactly the clicked widget. Rankings without a scope
+  // (actions) clear any stale drill so the target definitely shows just the
+  // clicked entity. Column filters pass as router state — a one-shot the target
+  // table seeds from on mount (survives StrictMode; not re-applied on tab clicks).
   const openEntity = (nav) => {
     // Record the Summary view so Back can return to it.
     pushNavSnapshot(location.pathname)
     setSessionFilter(null)
     setActionFilter(null)
-    setSessionMultiFilter([])
-    setActionMultiFilter([])
-    // A widget ranking row carries the session + action it ran under; apply
-    // them as the drill scope so the Widget view opens with Session/Action
-    // pills, the same way clicking an action name drills Action → Widget.
-    if (nav.drill) {
-      if (nav.drill.session) {
-        setSessionFilter(String(nav.drill.session))
-        setSessionMultiFilter([String(nav.drill.session)])
-      }
-      if (nav.drill.actionName) {
-        setActionFilter({
-          name: String(nav.drill.actionName),
-          timestamp: String(nav.drill.actionTimestamp ?? ''),
-        })
-        setActionMultiFilter([String(nav.drill.actionName)])
-      }
-    }
+    setSessionMultiFilter(nav.scope?.session ? [nav.scope.session] : [])
+    setActionMultiFilter(nav.scope?.action ? [nav.scope.action] : [])
     const hasColumns = nav.columns && Object.keys(nav.columns).length > 0
     navigate(`/summary/${nav.view}`, hasColumns ? { state: { summaryFilters: nav.columns } } : undefined)
   }

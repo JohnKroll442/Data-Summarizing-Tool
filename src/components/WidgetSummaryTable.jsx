@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
@@ -151,7 +151,17 @@ function WidgetSummaryTable({ rows, headers }) {
   // Keep the Widget-ID column filter in sync when widgetMultiFilter changes from
   // OUTSIDE this table (e.g. clicking a Widgets bar in the Activity Timeline
   // while this view is already mounted). Idempotent; mirrors SessionSummaryTable.
+  //
+  // Only act on a GENUINE change to widgetMultiFilter after mount. A
+  // Summary-ranking click seeds `filters.widget_id` via router `summaryFilters`
+  // state WITHOUT touching widgetMultiFilter (still []); running the sync on the
+  // mount pass would `delete` the just-seeded widget id and blow the scope open
+  // to every widget. The ref starts at the mount value, so the mount pass (and
+  // StrictMode's extra setup, where the reference is unchanged) no-ops.
+  const lastMultiRef = useRef(widgetMultiFilter)
   useEffect(() => {
+    if (lastMultiRef.current === widgetMultiFilter) return
+    lastMultiRef.current = widgetMultiFilter
     setFilters((prev) => {
       const cur = Array.isArray(prev.widget_id) ? prev.widget_id : []
       if (sameStringSet(cur, widgetMultiFilter)) return prev
@@ -541,6 +551,8 @@ function WidgetSummaryTable({ rows, headers }) {
             onClick={() => {
               setSearch('')
               setFilters({})
+              setSessionFilter(null)
+              setActionFilter(null)
               setSessionMultiFilter([])
               setActionMultiFilter([])
               setWidgetMultiFilter([])

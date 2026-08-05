@@ -76,30 +76,31 @@ function categorySpecs(rows, headers, range) {
     .filter((w) => matchesTimeRange(w, WIDGET_TS, range))
   const actions = aggregateByAction(rows, headers).rows
     .filter((a) => matchesTimeRange(a, ACTION_TS, range))
-
-  // The widget aggregate groups by widget id alone (no parent action), and a
-  // widget id can recur across actions with each phase's slowest run in a
-  // different one. Resolve, per widget AND per phase, the session + action of
-  // the row that produced that phase's max — so a widget ranking row drills into
-  // the action where its ranked value actually happened (mirrors Action → Widget).
+  // Per-widget, per-phase source of the max: { session, actionName, ... } read
+  // from the raw row that produced each phase's value. Lets a ranking pin the
+  // exact session + activity where THAT phase's max happened.
   const phaseSources = widgetPhaseSources(rows, headers)
 
   const widgetLabel = (w) => String(w.widget_name || w.widget_id || '—')
   const widgetSub = (w) =>
     w.widget_name ? String(w.widget_id) : w.session_id ? `Session ${w.session_id}` : ''
-  // Open the Widget view filtered to just this widget (by its id), and — when we
-  // resolved the phase's parent — carry the session + action so the target shows
-  // Session/Action pills like the Action drill-down does.
-  const widgetNav = (w, phase) => {
-    const parent = phaseSources.get(String(w.widget_id))?.[phase]
-    const session = parent?.session || (w.session_id ? String(w.session_id) : '')
-    const drill = parent?.actionName || session
-      ? { session, actionName: parent?.actionName ?? '', actionTimestamp: parent?.actionTimestamp ?? '' }
-      : null
+  // Open the Widget view filtered to EXACTLY this widget (by its id) so only the
+  // one clicked widget shows — `columns.widget_id` seeds the table's Widget-ID
+  // filter. We ALSO carry the session + activity (action) where this phase's max
+  // occurred as `scope`, so the target view surfaces them as pills under the
+  // Back button (the session/action context this widget is filtered with). The
+  // widget-id filter still guarantees a single widget row within that scope.
+  const widgetNav = (w, phaseKey) => {
+    const src = phaseSources.get(String(w.widget_id))?.[phaseKey] || null
+    const session = src?.session || (w.session_id != null ? String(w.session_id) : '')
+    const action = src?.actionName || ''
+    const scope = {}
+    if (session) scope.session = session
+    if (action) scope.action = action
     return {
       view: 'widget',
       columns: { widget_id: [String(w.widget_id)] },
-      ...(drill ? { drill } : {}),
+      ...(Object.keys(scope).length ? { scope } : {}),
     }
   }
   const widgetSpec = (id, title, key) => ({

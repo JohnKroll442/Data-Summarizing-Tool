@@ -31,17 +31,24 @@ describe('computeRankings', () => {
     expect(byId.backend.items[0].label).toBe('Chart 3') // backend unchanged: 500 is largest
   })
 
-  it('gives each widget row a nav payload targeting its widget id', () => {
+  it('gives each widget row a nav that pins the one widget plus its session scope', () => {
     const byId = Object.fromEntries(computeRankings(W_ROWS, W_HEADERS).slowest.map((l) => [l.id, l]))
-    expect(byId.render.items[0].nav).toMatchObject({ view: 'widget', columns: { widget_id: ['W1'] } })
-    // With a session but no action column, the drill carries just the session.
-    expect(byId.render.items[0].nav.drill).toEqual({ session: 'S1', actionName: '', actionTimestamp: '' })
+    // columns pin the single widget id (so only that widget shows); scope carries
+    // the session it ran in (shown as a pill under the Back button). These rows
+    // have no action column, so no action is pinned.
+    expect(byId.render.items[0].nav).toEqual({
+      view: 'widget',
+      columns: { widget_id: ['W1'] },
+      scope: { session: 'S1' },
+    })
+    expect(byId.render.items[0].nav.drill).toBeUndefined()
   })
 
-  it('resolves each phase drill to the ACTION where that phase\'s max ran', () => {
-    // W1 renders slowest in action "A" but its backend max is in action "B" —
-    // a widget id can recur across actions, so each phase must drill into its
-    // own winning action (else the target view won't reproduce the ranked value).
+  it('pins each phase to the session + activity where that phase\'s max occurred', () => {
+    // W1 renders slowest in action "A" but its backend max is in action "B".
+    // Each ranking opens the Widget view filtered to exactly W1 (one widget),
+    // and pins the session + the activity where THAT phase peaked, so the pills
+    // reflect where the ranked value actually came from.
     const headers = ['SESSION_ID', 'USER_ACTION', 'ACTION_TIMESTAMP', 'WIDGET_ID', 'WIDGET_MEASURE', 'DURATION']
     const r = (action, ts, measure, dur) => ({
       SESSION_ID: 'S1', USER_ACTION: action, ACTION_TIMESTAMP: ts,
@@ -52,8 +59,16 @@ describe('computeRankings', () => {
       r('B', 't-b', 'render', 5),   r('B', 't-b', 'backend', 800),
     ]
     const byId = Object.fromEntries(computeRankings(rows, headers).slowest.map((l) => [l.id, l]))
-    expect(byId.render.items[0].nav.drill).toMatchObject({ actionName: 'A', actionTimestamp: 't-a' })
-    expect(byId.backend.items[0].nav.drill).toMatchObject({ actionName: 'B', actionTimestamp: 't-b' })
+    expect(byId.render.items[0].nav).toEqual({
+      view: 'widget',
+      columns: { widget_id: ['W1'] },
+      scope: { session: 'S1', action: 'A' },
+    })
+    expect(byId.backend.items[0].nav).toEqual({
+      view: 'widget',
+      columns: { widget_id: ['W1'] },
+      scope: { session: 'S1', action: 'B' },
+    })
   })
 
   it('gives action rows a nav payload for the action + its story', () => {
