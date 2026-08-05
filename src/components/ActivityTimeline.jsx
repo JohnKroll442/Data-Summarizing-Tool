@@ -569,11 +569,6 @@ function ActivityTimeline() {
 
   const zoomed = isZoomed
   const t = detail ?? overview
-  const subtitle = t.empty
-    ? 'No parseable timestamps in this file'
-    : `${granularityLabel(t.granularity)} buckets · ` +
-      `${t.totals.sessions} sessions · ${t.totals.actions} actions · ${t.totals.widgets} widgets` +
-      (effRange ? ` · ${fmtRange(effRange)}` : '')
 
   return (
     <section className="activity-timeline" ref={rootRef}>
@@ -587,7 +582,6 @@ function ActivityTimeline() {
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
           <span className="activity-timeline-title">Activity Timeline</span>
         </button>
-        <span className="activity-timeline-subtitle">{subtitle}</span>
         {!t.empty && !collapsed && (
           <div className="activity-timeline-legend" role="group" aria-label="Toggle series">
             {LEGEND_ITEMS.map(({ key, label }) => (
