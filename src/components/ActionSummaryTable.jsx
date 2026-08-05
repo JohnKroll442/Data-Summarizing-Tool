@@ -468,6 +468,11 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         isRowViewed={(row) => Boolean(viewedItems.action[actionKey(row)])}
         columns={visibleColumns.map((c) => ({
           ...c,
+          // The Action name cell carries the name link plus the always-on
+          // Waterfall Chart icon button. Give it extra room so the icon isn't
+          // clipped on narrow (laptop) screens where "Smart" scaling would
+          // otherwise shrink this column to fit just the header text.
+          ...(c.key === 'action_name' ? { minWidth: 300 } : {}),
           render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
             // Action duration reveals the action's start + end times on hover,
