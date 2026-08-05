@@ -84,8 +84,9 @@ const LEGEND_ITEMS = [
 
 // Which series the detail bars show by default when you land on each view. The
 // active view's own series is on; the others start hidden but the header key
-// buttons can toggle them back in. Summary and Raw start with none shown and
-// collapsed. Keyed by the last path segment of /summary/<view>.
+// buttons can toggle them back in. Keyed by the last path segment of
+// /summary/<view>. The panel itself starts collapsed on every view (see the
+// `collapsed` state); opening it reveals these series.
 const VIEW_SERIES_DEFAULTS = {
   session: { sessions: false, actions: true, widgets: true },
   action: { sessions: true, actions: false, widgets: true },
@@ -93,9 +94,6 @@ const VIEW_SERIES_DEFAULTS = {
   summary: { sessions: true, actions: true, widgets: true },
   raw: { sessions: true, actions: true, widgets: true },
 }
-
-// Views where the timeline defaults to collapsed with no series shown.
-const COLLAPSED_VIEWS = new Set(['summary', 'raw'])
 
 /**
  * ActivityTimeline — a shared, collapsible panel mounted in the /summary shell
@@ -140,9 +138,9 @@ function ActivityTimeline() {
   const location = useLocation()
   const rootRef = useRef(null)
 
-  const [collapsed, setCollapsed] = useState(
-    () => COLLAPSED_VIEWS.has(location.pathname.split('/').pop()),
-  )
+  // The timeline starts collapsed on every view; the user opens it manually
+  // (or it auto-expands when a "busiest period" card focuses it).
+  const [collapsed, setCollapsed] = useState(true)
   // Which /summary/<view> we're on drives the detail bars' default series.
   const view = location.pathname.split('/').pop()
   // Series toggled off via the header color key — hidden ones drop out of the
@@ -153,14 +151,14 @@ function ActivityTimeline() {
       ?? { sessions: false, actions: false, widgets: false },
   )
   // When you move to another summary view, reset the bars to that view's
-  // default (its own series on, the others off) and set its default open/closed
-  // state — Summary and Raw start collapsed with none shown, the entity views
-  // start open. Manual toggles then persist until the next navigation.
+  // default (its own series on, the others off) and re-collapse the panel — the
+  // timeline defaults to closed on every view. Manual toggles then persist until
+  // the next navigation.
   useEffect(() => {
     const def = VIEW_SERIES_DEFAULTS[view]
     if (def) {
       setHidden(def)
-      setCollapsed(COLLAPSED_VIEWS.has(view))
+      setCollapsed(true)
     }
   }, [view])
   const toggleSeries = useCallback(
