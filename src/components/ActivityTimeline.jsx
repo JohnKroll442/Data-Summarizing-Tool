@@ -31,7 +31,7 @@ const CONTEXT_FACTOR = 3
 // Per wheel-notch zoom factor. Gentle (2%) so it feels smooth and unhurried;
 // rapid scrolls coalesce per animation frame so trackpads glide instead of
 // jumping. Nudge toward 1.0 to make zoom less sensitive, away to speed it up.
-const WHEEL_STEP = 0.95
+const WHEEL_STEP = 0.99
 // How long after the page last scrolled we treat it as "still in motion" and
 // leave the wheel to the page instead of zooming the timeline. Keeps a scroll
 // that happens to pass over the chart from being hijacked into a zoom; zoom
