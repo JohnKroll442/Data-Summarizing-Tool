@@ -94,6 +94,22 @@ function SummaryView() {
     setActionFilter(null)
     setSessionMultiFilter([])
     setActionMultiFilter([])
+    // A widget ranking row carries the session + action it ran under; apply
+    // them as the drill scope so the Widget view opens with Session/Action
+    // pills, the same way clicking an action name drills Action → Widget.
+    if (nav.drill) {
+      if (nav.drill.session) {
+        setSessionFilter(String(nav.drill.session))
+        setSessionMultiFilter([String(nav.drill.session)])
+      }
+      if (nav.drill.actionName) {
+        setActionFilter({
+          name: String(nav.drill.actionName),
+          timestamp: String(nav.drill.actionTimestamp ?? ''),
+        })
+        setActionMultiFilter([String(nav.drill.actionName)])
+      }
+    }
     const hasColumns = nav.columns && Object.keys(nav.columns).length > 0
     navigate(`/summary/${nav.view}`, hasColumns ? { state: { summaryFilters: nav.columns } } : undefined)
   }

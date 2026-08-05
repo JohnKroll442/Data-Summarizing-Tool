@@ -45,7 +45,6 @@ function aggregateBySessionImpl(rows, headers) {
     { key: 'session',               label: 'Session' },
     { key: 'user',                  label: 'User' },
     { key: 'story',                 label: 'Story' },
-    { key: 'timestamp_range',       label: 'Timestamp',             sortType: 'timestamp' },
     { key: 'total_action_duration', label: 'Total action duration', sortType: 'duration' },
     { key: 'action_count',          label: 'Action count',          sortType: 'number' },
     { key: 'max_action_duration',   label: 'Max action duration',   sortType: 'duration' },

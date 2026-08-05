@@ -18,6 +18,11 @@
  *   max(DURATION) where WIDGET_MEASURE = 'backend' → Backend
  *   max(DURATION) where WIDGET_MEASURE = 'offset'  → Offset
  *
+ * The three main phases NEST (render ⊇ network ⊇ backend), so the displayed
+ * Render / Network values are made EXCLUSIVE by subtracting the phase they
+ * contain: Render = render − network, Network = network − backend, Backend
+ * stays as the innermost phase. See `exclusiveDuration`.
+ *
  * Start/end times are pulled from the SAME row that won the max for that
  * phase, so the displayed times line up with the displayed duration.
  *   - Render: WIDGET_RENDER_TIMESTAMP_START → WIDGET_RENDER_TIMESTAMP
@@ -29,7 +34,7 @@
  * scoped set, so the Phases column can scale all rows to the same axis.
  */
 
-import { detectSessionKey } from './drillDown'
+import { detectSessionKey, findActionNameKey, findActionTimestampKey } from './drillDown'
 import { memoizeAggregate } from './memoize'
 import { parseStrictTimestamp } from './timeBuckets'
 
@@ -56,6 +61,7 @@ function aggregateByWidgetImpl(rows, headers) {
     { key: 'backend_start', label: 'Backend start' },
     { key: 'backend_end',   label: 'Backend end' },
     { key: 'offset',        label: 'Offset',        sortType: 'duration' },
+    { key: 'total',         label: 'Total',         sortType: 'duration' },
   ]
 
   if (!mapping.widgetId || !rows?.length) {
@@ -77,22 +83,26 @@ function aggregateByWidgetImpl(rows, headers) {
   // that "never ended" (see effectiveWidgetEnd).
   const latestStamp = latestWidgetTimestamp(rows, mapping)
   for (const [widgetId, groupRows] of groups) {
-    const renderPick  = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['render', 'frontend'])
-    // Network = the TTFB round-trip only. Other network sub-measures
-    // ('waiting', contentDownload) can be open/incomplete loads whose DURATION
-    // balloons to span the whole session — that one giant value would then
-    // repeat identically across every widget in the action. Restricting to
-    // ttfb keeps each widget's Network a real, bounded per-request time (and
-    // distinct across widgets). When the CSV has no WIDGET_SUBMEASURE column we
-    // can't tell sub-measures apart, so fall back to the max across all network
-    // rows (preserves behavior for CSV shapes without that column).
-    const networkPick = mapping.submeasure
-      ? pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
-      : pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])
-    const backendPick = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['backend'])
-    const offsetPick  = pickMaxRow(groupRows, mapping.duration, mapping.measure, ['offset'])
+    const { renderPick, networkPick, backendPick, offsetPick } = phasePicks(groupRows, mapping)
 
-    for (const v of [renderPick.value, networkPick.value, backendPick.value, offsetPick.value]) {
+    // Per the data owner the phases NEST — render contains network contains
+    // backend — so each is displayed as its EXCLUSIVE time (the slice NOT spent
+    // in the phase it wraps): render − network, network − backend, and backend
+    // as-is (the innermost phase). A phase with no measured value passes through
+    // untouched (subtract 0); a negative result is shown as-is, flagging data
+    // where an inner phase outran the one that should contain it. Timestamps and
+    // the offset are untouched — only the three nested durations are adjusted.
+    const render  = exclusiveDuration(renderPick.value, networkPick.value)
+    const network = exclusiveDuration(networkPick.value, backendPick.value)
+    const backend = backendPick.value
+
+    // Total = the three exclusive slices added back together (render + network +
+    // backend). Because the phases nest, this equals the OLD inclusive render
+    // value — i.e. the widget's full wall-clock time — restoring the number the
+    // Render column used to show before it was split into exclusive slices.
+    const total = sumDurations([render, network, backend])
+
+    for (const v of [render, network, backend, offsetPick.value]) {
       if (typeof v === 'number' && v > phaseMax) phaseMax = v
     }
 
@@ -115,15 +125,16 @@ function aggregateByWidgetImpl(rows, headers) {
       widget_id:     widgetId,
       widget_name:   firstNonEmpty(groupRows, mapping.widgetName),
       session_id:    firstNonEmpty(groupRows, mapping.session),
-      render:        renderPick.value,
+      render,
       render_start:  phaseStart(renderPick, mapping, 'render'),
       render_end,
-      network:       networkPick.value,
+      network,
       network_start: phaseStart(networkPick, mapping, 'widget'),
       network_end,
-      backend:       backendPick.value,
+      backend,
       backend_start: phaseStart(backendPick, mapping, 'widget'),
       backend_end,
+      total,
       offset:        offsetPick.value,
       _widget_end,
       _widget_never_ended,
@@ -134,6 +145,172 @@ function aggregateByWidgetImpl(rows, headers) {
 }
 
 /* ——— helpers ——— */
+
+// Exclusive time for a nested phase: the containing phase's duration minus the
+// duration it spends in the phase it wraps (render−network, network−backend).
+// `outer`/`inner` are raw per-phase maxes read from the CSV (number, or '' when
+// that phase had no rows). A non-numeric outer passes through unchanged; a
+// missing inner subtracts nothing. Negatives are returned as-is on purpose.
+function exclusiveDuration(outer, inner) {
+  if (typeof outer !== 'number') return outer
+  return typeof inner === 'number' ? outer - inner : outer
+}
+
+// Sum the numeric duration slices, ignoring empty ('') phases. Returns '' only
+// when NONE of the values is a finite number, so a widget with at least one
+// measured phase still gets a total. Used for the Widget view's Total column.
+function sumDurations(values) {
+  let sum = 0
+  let any = false
+  for (const v of values) {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      sum += v
+      any = true
+    }
+  }
+  return any ? sum : ''
+}
+
+/**
+ * The four phase picks for one widget's rows: the max-DURATION row (and value)
+ * for render, network, backend and offset. Shared by aggregateByWidget (which
+ * reads the picks' values + timestamps) and widgetPhaseSources (which reads the
+ * picks' source rows) so the two never disagree about which row "won" a phase.
+ *
+ * Network = the TTFB round-trip only. Other network sub-measures ('waiting',
+ * contentDownload) can be open/incomplete loads whose DURATION balloons to span
+ * the whole session — that one giant value would then repeat identically across
+ * every widget in the action. Restricting to ttfb keeps each widget's Network a
+ * real, bounded per-request time (and distinct across widgets). When the CSV has
+ * no WIDGET_SUBMEASURE column we can't tell sub-measures apart, so fall back to
+ * the max across all network rows (preserves behavior for CSV shapes without it).
+ */
+function phasePicks(groupRows, mapping) {
+  const networkPick = mapping.submeasure
+    ? pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
+    : pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])
+  return {
+    renderPick:  pickMaxRow(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
+    networkPick,
+    backendPick: pickMaxRow(groupRows, mapping.duration, mapping.measure, ['backend']),
+    offsetPick:  pickMaxRow(groupRows, mapping.duration, mapping.measure, ['offset']),
+  }
+}
+
+/**
+ * Map each widget id → the session + action it ran under FOR EACH PHASE, read
+ * from the raw row that produced that phase's max duration (the same row
+ * aggregateByWidget bases the phase's value on). Shape:
+ *   Map<widgetId, { render, network, backend, offset }>
+ * where each phase is `{ session, actionName, actionTimestamp }` or null.
+ *
+ * The Summary widget rankings use this so clicking "Widgets by render" drills
+ * into the action where THAT widget's slowest render actually happened — a
+ * widget id can recur across actions, and each phase's max may live in a
+ * different one, so a single generic parent would send the user to the wrong
+ * action (where the ranked value isn't reproduced). Returns an empty Map when
+ * the widget-id column is unknown.
+ */
+export function widgetPhaseSources(rows, headers) {
+  const out = new Map()
+  const mapping = detectMapping(headers)
+  mapping.session = detectSessionKey(headers, rows)
+  if (!mapping.widgetId || !rows?.length) return out
+
+  const actionNameKey = findActionNameKey(headers)
+  const actionTsKey = findActionTimestampKey(headers)
+  const parentOf = (row) => {
+    if (!row) return null
+    const actionName = actionNameKey ? String(row?.[actionNameKey] ?? '') : ''
+    const session = mapping.session ? String(row?.[mapping.session] ?? '') : ''
+    if (!actionName && !session) return null
+    return {
+      session,
+      actionName,
+      actionTimestamp: actionTsKey ? String(row?.[actionTsKey] ?? '') : '',
+    }
+  }
+
+  const groups = new Map()
+  for (const row of rows) {
+    const wid = row?.[mapping.widgetId]
+    if (wid === undefined || wid === null || wid === '') continue
+    const key = String(wid)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+
+  for (const [widgetId, groupRows] of groups) {
+    const { renderPick, networkPick, backendPick, offsetPick } = phasePicks(groupRows, mapping)
+    out.set(widgetId, {
+      render:  parentOf(renderPick.row),
+      network: parentOf(networkPick.row),
+      backend: parentOf(backendPick.row),
+      offset:  parentOf(offsetPick.row),
+    })
+  }
+  return out
+}
+
+/**
+ * Full widget-phase column mapping for a header set (widget id, measure,
+ * submeasure, duration, timestamp columns). Exported so Action View can build
+ * it ONCE and reuse it across every action group when computing exclusive phase
+ * maxima — instead of re-detecting per group.
+ */
+export function detectWidgetMapping(headers) {
+  return detectMapping(headers || [])
+}
+
+/**
+ * Max EXCLUSIVE phase durations across the widgets in a set of rows — the same
+ * values the Widget View table shows for each widget id (render − network,
+ * network − backend, backend as-is), reduced to the max across widgets. Action
+ * View uses this for its Max frontend / Max network / Max backend columns so an
+ * action's maxes equal the largest widget value the user sees after drilling
+ * into that action (the widget table, filtered to that action, groups by the
+ * same widget id).
+ *
+ * `mapping` is a detectWidgetMapping(headers) result. When there's no widget-id
+ * column to group on, the whole set is treated as one group (exclusive is then
+ * applied to the action-aggregate maxes). Returns { frontend, network, backend }
+ * — each '' when no widget has that phase. Negatives are preserved (an inner
+ * phase outran the one that should contain it), consistent with the table.
+ */
+export function maxExclusivePhases(rows, mapping) {
+  const empty = { frontend: '', network: '', backend: '' }
+  if (!mapping || !rows?.length) return empty
+
+  const groups = new Map()
+  if (mapping.widgetId) {
+    for (const row of rows) {
+      const wid = row?.[mapping.widgetId]
+      if (wid === undefined || wid === null || wid === '') continue
+      const key = String(wid)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(row)
+    }
+  } else {
+    // No widget id: can't split by widget, so treat the action's rows as one
+    // unit and apply exclusive to its aggregate maxes.
+    groups.set('*', rows)
+  }
+
+  // Keep the larger of the running max and a candidate; '' means "no value yet".
+  // A non-numeric candidate (a phase this widget lacks) leaves the max untouched.
+  const higher = (cur, v) => (typeof v === 'number' && (cur === '' || v > cur) ? v : cur)
+
+  let frontend = ''
+  let network = ''
+  let backend = ''
+  for (const [, groupRows] of groups) {
+    const { renderPick, networkPick, backendPick } = phasePicks(groupRows, mapping)
+    frontend = higher(frontend, exclusiveDuration(renderPick.value, networkPick.value))
+    network = higher(network, exclusiveDuration(networkPick.value, backendPick.value))
+    backend = higher(backend, backendPick.value)
+  }
+  return { frontend, network, backend }
+}
 
 // The effective interval end for a widget, and whether it "never ended".
 // Terminal phase = the phase with the latest parseable end; a real completion

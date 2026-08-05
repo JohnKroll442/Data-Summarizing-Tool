@@ -4,6 +4,13 @@
  * Empty / null / undefined cells always sort LAST regardless of direction —
  * users almost never want "—" rows clustered at the top.
  *
+ * Everything else sorts by natural value in the chosen direction. For 'duration'
+ * columns this means NEGATIVE values (exclusive-time anomalies, e.g.
+ * render − network when an inner phase outran its outer phase) fall naturally:
+ *   - ascending  → negatives at the TOP (they're the smallest values)
+ *   - descending → negatives at the BOTTOM, never mistaken for the "longest"
+ * Empties still sit below the negatives in either direction.
+ *
  * `sortType` controls the comparator:
  *   'number'    — coerce both sides via Number()
  *   'duration'  — same as number (timings are raw ms)
@@ -56,7 +63,8 @@ export function sortRows(rows, key, dir, sortType = 'string') {
     const b = rb?.[key]
     // Empty / null / undefined ("—") cells always sort LAST, in BOTH
     // directions — decide them here so the direction multiplier below can't
-    // flip them to the top on a descending sort.
+    // flip them to the top on a descending sort. Everything else (including
+    // negative durations) sorts by natural value in the chosen direction.
     const aEmpty = EMPTY(a)
     const bEmpty = EMPTY(b)
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1

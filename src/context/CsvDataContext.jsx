@@ -219,10 +219,17 @@ export function CsvDataProvider({ children }) {
     actionFilterWindow,
     timelineRange,
     timeSelections,
+    // Per-view column/search/sort/duration filters too — the destination view
+    // persists its own into viewUi on mount (e.g. a Summary drill seeds the
+    // target's widget_id/action_name filter), and the Summary view re-derives
+    // its scope from viewUi. Without capturing it, Back would leave those
+    // persisted filters in place and the returned-to view would stay scoped.
+    viewUi,
   }), [
     sessionFilter, actionFilter, sessionMultiFilter, actionMultiFilter,
     sessionFilterWindow, widgetMultiFilter, actionInvocationFilter,
     widgetFilterWindow, actionFilterWindow, timelineRange, timeSelections,
+    viewUi,
   ])
 
   // Apply a captured snapshot back onto the live state (used by Back).
@@ -239,6 +246,7 @@ export function CsvDataProvider({ children }) {
     setActionFilterWindow(s.actionFilterWindow ?? null)
     setTimelineRange(s.timelineRange ?? null)
     setTimeSelections(s.timeSelections ?? emptyTimeSelections())
+    if (s.viewUi) setViewUiState(s.viewUi)
   }, [])
 
   // Record the view being left (route + drill snapshot) so Back can return to

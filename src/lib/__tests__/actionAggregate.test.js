@@ -28,7 +28,7 @@ describe('aggregateByAction', () => {
     expect(r1.rows).toEqual([])
     expect(r2.rows).toEqual([])
     expect(r1.columns.map((c) => c.key)).toEqual([
-      'session_id', 'action_timestamp', 'user', 'action_name', 'story_name', 'action_duration', 'story_page', 'widget_count',
+      'session_id', 'user', 'story_name', 'action_name', 'action_duration',
       'max_frontend', 'max_network', 'max_backend',
     ])
   })
@@ -70,7 +70,7 @@ describe('aggregateByAction', () => {
     expect(out.find((r) => r.action_name === 'A').max_frontend).toBe(20)
   })
 
-  it('splits max duration across render / network / backend measures', () => {
+  it('shows exclusive (nested) phase maxes: frontend render−network, network network−backend, backend as-is', () => {
     const rows = [
       row({ WIDGET_MEASURE: 'render',  DURATION: 100 }),
       row({ WIDGET_MEASURE: 'render',  DURATION: 250 }),
@@ -79,9 +79,26 @@ describe('aggregateByAction', () => {
     ]
     const { rows: out } = aggregateByAction(rows, HEADERS)
     expect(out).toHaveLength(1)
-    expect(out[0].max_frontend).toBe(250)
-    expect(out[0].max_network).toBe(500)
+    // Single widget w1: render 250, network 500, backend 40.
+    // frontend 250−500 = −250, network 500−40 = 460, backend unchanged 40.
+    expect(out[0].max_frontend).toBe(-250)
+    expect(out[0].max_network).toBe(460)
     expect(out[0].max_backend).toBe(40)
+  })
+
+  it('takes the max exclusive value ACROSS widgets in the action (matching the widget table)', () => {
+    // Two widgets in one action. w1 network 500 / backend 40 → 460; w2 network
+    // 300 / backend 250 → 50. Max network for the action is w1's 460 — the
+    // largest value the widget table shows after drilling into this action.
+    const rows = [
+      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 500 }),
+      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'backend', DURATION: 40 }),
+      row({ WIDGET_ID: 'w2', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 300 }),
+      row({ WIDGET_ID: 'w2', WIDGET_MEASURE: 'backend', DURATION: 250 }),
+    ]
+    const { rows: out } = aggregateByAction(rows, HEADERS)
+    expect(out[0].max_network).toBe(460)
+    expect(out[0].max_backend).toBe(250) // backend unchanged: max(40, 250)
   })
 
   // Network counts the ttfb round-trip only. A larger 'waiting'/incomplete
@@ -117,18 +134,6 @@ describe('aggregateByAction', () => {
     ].map((r) => { delete r.WIDGET_SUBMEASURE; return r })
     const { rows: out } = aggregateByAction(rows, headers)
     expect(out[0].max_network).toBe(500)
-  })
-
-  it('counts distinct widget ids for widget_count', () => {
-    const rows = [
-      row({ WIDGET_ID: 'w1' }),
-      row({ WIDGET_ID: 'w2' }),
-      row({ WIDGET_ID: 'w1' }),
-      row({ WIDGET_ID: '' }),
-      row({ WIDGET_ID: null }),
-    ]
-    const { rows: out } = aggregateByAction(rows, HEADERS)
-    expect(out[0].widget_count).toBe(2)
   })
 
   it('skips rows with empty/null action names', () => {
@@ -176,7 +181,6 @@ describe('aggregateByAction', () => {
     expect(mapping.storyName).toBe('STORY_NAME')
     expect(mapping.storyPage).toBe('STORY_PAGE')
     expect(out[0].story_name).toBe('Sales Overview')
-    expect(out[0].story_page).toBe('Page 1')
   })
 
   it('leaves story columns blank when the CSV has no story columns', () => {
@@ -185,7 +189,6 @@ describe('aggregateByAction', () => {
     expect(mapping.storyName).toBe('')
     expect(mapping.storyPage).toBe('')
     expect(out[0].story_name).toBe('')
-    expect(out[0].story_page).toBe('')
   })
 
   it('sets action_duration to the max DURATION when there is no render-timestamp column', () => {

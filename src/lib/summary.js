@@ -12,7 +12,7 @@
  */
 
 import { aggregateByAction } from './actionAggregate'
-import { aggregateByWidget } from './widgetAggregate'
+import { aggregateByWidget, widgetPhaseSources } from './widgetAggregate'
 import { actionPoint } from './activityTimeline'
 import { bucketOf, matchesTimeRange } from './timeBuckets'
 import { valueMatchesDuration } from './durationFilter'
@@ -43,12 +43,18 @@ const num = (v) => {
  * value falls outside the active duration threshold — so "< 2 min" hides
  * entities longer than that in EVERY category (by that category's own metric),
  * and "> 2 min" keeps only the longer ones.
+ *
+ * `positiveOnly` drops entities whose ranked value is ≤ 0. Used for the FASTEST
+ * lists: the exclusive-time model (render − network, etc.) can produce negative
+ * durations when an inner phase outran the one that contains it, and a negative
+ * "duration" isn't a real elapsed time — so it must never rank as "fastest".
  */
-function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction, durationBounds) {
+function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction, durationBounds, positiveOnly = false) {
   const scored = []
   for (const it of items) {
     const value = valueOf(it)
     if (value == null) continue
+    if (positiveOnly && value <= 0) continue
     if (durationBounds && !valueMatchesDuration(value, durationBounds)) continue
     scored.push({
       value,
@@ -65,19 +71,41 @@ function rankBy(items, valueOf, labelOf, sublabelOf, navOf, direction, durationB
 function categorySpecs(rows, headers, range) {
   // Scope the aggregated entities to the timeline window (no-op when range is
   // null), matching how the summary tables filter their aggregated rows.
-  const widgets = aggregateByWidget(rows, headers).rows
+  const widgetAgg = aggregateByWidget(rows, headers)
+  const widgets = widgetAgg.rows
     .filter((w) => matchesTimeRange(w, WIDGET_TS, range))
   const actions = aggregateByAction(rows, headers).rows
     .filter((a) => matchesTimeRange(a, ACTION_TS, range))
 
+  // The widget aggregate groups by widget id alone (no parent action), and a
+  // widget id can recur across actions with each phase's slowest run in a
+  // different one. Resolve, per widget AND per phase, the session + action of
+  // the row that produced that phase's max — so a widget ranking row drills into
+  // the action where its ranked value actually happened (mirrors Action → Widget).
+  const phaseSources = widgetPhaseSources(rows, headers)
+
   const widgetLabel = (w) => String(w.widget_name || w.widget_id || '—')
   const widgetSub = (w) =>
     w.widget_name ? String(w.widget_id) : w.session_id ? `Session ${w.session_id}` : ''
-  // Open the Widget view filtered to just this widget (by its id).
-  const widgetNav = (w) => ({ view: 'widget', columns: { widget_id: [String(w.widget_id)] } })
+  // Open the Widget view filtered to just this widget (by its id), and — when we
+  // resolved the phase's parent — carry the session + action so the target shows
+  // Session/Action pills like the Action drill-down does.
+  const widgetNav = (w, phase) => {
+    const parent = phaseSources.get(String(w.widget_id))?.[phase]
+    const session = parent?.session || (w.session_id ? String(w.session_id) : '')
+    const drill = parent?.actionName || session
+      ? { session, actionName: parent?.actionName ?? '', actionTimestamp: parent?.actionTimestamp ?? '' }
+      : null
+    return {
+      view: 'widget',
+      columns: { widget_id: [String(w.widget_id)] },
+      ...(drill ? { drill } : {}),
+    }
+  }
   const widgetSpec = (id, title, key) => ({
     id, title, view: 'widget', items: widgets,
-    valueOf: (w) => num(w[key]), labelOf: widgetLabel, sublabelOf: widgetSub, navOf: widgetNav,
+    valueOf: (w) => num(w[key]), labelOf: widgetLabel, sublabelOf: widgetSub,
+    navOf: (w) => widgetNav(w, key),
   })
 
   return [
@@ -131,7 +159,12 @@ export function computeRankings(rows, headers, { range = null, durationBounds = 
       id: s.id,
       title: s.title,
       view: s.view,
-      items: rankBy(s.items, s.valueOf, s.labelOf, s.sublabelOf, s.navOf, direction, durationBounds),
+      // Fastest lists show only positive durations — a negative exclusive-time
+      // value isn't a real "fast" time (see rankBy's positiveOnly).
+      items: rankBy(
+        s.items, s.valueOf, s.labelOf, s.sublabelOf, s.navOf,
+        direction, durationBounds, direction === 'asc',
+      ),
     }))
   return { slowest: build('desc'), fastest: build('asc') }
 }

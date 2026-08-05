@@ -25,14 +25,35 @@ describe('computeRankings', () => {
 
   it('ranks widgets slowest-first (desc) with name + id', () => {
     const byId = Object.fromEntries(computeRankings(W_ROWS, W_HEADERS).slowest.map((l) => [l.id, l]))
-    expect(byId.render.items.map((i) => i.value)).toEqual([300, 200, 100])
-    expect(byId.render.items[0]).toMatchObject({ label: 'Chart 1', sublabel: 'W1', value: 300 })
-    expect(byId.backend.items[0].label).toBe('Chart 3')
+    // Exclusive render: W1 300−100=200, W3 100−50=50, W2 200−400=−200.
+    expect(byId.render.items.map((i) => i.value)).toEqual([200, 50, -200])
+    expect(byId.render.items[0]).toMatchObject({ label: 'Chart 1', sublabel: 'W1', value: 200 })
+    expect(byId.backend.items[0].label).toBe('Chart 3') // backend unchanged: 500 is largest
   })
 
   it('gives each widget row a nav payload targeting its widget id', () => {
     const byId = Object.fromEntries(computeRankings(W_ROWS, W_HEADERS).slowest.map((l) => [l.id, l]))
-    expect(byId.render.items[0].nav).toEqual({ view: 'widget', columns: { widget_id: ['W1'] } })
+    expect(byId.render.items[0].nav).toMatchObject({ view: 'widget', columns: { widget_id: ['W1'] } })
+    // With a session but no action column, the drill carries just the session.
+    expect(byId.render.items[0].nav.drill).toEqual({ session: 'S1', actionName: '', actionTimestamp: '' })
+  })
+
+  it('resolves each phase drill to the ACTION where that phase\'s max ran', () => {
+    // W1 renders slowest in action "A" but its backend max is in action "B" —
+    // a widget id can recur across actions, so each phase must drill into its
+    // own winning action (else the target view won't reproduce the ranked value).
+    const headers = ['SESSION_ID', 'USER_ACTION', 'ACTION_TIMESTAMP', 'WIDGET_ID', 'WIDGET_MEASURE', 'DURATION']
+    const r = (action, ts, measure, dur) => ({
+      SESSION_ID: 'S1', USER_ACTION: action, ACTION_TIMESTAMP: ts,
+      WIDGET_ID: 'W1', WIDGET_MEASURE: measure, DURATION: dur,
+    })
+    const rows = [
+      r('A', 't-a', 'render', 900), r('A', 't-a', 'backend', 10),
+      r('B', 't-b', 'render', 5),   r('B', 't-b', 'backend', 800),
+    ]
+    const byId = Object.fromEntries(computeRankings(rows, headers).slowest.map((l) => [l.id, l]))
+    expect(byId.render.items[0].nav.drill).toMatchObject({ actionName: 'A', actionTimestamp: 't-a' })
+    expect(byId.backend.items[0].nav.drill).toMatchObject({ actionName: 'B', actionTimestamp: 't-b' })
   })
 
   it('gives action rows a nav payload for the action + its story', () => {
@@ -51,9 +72,11 @@ describe('computeRankings', () => {
     })
   })
 
-  it('ranks fastest-first (asc) — the reverse of slowest', () => {
+  it('ranks fastest-first (asc), excluding non-positive (negative) durations', () => {
     const byId = Object.fromEntries(computeRankings(W_ROWS, W_HEADERS).fastest.map((l) => [l.id, l]))
-    expect(byId.render.items.map((i) => i.value)).toEqual([100, 200, 300])
+    // Exclusive render: W2 200−400=−200 (dropped), W3 100−50=50, W1 300−100=200.
+    // Only the positive values rank, smallest first.
+    expect(byId.render.items.map((i) => i.value)).toEqual([50, 200])
     expect(byId.render.items[0].label).toBe('Chart 3')
     expect(byId.backend.items[0].label).toBe('Chart 1') // 50 is the fastest backend
   })

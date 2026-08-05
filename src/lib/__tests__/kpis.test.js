@@ -74,8 +74,10 @@ describe('computeKpis', () => {
     ])
     const byLabel = Object.fromEntries(kpis.map((k) => [k.label, k.value]))
     expect(byLabel['Total widgets']).toBe('1')
-    expect(byLabel['Avg render time']).toBe('100 ms')
-    expect(byLabel['Avg network time']).toBe('300 ms')
+    // Nested phases show exclusive time: render 100−300=−200, network 300−50=250,
+    // backend unchanged at 50.
+    expect(byLabel['Avg render time']).toBe('-200.00 ms')
+    expect(byLabel['Avg network time']).toBe('250 ms')
     expect(byLabel['Avg backend time']).toBe('50 ms')
   })
 

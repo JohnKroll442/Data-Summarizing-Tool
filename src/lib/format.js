@@ -1,16 +1,20 @@
 /**
- * Format a CSV timestamp cell as a clean "mm:ss.t" (or "h:mm:ss.t") time-only
- * string. Handles three shapes the parser actually produces:
+ * Format a CSV timestamp cell as a clean, YEAR-LESS time string. Handles three
+ * shapes the parser actually produces:
  *
  *  1. A JS Date object — papaparse's `dynamicTyping` turns Excel-style
  *     time cells like "17:58.2" into a Date anchored on 1899-12-30. We
  *     want only the time-of-day portion.
- *  2. A string that already looks like a time ("17:58.2", "1:23:45.6")
- *     — pass it through, just strip insignificant trailing zeros after
- *     the decimal point so "17:58.20000" becomes "17:58.2".
+ *  2. A string that already looks like a date-time ("2026-07-01 10:00:00.5",
+ *     "2026-07-01T10:00:00.500Z") — drop the leading year (and normalize an
+ *     ISO 'T'/'Z') so it reads "07-01 10:00:00.5". A time-only string
+ *     ("17:58.2") has no year and is passed through, just stripping
+ *     insignificant trailing zeros after the decimal point.
  *  3. Anything else — coerce to String.
  *
- * Returns '' for empty / null / undefined.
+ * The year is intentionally never shown (per product decision): the data is
+ * scoped to a single period, so the year is noise. Returns '' for empty /
+ * null / undefined.
  */
 export function formatCsvTime(value) {
   if (value === '' || value === null || value === undefined) return ''
@@ -26,9 +30,14 @@ export function formatCsvTime(value) {
     return h === 0 ? `${m}:${s}${frac}` : `${h}:${m}:${s}${frac}`
   }
 
-  // Case 2/3: stringify, then strip trailing zeros after a decimal
+  // Case 2/3: stringify, then drop a leading date year and clean up.
   const str = String(value).trim()
-  // e.g. "17:58.20000" → "17:58.2",  "17:58.0" → "17:58", "17:58" untouched
+    // "2026-07-01 10:00:..." / "2026-07-01T10:00:..." → "07-01 10:00:..."
+    // (keep month-day, drop the 4-digit year, normalize the ISO 'T' to a space)
+    .replace(/^\d{4}[-/](\d{1,2})[-/](\d{1,2})[ T]/, '$1-$2 ')
+    .replace(/Z$/, '') // drop a trailing ISO UTC marker if one remains
+    .trim()
+  // e.g. "07-01 10:00:00.20000" → "…10:00:00.2",  "17:58.0" → "17:58"
   return str.replace(/(\.\d*?)0+(?!\d)/, '$1').replace(/\.$/, '')
 }
 

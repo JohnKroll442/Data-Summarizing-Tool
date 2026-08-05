@@ -8,10 +8,11 @@ import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
+import PhaseHoverCell from './PhaseHoverCell'
 import DurationFilterMenu from './DurationFilterMenu'
 import { aggregateBySession } from '../lib/sessionAggregate'
 import { sessionKpisFromAgg } from '../lib/kpis'
-import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
+import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
@@ -312,16 +313,21 @@ function SessionSummaryTable({ rows, headers }) {
         columns={columns.map((c) => ({
           ...c,
           render: (v, row) => {
-            if (c.key === 'timestamp_range') {
-              const start = formatCsvTime(v)
-              const end = formatCsvTime(row._timestamp_end)
-              if (!start && !end) return '—'
-              if (!end || start === end) return start || end
-              return `${start} → ${end}`
-            }
             if (v === '' || v === undefined || v === null) return '—'
             if (c.key === 'max_action_duration') return formatDurationMs(v)
-            if (c.key === 'total_action_duration') return formatDurationMs(v)
+            // Total action duration reveals the session's start + end times on
+            // hover, matching the Widget view's phase cells (see PhaseHoverCell).
+            if (c.key === 'total_action_duration') {
+              return (
+                <PhaseHoverCell
+                  label="Session"
+                  start={row.timestamp_range}
+                  end={row._timestamp_end}
+                >
+                  {formatDurationMs(v)}
+                </PhaseHoverCell>
+              )
+            }
             if (c.key === 'session') {
               return (
                 <button

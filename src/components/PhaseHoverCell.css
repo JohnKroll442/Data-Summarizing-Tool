@@ -1,0 +1,35 @@
+/* Hover affordance on the duration cell: a subtle dotted underline hints that
+   the value reveals its start/end timestamps on hover. */
+.phase-hover-cell {
+  border-bottom: 1px dotted var(--sapContent_ForegroundBorderColor, #89919a);
+  cursor: help;
+}
+
+/* Compact two-line start/end readout inside the UI5 Popover. */
+.phase-hover-popover::part(content) {
+  padding: 0.5rem 0.75rem;
+}
+
+.phase-hover-popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  white-space: nowrap;
+}
+
+.phase-hover-popover-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.phase-hover-popover-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.phase-hover-popover-key {
+  min-width: 2.75rem;
+  color: var(--sapContent_LabelColor, #556b82);
+  font-size: 0.75rem;
+}

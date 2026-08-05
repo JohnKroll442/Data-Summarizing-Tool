@@ -36,7 +36,7 @@ describe('aggregateByWidget', () => {
     expect(result.mapping.widgetId).toBe('')
   })
 
-  it('takes max duration per phase per widget', () => {
+  it('takes max duration per phase, then shows nested phases as exclusive time', () => {
     const rows = [
       row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'render',  DURATION: 100 }),
       row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'render',  DURATION: 250 }),
@@ -46,20 +46,23 @@ describe('aggregateByWidget', () => {
     ]
     const { rows: out } = aggregateByWidget(rows, HEADERS)
     expect(out).toHaveLength(1)
-    expect(out[0].render).toBe(250)
-    expect(out[0].network).toBe(400)
+    // render(250) − network(400) = −150 (kept as-is), network(400) − backend(30)
+    // = 370, backend stays 30, offset untouched.
+    expect(out[0].render).toBe(-150)
+    expect(out[0].network).toBe(370)
     expect(out[0].backend).toBe(30)
     expect(out[0].offset).toBe(10)
   })
 
-  it('phaseMax equals the largest single-phase duration across all widgets', () => {
+  it('phaseMax equals the largest exclusive phase duration across all widgets', () => {
     const rows = [
       row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'render',  DURATION: 100 }),
       row({ WIDGET_ID: 'w2', WIDGET_MEASURE: 'network', DURATION: 800 }),
       row({ WIDGET_ID: 'w2', WIDGET_MEASURE: 'backend', DURATION: 40  }),
     ]
     const { phaseMax } = aggregateByWidget(rows, HEADERS)
-    expect(phaseMax).toBe(800)
+    // w1 render (no network) = 100; w2 network(800) − backend(40) = 760.
+    expect(phaseMax).toBe(760)
   })
 
   it('pulls render start/end from the row that won the render max', () => {
@@ -138,6 +141,18 @@ describe('aggregateByWidget', () => {
     const { rows: out, mapping } = aggregateByWidget(rows, headers)
     expect(mapping.widgetName).toBe('WIDGET_TYPE')
     expect(out[0].widget_name).toBe('Chart')
+  })
+
+  it('matches the exclusive-time example (2.1/1.7/1.5s → 0.4/0.2/1.5s)', () => {
+    const rows = [
+      row({ WIDGET_MEASURE: 'render',  DURATION: 2100 }),
+      row({ WIDGET_MEASURE: 'network', DURATION: 1700 }),
+      row({ WIDGET_MEASURE: 'backend', DURATION: 1500 }),
+    ]
+    const { rows: out } = aggregateByWidget(rows, HEADERS)
+    expect(out[0].render).toBe(400)   // 2100 − 1700
+    expect(out[0].network).toBe(200)  // 1700 − 1500
+    expect(out[0].backend).toBe(1500) // innermost, unchanged
   })
 
   it('empty phase values are left blank, not zero', () => {

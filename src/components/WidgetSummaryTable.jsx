@@ -9,6 +9,7 @@ import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
 import WidgetTimingModal from './WidgetTimingModal'
+import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { widgetKpisFromAgg } from '../lib/kpis'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
@@ -20,7 +21,7 @@ import {
   detectSessionKey,
   findActionNameKey,
 } from '../lib/drillDown'
-import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
+import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
@@ -120,6 +121,16 @@ function WidgetSummaryTable({ rows, headers }) {
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByWidget(scopedRows, headers),
     [scopedRows, headers]
+  )
+
+  // The table shows only these columns, in this order. The six phase
+  // start/end columns are intentionally omitted — those times now surface in a
+  // hover Popover on the Render / Network / Backend cells (see PhaseHoverCell).
+  // The full `columns` list is still used for CSV export, so the export keeps
+  // every start/end column.
+  const displayColumns = useMemo(
+    () => DISPLAY_KEYS.map((k) => columns.find((c) => c.key === k)).filter(Boolean),
+    [columns],
   )
 
   const [search, setSearch] = useState(() => viewUi.widget.search)
@@ -548,13 +559,11 @@ function WidgetSummaryTable({ rows, headers }) {
         sort={sort}
         onSortChange={setSort}
         isRowViewed={(row) => Boolean(viewedItems.widget[String(row.widget_id)])}
-        columns={columns.map((c) => ({
+        columns={displayColumns.map((c) => ({
           ...c,
           render: (v, row) => {
-            if (v === '' || v === undefined || v === null) return '—'
-            if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
-            if (TIME_COLUMNS.has(c.key)) return formatCsvTime(v)
             if (c.key === 'widget_name') {
+              if (v === '' || v === undefined || v === null) return '—'
               return (
                 <button
                   type="button"
@@ -576,6 +585,23 @@ function WidgetSummaryTable({ rows, headers }) {
                 </button>
               )
             }
+            const empty = v === '' || v === undefined || v === null
+            // Render / Network / Backend: show the exclusive duration, with the
+            // phase's start + end times revealed in a hover Popover.
+            const phase = HOVER_PHASES[c.key]
+            if (phase && !empty) {
+              return (
+                <PhaseHoverCell
+                  label={phase.label}
+                  start={row[phase.start]}
+                  end={row[phase.end]}
+                >
+                  {formatDurationMs(v)}
+                </PhaseHoverCell>
+              )
+            }
+            if (empty) return '—'
+            if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
             return String(v)
           },
         }))}
@@ -604,12 +630,25 @@ const FILTERABLE_COLUMNS = [
   { key: 'widget_id',   label: 'Widget ID' },
   { key: 'widget_name', label: 'Widget name' },
 ]
-const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'offset'])
-const TIME_COLUMNS = new Set([
-  'render_start', 'render_end',
-  'network_start', 'network_end',
-  'backend_start', 'backend_end',
-])
+const DURATION_COLUMNS = new Set(['render', 'network', 'backend', 'total', 'offset'])
+
+// The columns the table actually renders, in order. Session ID · Widget ID ·
+// Widget name · Render · Network · Backend · Offset · Total. The phase
+// start/end columns are deliberately absent — see displayColumns /
+// PhaseHoverCell. Total is render + network + backend (the old inclusive
+// render time).
+const DISPLAY_KEYS = [
+  'session_id', 'widget_id', 'widget_name',
+  'render', 'network', 'backend', 'offset', 'total',
+]
+
+// Duration columns whose start/end times surface in a hover Popover. Maps the
+// duration column key to the row fields holding that phase's timestamps.
+const HOVER_PHASES = {
+  render:  { start: 'render_start',  end: 'render_end',  label: 'Render' },
+  network: { start: 'network_start', end: 'network_end', label: 'Network' },
+  backend: { start: 'backend_start', end: 'backend_end', label: 'Backend' },
+}
 
 // Match the same heuristic actionAggregate uses — exact "ACTION_TIMESTAMP"
 // (case/punctuation-insensitive) first, then substring fallback, ignoring

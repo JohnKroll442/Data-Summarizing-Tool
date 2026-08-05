@@ -66,6 +66,20 @@ describe('formatCsvTime', () => {
   it('coerces non-string non-Date values via String()', () => {
     expect(formatCsvTime(42)).toBe('42')
   })
+
+  it('drops the leading year from a space-separated date-time, keeping MM-DD', () => {
+    expect(formatCsvTime('2026-07-01 10:00:00.500')).toBe('07-01 10:00:00.5')
+    expect(formatCsvTime('2026-12-31 23:59:59.000')).toBe('12-31 23:59:59')
+  })
+
+  it('drops the year and normalizes an ISO T/Z date-time', () => {
+    expect(formatCsvTime('2026-07-01T10:00:00.500Z')).toBe('07-01 10:00:00.5')
+    expect(formatCsvTime('2026-01-05T08:30:00.000Z')).toBe('01-05 08:30:00')
+  })
+
+  it('leaves a time-only string untouched (no year to strip)', () => {
+    expect(formatCsvTime('10:00:00.5')).toBe('10:00:00.5')
+  })
 })
 
 describe('formatFileSize', () => {

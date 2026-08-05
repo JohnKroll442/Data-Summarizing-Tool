@@ -6,16 +6,21 @@
  * events) stay separate.
  *
  * Columns:
- *   Session ID · User · Action name · Widget count (distinct WIDGET_IDs) ·
+ *   Session ID · User · Story name · Action name · Action duration ·
  *   Max frontend · Max network · Max backend
  *
  * In this CSV shape each row carries a WIDGET_MEASURE flag of
  *   render | backend | network | offset
- * and the timing lives in DURATION. So per-action timings are computed as
- *   max(DURATION) where WIDGET_MEASURE = 'render'  → Max frontend
- *   max(DURATION) where WIDGET_MEASURE = 'backend' → Max backend
- *   max(DURATION) where WIDGET_MEASURE = 'network' → Max network (across
- *                                                    every submeasure)
+ * and the timing lives in DURATION. The three main phases NEST
+ * (render ⊇ network ⊇ backend), so — exactly like the Widget View table — the
+ * per-action maxes are the EXCLUSIVE phase durations:
+ *   Max frontend = max over widgets of (render − network)
+ *   Max network  = max over widgets of (network − backend)  [ttfb only]
+ *   Max backend  = max over widgets of backend              (innermost, as-is)
+ * Each action's rows are grouped by WIDGET_ID and reduced with the same
+ * exclusive logic the Widget View uses (see widgetAggregate.maxExclusivePhases),
+ * so an action's maxes equal the largest widget value the user sees after
+ * drilling into that action. Backend is unchanged (it's the innermost phase).
  *
  * Returns { rows, columns, mapping } so the table can render predictable
  * columns and we can flag missing fields.
@@ -33,6 +38,7 @@ import { detectSessionKey } from './drillDown'
 import { stripUserPrefix } from './format'
 import { memoizeAggregate } from './memoize'
 import { parseStrictTimestamp } from './timeBuckets'
+import { detectWidgetMapping, maxExclusivePhases } from './widgetAggregate'
 
 export const aggregateByAction = memoizeAggregate(aggregateByActionImpl)
 
@@ -45,13 +51,10 @@ function aggregateByActionImpl(rows, headers) {
 
   const columns = [
     { key: 'session_id',      label: 'Session ID' },
-    { key: 'action_timestamp', label: 'Action timestamp', sortType: 'timestamp' },
     { key: 'user',            label: 'User' },
-    { key: 'action_name',     label: 'Action name' },
     { key: 'story_name',      label: 'Story name' },
+    { key: 'action_name',     label: 'Action name' },
     { key: 'action_duration', label: 'Action duration', sortType: 'duration' },
-    { key: 'story_page',      label: 'Story page' },
-    { key: 'widget_count',    label: 'Widget count', sortType: 'number' },
     { key: 'max_frontend',    label: 'Max frontend', sortType: 'duration' },
     { key: 'max_network',     label: 'Max network',  sortType: 'duration' },
     { key: 'max_backend',     label: 'Max backend',  sortType: 'duration' },
@@ -79,15 +82,26 @@ function aggregateByActionImpl(rows, headers) {
   }
 
   const outRows = []
+  // Detect the widget-phase mapping once; each action group reuses it to
+  // compute exclusive Max frontend/network/backend the same way Widget View does.
+  const widgetMapping = detectWidgetMapping(headers)
   for (const [, groupRows] of groups) {
     const actionTs = mapping.actionTimestamp
       ? firstNonEmpty(groupRows, mapping.actionTimestamp)
       : ''
+    const { frontend, network, backend } = maxExclusivePhases(groupRows, widgetMapping)
     outRows.push({
       // Hidden meta — not in the displayed columns, but carried on the
       // row so click handlers can disambiguate two invocations of the
       // same action name fired at different times.
       _action_timestamp: actionTs,
+      // Effective action END: the raw WIDGET_RENDER_TIMESTAMP of the
+      // last-rendering widget. Paired with the start (_action_timestamp) it
+      // feeds the Action duration cell's hover popover (see ActionSummaryTable /
+      // PhaseHoverCell). '' when no render stamp is parseable.
+      _action_end: mapping.renderTimestamp
+        ? actionEndTimestamp(groupRows, mapping.renderTimestamp)
+        : '',
       session_id:   firstNonEmpty(groupRows, mapping.session),
       // Displayed copy of the action timestamp (underscore-prefixed key stays
       // the click-handler meta; this one renders in the table).
@@ -105,18 +119,11 @@ function aggregateByActionImpl(rows, headers) {
       action_duration: mapping.renderTimestamp
         ? actionRenderDuration(groupRows, mapping.renderTimestamp, mapping.actionTimestamp)
         : maxNumeric(groupRows, mapping.duration),
-      story_page:   firstNonEmpty(groupRows, mapping.storyPage),
-      widget_count: distinctCount(groupRows, mapping.widgetId),
-      max_frontend: maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['render', 'frontend']),
-      // Network = TTFB round-trip only (see widgetAggregate for the full
-      // rationale): other network sub-measures can be open/incomplete loads
-      // that span the whole session, showing the same giant value on every
-      // widget. Fall back to all-network max when there's no WIDGET_SUBMEASURE
-      // column to distinguish them.
-      max_network:  mapping.submeasure
-        ? maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
-        : maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['network']),
-      max_backend:  maxNumericWhere(groupRows, mapping.duration, mapping.measure, ['backend']),
+      // Exclusive phase maxes, matching the Widget View table (drill into this
+      // action to reproduce them). See maxExclusivePhases / the header comment.
+      max_frontend: frontend,
+      max_network:  network,
+      max_backend:  backend,
     })
   }
 
@@ -132,17 +139,6 @@ function firstNonEmpty(rows, key) {
     if (v !== undefined && v !== null && v !== '') return v
   }
   return ''
-}
-
-function distinctCount(rows, key) {
-  if (!key) return ''
-  const seen = new Set()
-  for (const r of rows) {
-    const v = r?.[key]
-    if (v === undefined || v === null || v === '') continue
-    seen.add(String(v))
-  }
-  return seen.size
 }
 
 // Max of `key` (a numeric measure) across rows. Returns '' when no row has a
@@ -198,6 +194,30 @@ export function actionRenderDuration(groupRows, renderTsKey, actionTsKey) {
 }
 
 /**
+ * The raw WIDGET_RENDER_TIMESTAMP of the last-rendering widget in the action —
+ * i.e. the action's effective END timestamp. Returns the original CSV value
+ * (string or Date) so formatCsvTime can render it exactly like every other
+ * timestamp; '' when no row carries a parseable render stamp.
+ */
+export function actionEndTimestamp(groupRows, renderTsKey) {
+  if (!renderTsKey || !groupRows?.length) return ''
+  let best = ''
+  let bestMs = -Infinity
+  for (const r of groupRows) {
+    const raw = r?.[renderTsKey]
+    const d = parseStrictTimestamp(raw)
+    if (d) {
+      const t = d.getTime()
+      if (t > bestMs) {
+        bestMs = t
+        best = raw
+      }
+    }
+  }
+  return best
+}
+
+/**
  * Per-action render-durations for a set of rows, keyed by action name +
  * ACTION_TIMESTAMP (the same composite key Action View groups on, so the two
  * views count actions identically). Returns a Map of key → ms. Actions whose
@@ -222,71 +242,6 @@ export function actionRenderDurations(rows, renderTsKey, actionTsKey, actionName
     if (d !== '') byKey.set(key, d)
   }
   return byKey
-}
-
-/**
- * Max of `durationKey` across rows whose `measureKey` value (case-insensitive)
- * is one of `targets`. If `subTargets` are provided, also requires the row to
- * match one of those sub-measures — via the WIDGET_SUBMEASURE column (`subKey`)
- * or a folded `<measure>_<sub>` value (e.g. only count network rows that are
- * 'ttfb', whether tagged as WIDGET_SUBMEASURE='ttfb' or WIDGET_MEASURE='network_ttfb').
- * Returns '' when no matching row has a finite duration.
- */
-function maxNumericWhere(rows, durationKey, measureKey, targets, subKey, subTargets) {
-  if (!durationKey || !measureKey) return ''
-  const wanted = targets.map((t) => t.toLowerCase())
-  const subPatterns = subTargets && subTargets.length
-    ? subTargets.map((t) => normSub(t))
-    : null
-  let max = -Infinity
-  let found = false
-  for (const r of rows) {
-    const m = r?.[measureKey]
-    if (m === undefined || m === null) continue
-    const mv = String(m).toLowerCase()
-    if (!measureMatches(mv, wanted)) continue
-    if (subPatterns && !subMatches(mv, subKey ? r?.[subKey] : '', subPatterns)) continue
-    const n = Number(r?.[durationKey])
-    if (Number.isFinite(n)) {
-      if (n > max) max = n
-      found = true
-    }
-  }
-  return found ? max : ''
-}
-
-// Normalize a sub-measure/measure fragment for matching: lowercase and strip
-// spaces/underscores/dashes/dots so 'Content Download', 'content-download' and
-// 'contentDownload' all compare equal.
-function normSub(s) {
-  return String(s ?? '').toLowerCase().replace(/[\s_\-.]+/g, '')
-}
-
-// Does a row match one of the wanted sub-measures? True when either the
-// dedicated WIDGET_SUBMEASURE value contains the target (real SAP shape, e.g.
-// submeasure = 'ttfb'), OR the target is folded into WIDGET_MEASURE as
-// `<measure>_<target>` (alternate shape, e.g. measure = 'network_ttfb').
-function subMatches(measureVal, subVal, subPatterns) {
-  const s = normSub(subVal)
-  if (s && subPatterns.some((p) => s.includes(p))) return true
-  const idx = measureVal.indexOf('_')
-  if (idx >= 0) {
-    const folded = normSub(measureVal.slice(idx + 1))
-    if (folded && subPatterns.some((p) => folded.includes(p))) return true
-  }
-  return false
-}
-
-// Match measure values against target names, accepting either exact equality
-// or a `<target>_<suffix>` form where the suffix names a submeasure folded
-// into the measure column (e.g. WIDGET_MEASURE = 'network_ttfb' should match
-// target 'network').
-function measureMatches(value, targets) {
-  for (const t of targets) {
-    if (value === t) return true
-    if (value.startsWith(`${t}_`)) return true
-  }
-  return false
 }
 
 function detectMapping(headers) {

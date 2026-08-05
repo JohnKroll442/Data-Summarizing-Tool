@@ -10,10 +10,11 @@ import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import TimeFilterMenu from './TimeFilterMenu'
 import DurationFilterMenu from './DurationFilterMenu'
+import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import { actionKpisFromAgg } from '../lib/kpis'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
-import { formatDurationMs, formatCsvTime, formatTimeRangeLabel } from '../lib/format'
+import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { matchesAllMultiFilters, countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
@@ -456,8 +457,20 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
           ...c,
           render: (v, row) => {
             if (v === '' || v === undefined || v === null) return '—'
+            // Action duration reveals the action's start + end times on hover,
+            // matching the Widget view's phase cells (see PhaseHoverCell).
+            if (c.key === 'action_duration') {
+              return (
+                <PhaseHoverCell
+                  label="Action"
+                  start={row._action_timestamp}
+                  end={row._action_end}
+                >
+                  {formatDurationMs(v)}
+                </PhaseHoverCell>
+              )
+            }
             if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
-            if (c.key === 'action_timestamp') return formatCsvTime(v) || '—'
             if (c.key === 'action_name') {
               return (
                 <div className="cell-link-row">
@@ -532,7 +545,6 @@ const FILTERABLE_COLUMNS = [
   { key: 'user',        label: 'User' },
   { key: 'action_name', label: 'Action' },
   { key: 'story_name',  label: 'Story' },
-  { key: 'story_page',  label: 'Page' },
 ]
 const DURATION_COLUMNS = new Set(['action_duration', 'max_frontend', 'max_network', 'max_backend'])
 
