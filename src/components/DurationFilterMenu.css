@@ -35,6 +35,18 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Hide the native number-input spinner arrows — typing the range is clearer
+   than nudging by ±1, and the arrows crowd the narrow field. */
+.duration-filter-amount::-webkit-outer-spin-button,
+.duration-filter-amount::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.duration-filter-amount[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Unit selector sits on its own row below the range and spans the width. */
 .duration-filter-unit {
   width: 100%;

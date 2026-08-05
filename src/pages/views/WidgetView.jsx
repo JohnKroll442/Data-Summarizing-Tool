@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import WidgetSummaryTable from '../../components/WidgetSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
 import { useCsvData } from '../../context/useCsvData'
+import { HeaderPortal } from '../../context/HeaderSlot'
 import {
   applySessionFilter,
   applySessionMultiFilter,
@@ -38,7 +39,9 @@ function WidgetView() {
 
   return (
     <>
-      <h2 className="view-heading">Widget View</h2>
+      <HeaderPortal>
+        <h2 className="view-heading">Widget View</h2>
+      </HeaderPortal>
       <WidgetSummaryTable rows={rows} headers={headers} />
 
       <h3 className="view-section-heading">Charts</h3>

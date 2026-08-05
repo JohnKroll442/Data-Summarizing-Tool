@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCsvData } from '../../context/useCsvData'
+import { HeaderPortal } from '../../context/HeaderSlot'
 import { computeRankings, computeBusiest } from '../../lib/summary'
 import { computeSummaryScope, activeDurationBounds } from '../../lib/viewFilters'
 import { formatDurationMs, formatCount, formatTimeRangeLabel } from '../../lib/format'
@@ -136,9 +137,9 @@ function SummaryView() {
 
   return (
     <>
-      <header className="summary-view-header">
+      <HeaderPortal>
         <h2 className="view-heading">Summary</h2>
-      </header>
+      </HeaderPortal>
 
       {timelineRange && (
         <div className="summary-active-window is-centered" role="status">

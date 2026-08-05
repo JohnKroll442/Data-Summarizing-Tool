@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { ColumnChart } from '@ui5/webcomponents-react-charts/ColumnChart'
+import { ObjectStatus } from '@ui5/webcomponents-react/ObjectStatus'
 import {
   buildActivityTimeline,
   granularityLabel,
@@ -27,9 +28,15 @@ const MIN_WINDOW_MS = 4 * 60 * 1000
 // minute-wide focus still fills ~1/CONTEXT_FACTOR of the navigator).
 const CONTEXT_FACTOR = 3
 
-// Per wheel-notch zoom factor. Gentle (10%) so it feels smooth; rapid scrolls
-// coalesce per animation frame so trackpads glide instead of jumping.
-const WHEEL_STEP = 0.9
+// Per wheel-notch zoom factor. Gentle (2%) so it feels smooth and unhurried;
+// rapid scrolls coalesce per animation frame so trackpads glide instead of
+// jumping. Nudge toward 1.0 to make zoom less sensitive, away to speed it up.
+const WHEEL_STEP = 0.95
+// How long after the page last scrolled we treat it as "still in motion" and
+// leave the wheel to the page instead of zooming the timeline. Keeps a scroll
+// that happens to pass over the chart from being hijacked into a zoom; zoom
+// only re-engages once the page has come to rest for this long.
+const SCROLL_SETTLE_MS = 250
 // Pixels of movement before a mouse-down becomes a pan (vs. a bar click).
 const DRAG_THRESHOLD = 4
 
@@ -156,9 +163,6 @@ function ActivityTimeline() {
       setCollapsed(COLLAPSED_VIEWS.has(view))
     }
   }, [view])
-  // Log y-axis makes small bars readable next to a dominant spike; off by
-  // default since a linear axis reads more naturally for exact counts.
-  const [logScale, setLogScale] = useState(false)
   const toggleSeries = useCallback(
     (key) => setHidden((h) => ({ ...h, [key]: !h[key] })),
     [],
@@ -214,7 +218,8 @@ function ActivityTimeline() {
   // Publish the focused window to the shared context so the summary tables scope
   // themselves to what the timeline shows. Only while actually zoomed — at full
   // range we publish null (no constraint). effRange/zoomed don't depend on
-  // timelineRange, so there's no update loop.
+  // timelineRange, so there's no update loop. Published live (every frame) so
+  // the KPIs and table stay in lock-step with the window as you scroll/drag.
   const isZoomed = !!range || !!viewRange
   useEffect(() => {
     if (!span) return
@@ -352,6 +357,10 @@ function ActivityTimeline() {
   const wheelAccum = useRef(1)
   const wheelAnchor = useRef(null)
   const wheelPending = useRef(false)
+  // Timestamp (performance.now) of the last page scroll, so the wheel handler
+  // can tell an intentional zoom (page at rest, pointer over the chart) from an
+  // accidental one (the page is mid-scroll and the cursor just passed over it).
+  const lastPageScroll = useRef(0)
   const applyWheelZoom = useCallback(() => {
     wheelPending.current = false
     const s = stateRef.current
@@ -376,6 +385,11 @@ function ActivityTimeline() {
   const onDetailWheel = useCallback((e) => {
     const s = stateRef.current
     if (s.collapsed || !s.hasSpan || !s.effRange || !s.detail || s.detail.empty) return
+    // If the page is still scrolling, let this notch scroll the page too rather
+    // than zooming the timeline the cursor happened to pass over. The gesture
+    // keeps the page moving, which keeps refreshing lastPageScroll, so zoom
+    // stays suppressed for the whole scroll; it re-engages once the page rests.
+    if (performance.now() - lastPageScroll.current < SCROLL_SETTLE_MS) return
     e.preventDefault()
     // Anchor = the timestamp under the cursor, from its x-position across the
     // plot area (falls back to the window center when geometry isn't ready).
@@ -442,6 +456,15 @@ function ActivityTimeline() {
     window.addEventListener('pointermove', onDetailPointerMove)
     window.addEventListener('pointerup', onDetailPointerUp)
   }, [onDetailPointerMove, onDetailPointerUp])
+
+  // Track page-scroll activity. Capture phase catches scrolls from any element
+  // (inner scroll containers don't bubble scroll to window), so the wheel
+  // handler above knows whether the page is currently moving.
+  useEffect(() => {
+    const onScroll = () => { lastPageScroll.current = performance.now() }
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true })
+    return () => document.removeEventListener('scroll', onScroll, { capture: true })
+  }, [])
 
   // Attach wheel (non-passive so preventDefault stops the page scrolling) and
   // pointer-down natively; re-run when the chart mounts/unmounts.
@@ -590,26 +613,19 @@ function ActivityTimeline() {
             <div className="activity-timeline-gran">
               <span>Viewing</span>
               <div className="activity-timeline-viewing">
-                <span className="activity-timeline-viewing-range">
+                <ObjectStatus
+                  className="activity-timeline-viewing-range"
+                  state="Information"
+                >
                   {effRange ? fmtRange(effRange) : 'Full range'}
-                </span>
+                </ObjectStatus>
                 {!t.empty && (
-                  <span className="activity-timeline-viewing-bucket">
+                  <ObjectStatus className="activity-timeline-viewing-bucket">
                     {granularityLabel(t.granularity)} buckets
-                  </span>
+                  </ObjectStatus>
                 )}
               </div>
             </div>
-
-            <button
-              type="button"
-              className={`activity-timeline-scale${logScale ? ' is-active' : ''}`}
-              onClick={() => setLogScale((v) => !v)}
-              aria-pressed={logScale}
-              title="Log scale makes small bars visible next to a large spike"
-            >
-              Log scale
-            </button>
 
             {zoomed && (
               <button
@@ -640,12 +656,8 @@ function ActivityTimeline() {
                     style={{ height: 300, width: '100%' }}
                     chartConfig={{
                       margin: { top: 8, right: 16, bottom: 8, left: 8 },
-                      // Match the old axes: integer count ticks, or a log scale
-                      // when toggled so a small bar stays visible next to a spike
-                      // (zero-count bars simply don't render on a log axis).
-                      yAxisConfig: logScale
-                        ? { scale: 'log', domain: [1, 'auto'], allowDataOverflow: true, allowDecimals: false }
-                        : { allowDecimals: false },
+                      // Integer count ticks on a linear axis.
+                      yAxisConfig: { allowDecimals: false },
                     }}
                   />
                 </div>

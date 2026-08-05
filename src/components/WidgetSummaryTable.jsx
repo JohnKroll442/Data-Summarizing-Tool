@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
+import { HeaderPortal } from '../context/HeaderSlot'
 import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
@@ -418,7 +419,9 @@ function WidgetSummaryTable({ rows, headers }) {
   return (
     <>
       {pills}
-      <KpiStrip variant="widget" kpis={kpis} />
+      <HeaderPortal>
+        <KpiStrip variant="widget" kpis={kpis} />
+      </HeaderPortal>
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
+import { HeaderPortal } from '../context/HeaderSlot'
 import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
@@ -324,7 +325,9 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   return (
     <>
       {pill}
-      <KpiStrip variant="action" kpis={kpis} />
+      <HeaderPortal>
+        <KpiStrip variant="action" kpis={kpis} />
+      </HeaderPortal>
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}

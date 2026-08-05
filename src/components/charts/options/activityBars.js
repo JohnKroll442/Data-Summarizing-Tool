@@ -1,75 +1,10 @@
 import {
-  BASE_GRID,
   BASE_TEXT_STYLE,
-  BASE_TOOLTIP,
   SAP_BLUE,
-  SAP_GOLD,
-  SAP_SUCCESS,
   SAP_TEXT,
 } from '../../../lib/chartColors'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-
-/**
- * Detail chart — grouped bars per bucket for the three activity metrics over
- * the currently-selected time window.
- *
- * @param buckets  [{ key, label, sort }] chronological, contiguous
- * @param series   { sessions:number[], actions:number[], widgets:number[] }
- * @param hidden   { sessions?:bool, actions?:bool, widgets?:bool } — series the
- *                 user has toggled off via the header key; hidden ones drop out
- *                 and the remaining bars re-center, exactly like a legend click.
- * @param logScale when true, plot the count axis logarithmically so small bars
- *                 stay visible next to a dominant spike (zero-count bars simply
- *                 don't render, which is fine — they're empty).
- * Returns an empty `series` array when there are no buckets so EChartCard /
- * the panel can show a "no data" state.
- */
-export function buildActivityBarsOption(buckets, series, hidden = {}, logScale = false) {
-  if (!buckets || buckets.length === 0) return { series: [] }
-
-  return {
-    color: [SAP_BLUE, SAP_GOLD, SAP_SUCCESS],
-    textStyle: BASE_TEXT_STYLE,
-    tooltip: { ...BASE_TOOLTIP, trigger: 'axis', axisPointer: { type: 'shadow' } },
-    // The visible color key lives in the panel header (HTML legend). This
-    // legend is kept but hidden (show:false) purely to drive series visibility:
-    // the header buttons flip `selected` here, so toggling a series off makes
-    // the grouped bars re-center just as clicking the old chart legend did.
-    legend: {
-      show: false,
-      data: ['Sessions', 'Actions', 'Widgets active'],
-      selected: {
-        Sessions: !hidden.sessions,
-        Actions: !hidden.actions,
-        'Widgets active': !hidden.widgets,
-      },
-    },
-    grid: { ...BASE_GRID },
-    xAxis: { type: 'category', data: buckets.map((b) => b.label), axisLabel: { hideOverlap: true } },
-    yAxis: logScale
-      ? { type: 'log', minorSplitLine: { show: true } }
-      : { type: 'value', minInterval: 1 },
-    series: [
-      // All three series are clickable — each drills into its view scoped to
-      // the clicked bucket — so all get the pointer cursor.
-      { name: 'Sessions',       type: 'bar', data: series.sessions, cursor: 'pointer', ...BAR_STYLE },
-      { name: 'Actions',        type: 'bar', data: series.actions,  cursor: 'pointer', ...BAR_STYLE },
-      { name: 'Widgets active', type: 'bar', data: series.widgets,  cursor: 'pointer', ...BAR_STYLE },
-    ],
-  }
-}
-
-// Shared grouped-bar styling. Tight intra-group gap so each bucket's three
-// bars read as one clustered column, a wider gap between buckets, and min/max
-// widths so bars never collapse to slivers or balloon when there are few.
-const BAR_STYLE = {
-  barGap: '10%',
-  barCategoryGap: '30%',
-  barMinWidth: 3,
-  barMaxWidth: 42,
-  itemStyle: { borderRadius: [3, 3, 0, 0] },
-}
 
 /**
  * Overview navigator — a slim range slider, NOT a bar chart. A light track line

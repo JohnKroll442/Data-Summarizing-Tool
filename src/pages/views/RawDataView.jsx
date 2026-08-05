@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import AnalyticalDataTable from '../../components/AnalyticalDataTable'
 import { usePagination, PageSizeSelect, TablePager } from '../../components/Pagination'
 import { useCsvData } from '../../context/useCsvData'
+import { HeaderPortal } from '../../context/HeaderSlot'
 import { sortRows } from '../../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../../lib/exportCsv'
 import '../../components/SessionSummaryTable.css'
@@ -46,7 +47,9 @@ function RawDataView() {
 
   return (
     <>
-      <h2 className="view-heading">Raw Data View</h2>
+      <HeaderPortal>
+        <h2 className="view-heading">Raw Data View</h2>
+      </HeaderPortal>
       <div className="summary-filters">
         <span className="summary-filter-count" style={{ marginLeft: 0, marginRight: 'auto' }}>
           {total.toLocaleString()} row{total === 1 ? '' : 's'}

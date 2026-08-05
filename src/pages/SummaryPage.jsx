@@ -1,7 +1,9 @@
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { ToggleButton } from '@ui5/webcomponents-react/ToggleButton'
 import { useCsvData } from '../context/useCsvData'
+import { HeaderSlotProvider } from '../context/HeaderSlot'
 import ActivityTimeline from '../components/ActivityTimeline'
 import './SummaryPage.css'
 
@@ -27,6 +29,10 @@ function SummaryPage() {
   const { hasData, fileName, recentFiles, activeFileId, selectRecentFile } = useCsvData()
   const location = useLocation()
   const navigate = useNavigate()
+  // The active view portals its heading + KPI strip into this node so they sit
+  // above the timeline. A ref callback (not useRef) so the first render that
+  // has the node re-runs the provider and the portals find their target.
+  const [headerSlot, setHeaderSlot] = useState(null)
 
   if (!hasData) {
     return <Navigate to="/" replace />
@@ -85,12 +91,16 @@ function SummaryPage() {
       </nav>
 
       <div className="summary-content">
+        {/* Heading + KPIs portal in here, so they sit above the timeline. */}
+        <div className="summary-header-slot" ref={setHeaderSlot} />
         <ActivityTimeline />
         {/* Scroll anchor: the Sessions-bar click in ActivityTimeline collapses
             the timeline and scrolls this into view so the filtered table is
             front and center. */}
         <div id="summary-view-top">
-          <Outlet />
+          <HeaderSlotProvider value={headerSlot}>
+            <Outlet />
+          </HeaderSlotProvider>
         </div>
       </div>
     </div>

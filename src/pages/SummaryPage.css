@@ -125,6 +125,26 @@
   width: 100%;
 }
 
+/* Per-view heading + KPI strip portal in here, so they render above the shared
+   timeline. Title first, KPIs second — enforced with `order` because the two
+   arrive from different components (the view vs. its summary table). Collapses
+   when nothing is portaled (first paint, or a view with no heading yet). */
+.summary-header-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.summary-header-slot:empty {
+  display: none;
+}
+.summary-header-slot > .view-heading {
+  order: 0;
+}
+.summary-header-slot > .kpi-strip {
+  order: 1;
+  width: 100%;
+}
+
 /* The shared Activity Timeline sits directly above each view's content; give
    it clear breathing room so the panel doesn't butt up against the heading. */
 .summary-content > .activity-timeline {

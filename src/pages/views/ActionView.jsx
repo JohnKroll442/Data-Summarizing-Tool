@@ -3,6 +3,7 @@ import ActionSummaryTable from '../../components/ActionSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import { useCsvData } from '../../context/useCsvData'
+import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 
 /**
@@ -53,7 +54,9 @@ function ActionView() {
 
   return (
     <>
-      <h2 className="view-heading">Action View</h2>
+      <HeaderPortal>
+        <h2 className="view-heading">Action View</h2>
+      </HeaderPortal>
       <ActionSummaryTable
         rows={rows}
         headers={headers}

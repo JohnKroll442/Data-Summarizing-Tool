@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import AnalyticalDataTable from './AnalyticalDataTable'
 import KpiStrip from './KpiStrip'
+import { HeaderPortal } from '../context/HeaderSlot'
 import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
@@ -194,7 +195,9 @@ function SessionSummaryTable({ rows, headers }) {
 
   return (
     <>
-      <KpiStrip variant="session" kpis={kpis} />
+      <HeaderPortal>
+        <KpiStrip variant="session" kpis={kpis} />
+      </HeaderPortal>
 
       {missing.length > 0 && (
         <div className="summary-note">
