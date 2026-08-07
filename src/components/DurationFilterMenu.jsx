@@ -31,11 +31,13 @@ function DurationFilterMenu({ label = 'Duration', value, onChange }) {
   const [unit, setUnit] = useState(init.unit)
   const rootRef = useRef(null)
 
-  // If the parent clears the filter externally, blank the inputs so the trigger
-  // shows "any" again. (We're the only writer while active, so we don't try to
-  // reverse-engineer the amounts from ms on every change — just reset on clear.)
+  // Sync inputs when the filter is set externally (e.g. a p95 card click sets
+  // { minMs: v, maxMs: null } from outside). Also handles clear (value → null).
   useEffect(() => {
-    if (!value) { setMin(''); setMax('') }
+    const next = deriveControls(value)
+    setMin(next.min)
+    setMax(next.max)
+    setUnit(next.unit)
   }, [value])
 
   useEffect(() => {
