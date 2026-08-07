@@ -8,7 +8,7 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   margin-bottom: 0.75rem;
   padding: 0.55rem 0.75rem;
   background: var(--color-surface);
@@ -18,13 +18,13 @@
 }
 
 /* Filter dropdowns (Sessions / User / Duration / Columns / …) size to their
-   label and never shrink, so the full filter name always stays readable on
-   every view — the search field (below) is the one elastic element that
-   absorbs the slack. A slightly smaller font keeps them compact. */
+   label so the full filter name stays readable, and only shrink (label
+   ellipsis) as a last resort when the row would otherwise overflow. A slightly
+   smaller font keeps them compact. */
 .summary-filters .multi-filter {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 16rem;
+  max-width: 14rem;
 }
 
 .summary-filters .multi-filter-trigger {

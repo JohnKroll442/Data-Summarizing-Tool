@@ -1,6 +1,7 @@
 .summary-page {
   width: 100%;
   max-width: none;
+  min-width: 0;
   margin: 0 auto;
   padding: 1.25rem clamp(1rem, 3vw, 2.5rem) 1.75rem;
   display: flex;
@@ -121,8 +122,12 @@
   flex: 1;
 }
 
+/* min-width:0 so a wide table in the active view can't stretch this column
+   flex item past the viewport (which would drag the filter toolbar's Export
+   button off-screen); the table scrolls within its own width instead. */
 .summary-content {
   width: 100%;
+  min-width: 0;
 }
 
 /* Per-view heading + KPI strip portal in here, so they render above the shared
