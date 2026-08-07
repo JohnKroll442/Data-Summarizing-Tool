@@ -17,17 +17,20 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Filter dropdowns (Sessions / User / Duration / Columns / …) share the left
-   space, growing up to a readable cap and shrinking with an ellipsis when the
-   toolbar gets tight. */
+/* Filter dropdowns (Sessions / User / Duration / Columns / …) size to their
+   label so the full filter name stays readable, and only shrink (label
+   ellipsis) once the row would otherwise overflow. A slightly smaller font lets
+   more of them fit before any truncation kicks in. */
 .summary-filters .multi-filter {
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 12rem;
+  max-width: 14rem;
 }
 
 .summary-filters .multi-filter-trigger {
   width: 100%;
+  font-size: var(--text-xs);
+  padding: 0.35rem 0.5rem;
 }
 
 /* The right-hand cluster keeps its intrinsic size and is pushed to the edge by
@@ -104,8 +107,8 @@
 }
 
 .summary-filter-search {
-  flex: 1 1 12rem;
-  min-width: 6.5rem;
+  flex: 0 1 11rem;
+  min-width: 5rem;
   font: inherit;
   font-size: var(--text-sm);
   padding: 0.4rem 0.65rem;
