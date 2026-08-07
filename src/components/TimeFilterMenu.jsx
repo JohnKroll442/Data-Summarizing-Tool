@@ -102,7 +102,7 @@ function TimeFilterMenu({ rows, getTimestamp, value, onChange }) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        {triggerText}
+        <span className="multi-filter-trigger-label">{triggerText}</span>
         <span className="multi-filter-caret" aria-hidden="true"><ChevronDown size={12} /></span>
       </button>
 

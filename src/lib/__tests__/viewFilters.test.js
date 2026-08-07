@@ -184,4 +184,15 @@ describe('activeDurationBounds', () => {
     })
     expect(bounds).toEqual({ minMs: 50_000, maxMs: 120_000 })
   })
+
+  it("includes the Widget view's Total duration filter in the intersection", () => {
+    const bounds = activeDurationBounds({
+      viewUi: {
+        session: {},
+        action: {},
+        widget: { durationFilter: { minMs: 90_000, maxMs: 240_000 } },
+      },
+    })
+    expect(bounds).toEqual({ minMs: 90_000, maxMs: 240_000 })
+  })
 })

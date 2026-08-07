@@ -9,11 +9,23 @@
   gap: 0.35rem;
   cursor: pointer;
   text-align: left;
-  min-width: 8.5rem;
+  min-width: 0;
+}
+
+/* The trigger's text truncates with an ellipsis when the toolbar compresses the
+   dropdown, so a filter menu can shrink to fit a single-line toolbar instead of
+   forcing the row to wrap. The caret never shrinks. */
+.multi-filter-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .multi-filter-caret {
   margin-left: auto;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   color: var(--sap-text-muted);

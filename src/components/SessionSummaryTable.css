@@ -1,7 +1,12 @@
-/* Filter toolbar that sits above the per-session summary table. */
+/* Filter toolbar that sits above the per-session summary table. Stays on a
+   single line at any width: the search field and the filter dropdowns share the
+   available space and shrink (their labels truncate) so the row never wraps to a
+   second line, while the count / rows-per-page / export keep their natural size.
+   The container itself must NOT clip overflow, or the dropdown panels that open
+   below the triggers would be cut off. */
 .summary-filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
@@ -10,6 +15,28 @@
   border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+}
+
+/* Filter dropdowns (Sessions / User / Duration / Columns / …) share the left
+   space, growing up to a readable cap and shrinking with an ellipsis when the
+   toolbar gets tight. */
+.summary-filters .multi-filter {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 12rem;
+}
+
+.summary-filters .multi-filter-trigger {
+  width: 100%;
+}
+
+/* The right-hand cluster keeps its intrinsic size and is pushed to the edge by
+   the growing left group. */
+.summary-filters .summary-filter-count,
+.summary-filters .raw-page-size,
+.summary-filters .summary-filter-export,
+.summary-filters .summary-filter-clear {
+  flex: 0 0 auto;
 }
 
 /* Banner shown when the session filter was seeded by clicking a Sessions bar
@@ -77,8 +104,8 @@
 }
 
 .summary-filter-search {
-  flex: 1 1 220px;
-  min-width: 180px;
+  flex: 1 1 12rem;
+  min-width: 6.5rem;
   font: inherit;
   font-size: var(--text-sm);
   padding: 0.4rem 0.65rem;

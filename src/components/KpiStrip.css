@@ -32,9 +32,13 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--tracking-tight);
   line-height: 1.15;
-  /* Show the full value no matter how long — wrap onto extra lines (and break
-     long unbroken tokens like IDs) rather than clipping with an ellipsis. */
-  overflow-wrap: anywhere;
+  /* Keep every KPI value on a single line so the strip stays clean and never
+     wraps to two lines on narrow cards (e.g. a laptop's 4-up grid). Long values
+     like "Slowest action" are clipped to an ellipsis; the card's hover title
+     (see KpiStrip.jsx) still exposes the full text. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 900px) {

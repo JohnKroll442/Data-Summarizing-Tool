@@ -1,6 +1,53 @@
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { computeKpis } from '../lib/kpis'
 import './KpiStrip.css'
+
+// Smallest we'll shrink a KPI value to before giving up (and letting the CSS
+// ellipsis take over). Keeps very long values legible rather than microscopic.
+const MIN_KPI_FONT_PX = 12
+
+/**
+ * A single KPI value that shrinks its font just enough to keep the full text on
+ * one line within its card — so nothing wraps to two lines and nothing is
+ * clipped, no matter how long the value (e.g. Action view's "Slowest action").
+ * Re-fits whenever the card's width changes (window resize, grid reflow), so it
+ * stays responsive to the page. Numeric/short values never shrink.
+ */
+function KpiValue({ value }) {
+  const ref = useRef(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    const box = el?.parentElement
+    if (!el || !box) return
+
+    let lastWidth = -1
+    const fit = () => {
+      const width = box.clientWidth
+      // Only re-fit when the available width actually changed — our own
+      // font-size change alters height, not width, so this avoids a loop.
+      if (width === lastWidth) return
+      lastWidth = width
+      el.style.fontSize = '' // reset to the CSS base (respects breakpoints)
+      let size = parseFloat(getComputedStyle(el).fontSize)
+      while (el.scrollWidth > el.clientWidth + 0.5 && size > MIN_KPI_FONT_PX) {
+        size -= 1
+        el.style.fontSize = `${size}px`
+      }
+    }
+
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [value])
+
+  return (
+    <div className="kpi-value" ref={ref} title={String(value)}>
+      {value}
+    </div>
+  )
+}
 
 /**
  * Presentational KPI strip shown above the aggregate summary tables.
@@ -23,7 +70,7 @@ function KpiStrip({ variant, rows, headers, kpis: kpisProp }) {
       {kpis.map((k) => (
         <div className="kpi-card" key={k.label}>
           <div className="kpi-label">{k.label}</div>
-          <div className="kpi-value" title={String(k.value)}>{k.value}</div>
+          <KpiValue value={k.value} />
         </div>
       ))}
     </div>
