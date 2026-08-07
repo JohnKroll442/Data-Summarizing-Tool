@@ -12,7 +12,7 @@ import DurationFilterMenu from './DurationFilterMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByWidget } from '../lib/widgetAggregate'
-import { widgetKpisFromAgg } from '../lib/kpis'
+import { widgetKpisFromAgg, percentile } from '../lib/kpis'
 import { RECOGNIZED_MEASURES } from '../lib/actionAggregate'
 import {
   applySessionFilter,
@@ -20,13 +20,12 @@ import {
   applyActionFilter,
   applyActionMultiFilter,
   detectSessionKey,
-  findActionNameKey,
 } from '../lib/drillDown'
 import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
-import { countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
-import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { countActiveMultiFilters } from '../lib/multiFilter'
+import { hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
 import { matchesDurationFilter } from '../lib/durationFilter'
 import { filterAggRows, WIDGET_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
@@ -104,22 +103,6 @@ function WidgetSummaryTable({ rows, headers }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [rows, headers])
 
-  // Action names — only those present in the session-scoped rows, so the menu
-  // tracks the selected sessions like every other filter. Any already-selected
-  // action is kept so a selection never vanishes from its own menu.
-  const actionOptions = useMemo(() => {
-    const key = findActionNameKey(headers)
-    if (!key) return []
-    const set = new Set()
-    for (const r of sessionScopedRows) {
-      const v = r?.[key]
-      if (v === undefined || v === null || v === '') continue
-      set.add(String(v))
-    }
-    for (const v of actionMultiFilter) set.add(String(v))
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [sessionScopedRows, headers, actionMultiFilter])
-
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByWidget(scopedRows, headers),
     [scopedRows, headers]
@@ -176,6 +159,13 @@ function WidgetSummaryTable({ rows, headers }) {
   const [sort, setSort] = useState(() => viewUi.widget.sort)
   // Threshold filter for the Total column: { minMs, maxMs } or null.
   const [durationFilter, setDurationFilter] = useState(() => viewUi.widget.durationFilter)
+  // Per-phase threshold filters (same shape/behavior as Total duration) for the
+  // Render / Network / Backend columns — so the slow tail in any single phase
+  // can be isolated directly (e.g. Render > 38.7s to surface the render-bound
+  // outliers). null = inactive.
+  const [renderFilter, setRenderFilter] = useState(() => viewUi.widget.renderFilter ?? null)
+  const [networkFilter, setNetworkFilter] = useState(() => viewUi.widget.networkFilter ?? null)
+  const [backendFilter, setBackendFilter] = useState(() => viewUi.widget.backendFilter ?? null)
   // Which columns are hidden (display-only preference). The first column is
   // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
   const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.widget.hiddenColumns ?? [])
@@ -204,40 +194,44 @@ function WidgetSummaryTable({ rows, headers }) {
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('widget', { search, filters, sort, durationFilter, hiddenColumns })
-  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
+    setViewUi('widget', { search, filters, sort, durationFilter, renderFilter, networkFilter, backendFilter, hiddenColumns })
+  }, [search, filters, sort, durationFilter, renderFilter, networkFilter, backendFilter, hiddenColumns, setViewUi])
   // Clicking a widget name opens the per-widget timing modal. We store the
   // index of the selected widget within the filtered + sorted rows (null =
   // closed) so the modal's picker/arrows can flip through exactly the widgets
   // shown in the table.
   const [timingIdx, setTimingIdx] = useState(null)
 
-  // Faceted options: each dropdown lists only values that still apply given the
-  // OTHER active column filters plus the time filter. The session/action scope
-  // is already baked into summaryRows (rows are filtered before aggregation).
-  const optionsByColumn = useMemo(
-    () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
-      (row) => matchesTimeFilter(row, WIDGET_TS, timeFilter)
-        && matchesTimeRange(row, WIDGET_TS, timelineRange)
-        && matchesDurationFilter(row, 'total', durationFilter)),
-    [summaryRows, filters, timeFilter, timelineRange, durationFilter],
-  )
-
-  // Rows the Time filter derives its buckets from — narrowed by the column
-  // filters and the timeline range (but not by time itself) so the time options
-  // track the other menus and the selected timeline window.
-  const visibleRows = useMemo(
+  // Base set for the p95 cards: the session/action scope (already baked into
+  // summaryRows) plus the column filters, search, and time window — but NOT the
+  // duration/phase thresholds the cards themselves drive. Computing each p95
+  // over this stable set keeps a card's number fixed when you click it (the
+  // threshold doesn't chase its own tail), while still tracking whatever
+  // sessions/search/timeline you've scoped to.
+  const kpiBaseRows = useMemo(
     () => filterAggRows(summaryRows, columns, {
       tsAccessor: WIDGET_TS,
       timeFilter,
       timelineRange,
       filters,
-      durationKey: 'total',
-      durationFilter,
       search,
     }),
-    [summaryRows, search, filters, columns, timeFilter, timelineRange, durationFilter],
+    [summaryRows, columns, timeFilter, timelineRange, filters, search],
   )
+
+  // The visible set narrows the base by the four duration thresholds (Total +
+  // the three phases). These are the same filters the toolbar menus and the p95
+  // cards both write, so a menu edit and a card click stay in sync.
+  const visibleRows = useMemo(() => {
+    if (!durationFilter && !renderFilter && !networkFilter && !backendFilter) return kpiBaseRows
+    return kpiBaseRows.filter(
+      (row) =>
+        matchesDurationFilter(row, 'total', durationFilter) &&
+        matchesDurationFilter(row, 'render', renderFilter) &&
+        matchesDurationFilter(row, 'network', networkFilter) &&
+        matchesDurationFilter(row, 'backend', backendFilter),
+    )
+  }, [kpiBaseRows, durationFilter, renderFilter, networkFilter, backendFilter])
 
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows
@@ -245,12 +239,58 @@ function WidgetSummaryTable({ rows, headers }) {
     return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
   }, [visibleRows, sort, columns])
 
-  // KPIs track the filters: they summarize the widgets currently visible (the
-  // session/action scope + every local filter), not the whole file.
-  const kpis = useMemo(
-    () => widgetKpisFromAgg(visibleRows, mapping),
-    [visibleRows, mapping],
-  )
+  // Click thresholds: raw p95 (ms) per phase over the STABLE base (scope minus
+  // the duration/phase filters). Clicking "p95 render" isolates the render tail
+  // of the current scope at a fixed threshold, rather than re-slicing whatever's
+  // already narrowed — so the filter doesn't chase its own tail.
+  const p95Values = useMemo(() => ({
+    total:   mapping.measure ? percentile(kpiBaseRows.map((r) => r.total),   0.95) : '',
+    render:  mapping.measure ? percentile(kpiBaseRows.map((r) => r.render),  0.95) : '',
+    network: mapping.measure ? percentile(kpiBaseRows.map((r) => r.network), 0.95) : '',
+    backend: mapping.measure ? percentile(kpiBaseRows.map((r) => r.backend), 0.95) : '',
+  }), [kpiBaseRows, mapping.measure])
+
+  // Each phase's [current filter, setter]. Clicking a p95 card isolates that
+  // phase's slow tail: set its "> p95" threshold and clear the other three, so
+  // one click flips you from (say) the render tail to the network tail with no
+  // menu juggling. Clicking the active card again clears it — the four are
+  // mutually exclusive when driven from the cards.
+  const phaseFilter = {
+    total:   [durationFilter, setDurationFilter],
+    render:  [renderFilter, setRenderFilter],
+    network: [networkFilter, setNetworkFilter],
+    backend: [backendFilter, setBackendFilter],
+  }
+  const toggleKpiPhase = (phase) => {
+    const [current, set] = phaseFilter[phase]
+    if (current) { set(null); return }
+    setDurationFilter(null)
+    setRenderFilter(null)
+    setNetworkFilter(null)
+    setBackendFilter(null)
+    const v = p95Values[phase]
+    if (Number.isFinite(v)) set({ minMs: v, maxMs: null })
+  }
+
+  // Displayed card values track the FILTERED view (visibleRows), so the p95s
+  // update as you apply any filter — Total/Render/Network/Backend or the cards
+  // themselves. Each card is then enriched into a clickable filter toggle.
+  const displayKpis = useMemo(() => widgetKpisFromAgg(visibleRows, mapping), [visibleRows, mapping])
+  const PHASE_BY_LABEL = { 'p95 total': 'total', 'p95 render': 'render', 'p95 network': 'network', 'p95 backend': 'backend' }
+  const kpis = displayKpis.map((k) => {
+    const phase = PHASE_BY_LABEL[k.label]
+    const v = phase ? p95Values[phase] : ''
+    if (!phase || !Number.isFinite(v)) return k
+    const active = Boolean(phaseFilter[phase][0])
+    return {
+      ...k,
+      active,
+      hint: active
+        ? `Clear the ${phase} filter`
+        : `Show only widgets with ${phase} in the slow 5% (> ${formatDurationMs(v)}); clears the other phase filters`,
+      onClick: () => toggleKpiPhase(phase),
+    }
+  })
 
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(sortedRows)
@@ -309,6 +349,9 @@ function WidgetSummaryTable({ rows, headers }) {
     (hasTimeSelection(timeFilter) ? 1 : 0) +
     (timelineRange ? 1 : 0) +
     (durationFilter ? 1 : 0) +
+    (renderFilter ? 1 : 0) +
+    (networkFilter ? 1 : 0) +
+    (backendFilter ? 1 : 0) +
     (hiddenColumns.length > 0 ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
@@ -526,32 +569,25 @@ function WidgetSummaryTable({ rows, headers }) {
             onChange={setSessionMultiFilter}
           />
         )}
-        {actionOptions.length > 0 && (
-          <MultiFilterMenu
-            label="Actions"
-            options={actionOptions}
-            selected={actionMultiFilter}
-            onChange={setActionMultiFilter}
-          />
-        )}
-        {FILTERABLE_COLUMNS.map((col) => {
-          const opts = optionsByColumn[col.key] ?? []
-          if (opts.length === 0) return null
-          const selected = Array.isArray(filters[col.key]) ? filters[col.key] : []
-          return (
-            <MultiFilterMenu
-              key={col.key}
-              label={col.label}
-              options={opts}
-              selected={selected}
-              onChange={(next) => updateFilter(col.key, next)}
-            />
-          )
-        })}
         <DurationFilterMenu
           label="Total duration"
           value={durationFilter}
           onChange={setDurationFilter}
+        />
+        <DurationFilterMenu
+          label="Render duration"
+          value={renderFilter}
+          onChange={setRenderFilter}
+        />
+        <DurationFilterMenu
+          label="Network duration"
+          value={networkFilter}
+          onChange={setNetworkFilter}
+        />
+        <DurationFilterMenu
+          label="Backend duration"
+          value={backendFilter}
+          onChange={setBackendFilter}
         />
         <ColumnChooserMenu
           columns={chooserColumns}
@@ -589,6 +625,9 @@ function WidgetSummaryTable({ rows, headers }) {
               setWidgetFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
               setDurationFilter(null)
+              setRenderFilter(null)
+              setNetworkFilter(null)
+              setBackendFilter(null)
               setHiddenColumns([])
               resetTimeline()
             }}

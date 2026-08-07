@@ -58,6 +58,11 @@ function KpiValue({ value }) {
  * computing from raw rows — used when the caller already has the filtered,
  * aggregated rows (e.g. a summary table feeding its visible rows) and wants
  * the KPIs to track the active filters.
+ *
+ * A card becomes an interactive filter toggle when its kpi carries an
+ * `onClick` (with optional `active` for the pressed state and `hint` for the
+ * tooltip) — used by the Widget view to turn each p95 card into a one-click
+ * "isolate this phase's slow tail" filter.
  */
 function KpiStrip({ variant, rows, headers, kpis: kpisProp }) {
   const kpis = useMemo(
@@ -67,12 +72,34 @@ function KpiStrip({ variant, rows, headers, kpis: kpisProp }) {
   if (!kpis) return null
   return (
     <div className="kpi-strip" role="group" aria-label={`${variant} KPIs`}>
-      {kpis.map((k) => (
-        <div className="kpi-card" key={k.label}>
-          <div className="kpi-label">{k.label}</div>
-          <KpiValue value={k.value} />
-        </div>
-      ))}
+      {kpis.map((k) => {
+        const clickable = typeof k.onClick === 'function'
+        const inner = (
+          <>
+            <div className="kpi-label">{k.label}</div>
+            <KpiValue value={k.value} />
+          </>
+        )
+        if (!clickable) {
+          return (
+            <div className="kpi-card" key={k.label}>
+              {inner}
+            </div>
+          )
+        }
+        return (
+          <button
+            type="button"
+            className={`kpi-card is-clickable${k.active ? ' is-active' : ''}`}
+            key={k.label}
+            aria-pressed={Boolean(k.active)}
+            title={k.hint || undefined}
+            onClick={k.onClick}
+          >
+            {inner}
+          </button>
+        )
+      })}
     </div>
   )
 }

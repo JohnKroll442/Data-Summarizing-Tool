@@ -151,10 +151,22 @@ function categorySpecs(rows, headers, range) {
  *
  * `opts.durationBounds` ({ minMs, maxMs } | null) applies the active duration
  * threshold to each category by its own ranked value (see `rankBy`).
+ *
+ * `opts.phaseBounds` ({ render, network, backend } of { minMs, maxMs } | null)
+ * are the Widget view's per-phase thresholds; each is intersected with the
+ * global `durationBounds` for ONLY its matching widget ranking, so a "Render >
+ * p95" filter narrows just the "Widgets by render" list, leaving the network /
+ * backend / action rankings shaped only by the global bound.
  */
-export function computeRankings(rows, headers, { range = null, durationBounds = null } = {}) {
+export function computeRankings(rows, headers, { range = null, durationBounds = null, phaseBounds = null } = {}) {
   if (!rows?.length || !headers?.length) return { slowest: [], fastest: [] }
   const specs = categorySpecs(rows, headers, range)
+  const boundsFor = (id) => {
+    if (id === 'render')  return intersectBounds(durationBounds, phaseBounds?.render)
+    if (id === 'network') return intersectBounds(durationBounds, phaseBounds?.network)
+    if (id === 'backend') return intersectBounds(durationBounds, phaseBounds?.backend)
+    return durationBounds
+  }
   const build = (direction) =>
     specs.map((s) => ({
       id: s.id,
@@ -164,10 +176,22 @@ export function computeRankings(rows, headers, { range = null, durationBounds = 
       // value isn't a real "fast" time (see rankBy's positiveOnly).
       items: rankBy(
         s.items, s.valueOf, s.labelOf, s.sublabelOf, s.navOf,
-        direction, durationBounds, direction === 'asc',
+        direction, boundsFor(s.id), direction === 'asc',
       ),
     }))
   return { slowest: build('desc'), fastest: build('asc') }
+}
+
+// Tightest combination of two duration bounds (highest min, lowest max) — an
+// entity must satisfy both. Falls back to whichever side is set; null when
+// neither is.
+function intersectBounds(a, b) {
+  if (!a) return b ?? null
+  if (!b) return a
+  const minMs = a.minMs == null ? b.minMs : b.minMs == null ? a.minMs : Math.max(a.minMs, b.minMs)
+  const maxMs = a.maxMs == null ? b.maxMs : b.maxMs == null ? a.maxMs : Math.min(a.maxMs, b.maxMs)
+  if (minMs == null && maxMs == null) return null
+  return { minMs, maxMs }
 }
 
 /** Tally actions into buckets at `granularity`; return a Map<key, {label,count,sort}>. */

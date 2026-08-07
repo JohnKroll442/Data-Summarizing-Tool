@@ -48,7 +48,12 @@ function sessionKpis(rows, headers) {
 export function sessionKpisFromAgg(agg, mapping, { hasSessions = true } = {}) {
   const totalSessions = hasSessions ? agg.length : ''
   const uniqueUsers = mapping.user ? distinct(agg.map((r) => r.user)) : ''
-  const avgActions = agg.length ? mean(agg.map((r) => r.action_count)) : ''
+  // p95 of per-session total duration: 95% of sessions finished under this
+  // value, so it marks where the slow tail begins — robust to the odd
+  // left-open-over-lunch session that skews the max/average.
+  const p95Duration = mapping.duration
+    ? percentile(agg.map((r) => r.total_action_duration), 0.95)
+    : ''
   const maxDuration = mapping.duration
     ? maxOf(agg.map((r) => r.max_action_duration))
     : ''
@@ -56,7 +61,7 @@ export function sessionKpisFromAgg(agg, mapping, { hasSessions = true } = {}) {
   return [
     { label: 'Total sessions',       value: fmt(totalSessions, formatCount) },
     { label: 'Unique users',         value: fmt(uniqueUsers, formatCount) },
-    { label: 'Avg actions / session', value: fmt(avgActions, (n) => n.toFixed(1)) },
+    { label: 'p95 session duration', value: fmt(p95Duration, formatDurationMs) },
     { label: 'Max session duration', value: fmt(maxDuration, formatDurationMs) },
   ]
 }
@@ -76,27 +81,27 @@ export function actionKpisFromAgg(agg, mapping) {
   const totalActions = mapping.actionName ? agg.length : ''
   const uniqueNames = mapping.actionName ? distinct(agg.map((r) => r.action_name)) : ''
 
-  // Per-action total duration = max(frontend, network, backend) for that row.
-  // Avg / slowest are computed across those per-action totals.
+  // p95 of action_duration — the action's real wall-clock span (action start →
+  // last render end), so offset and all widget phases are included. More accurate
+  // than max(frontend, network, backend) which ignores offset and only reflects
+  // the largest single widget phase slice.
+  const p95Duration = percentile(agg.map((r) => r.action_duration), 0.95)
+
   const perAction = agg.map((r) => ({
     name: r.action_name,
     total: maxOfValues([r.max_frontend, r.max_network, r.max_backend]),
   })).filter((r) => Number.isFinite(r.total))
-
-  const avgDuration = mapping.duration && perAction.length
-    ? perAction.reduce((s, r) => s + r.total, 0) / perAction.length
-    : ''
   let slowest = ''
-  if (mapping.duration && perAction.length) {
+  if (perAction.length) {
     const top = perAction.reduce((a, b) => (b.total > a.total ? b : a))
     slowest = `${top.name || MISSING} · ${formatDurationMs(top.total)}`
   }
 
   return [
-    { label: 'Total actions',   value: fmt(totalActions, formatCount) },
-    { label: 'Unique names',    value: fmt(uniqueNames, formatCount) },
-    { label: 'Avg duration',    value: fmt(avgDuration, formatDurationMs) },
-    { label: 'Slowest action',  value: slowest || MISSING },
+    { label: 'Total actions',       value: fmt(totalActions, formatCount) },
+    { label: 'Unique names',        value: fmt(uniqueNames, formatCount) },
+    { label: 'p95 action duration', value: fmt(p95Duration, formatDurationMs) },
+    { label: 'Slowest action',      value: slowest || MISSING },
   ]
 }
 
@@ -112,20 +117,47 @@ function widgetKpis(rows, headers) {
  * filters without re-aggregating.
  */
 export function widgetKpisFromAgg(agg, mapping) {
-  const totalWidgets = mapping.widgetId ? agg.length : ''
-  const avgRender  = mapping.measure ? mean(agg.map((r) => r.render))  : ''
-  const avgNetwork = mapping.measure ? mean(agg.map((r) => r.network)) : ''
-  const avgBackend = mapping.measure ? mean(agg.map((r) => r.backend)) : ''
+  // Per-phase p95s side by side (render / network / backend / total) so the
+  // phase carrying the worst slow tail stands out at a glance. Averages hide —
+  // and can even be distorted by — the sporadic outliers p95 is meant to catch,
+  // so the four sit on the same footing for a direct comparison.
+  const p95Render  = mapping.measure ? percentile(agg.map((r) => r.render),  0.95) : ''
+  const p95Network = mapping.measure ? percentile(agg.map((r) => r.network), 0.95) : ''
+  const p95Backend = mapping.measure ? percentile(agg.map((r) => r.backend), 0.95) : ''
+  const p95Total   = mapping.measure ? percentile(agg.map((r) => r.total),   0.95) : ''
 
   return [
-    { label: 'Total widgets',      value: fmt(totalWidgets, formatCount) },
-    { label: 'Avg render time',    value: fmt(avgRender,  formatDurationMs) },
-    { label: 'Avg network time',   value: fmt(avgNetwork, formatDurationMs) },
-    { label: 'Avg backend time',   value: fmt(avgBackend, formatDurationMs) },
+    { label: 'p95 render',  value: fmt(p95Render,  formatDurationMs) },
+    { label: 'p95 network', value: fmt(p95Network, formatDurationMs) },
+    { label: 'p95 backend', value: fmt(p95Backend, formatDurationMs) },
+    { label: 'p95 total',   value: fmt(p95Total,   formatDurationMs) },
   ]
 }
 
 /* ——— helpers ——— */
+
+/**
+ * The p-th percentile (p in 0..1) of the numeric values, via linear
+ * interpolation between the two closest ranks — the "inclusive" method used by
+ * Excel's PERCENTILE.INC and NumPy's default. Non-finite values are ignored.
+ * Returns '' when there's nothing to rank, so it flows through fmt() to an em
+ * dash like the other metrics.
+ */
+export function percentile(values, p) {
+  const nums = []
+  for (const v of values) {
+    const n = Number(v)
+    if (Number.isFinite(n)) nums.push(n)
+  }
+  if (nums.length === 0) return ''
+  if (nums.length === 1) return nums[0]
+  nums.sort((a, b) => a - b)
+  const rank = p * (nums.length - 1)
+  const lo = Math.floor(rank)
+  const hi = Math.ceil(rank)
+  if (lo === hi) return nums[lo]
+  return nums[lo] + (nums[hi] - nums[lo]) * (rank - lo)
+}
 
 function fmt(v, formatter) {
   if (v === '' || v === null || v === undefined) return MISSING
@@ -140,16 +172,6 @@ function distinct(values) {
     seen.add(String(v))
   }
   return seen.size
-}
-
-function mean(values) {
-  let sum = 0
-  let n = 0
-  for (const v of values) {
-    const num = Number(v)
-    if (Number.isFinite(num)) { sum += num; n++ }
-  }
-  return n ? sum / n : ''
 }
 
 function maxOf(values) {

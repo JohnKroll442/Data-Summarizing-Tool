@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { computeRankings, computeBusiest } from '../../lib/summary'
-import { computeSummaryScope, activeDurationBounds } from '../../lib/viewFilters'
+import { computeSummaryScope, activeDurationBounds, activeWidgetPhaseBounds } from '../../lib/viewFilters'
 import { formatDurationMs, formatCount, formatTimeRangeLabel } from '../../lib/format'
 import './SummaryView.css'
 
@@ -75,9 +75,18 @@ function SummaryView() {
     [viewUi],
   )
 
+  // The Widget view's per-phase thresholds (set by the p95 cards or the phase
+  // duration menus). Each narrows only its matching widget ranking, so clicking
+  // "p95 render" reshapes the Summary's render list to the same tail the Widget
+  // table shows.
+  const phaseBounds = useMemo(
+    () => activeWidgetPhaseBounds({ viewUi }),
+    [viewUi],
+  )
+
   const rankings = useMemo(
-    () => computeRankings(scopedRows, headers, { range: timelineRange, durationBounds }),
-    [scopedRows, headers, timelineRange, durationBounds],
+    () => computeRankings(scopedRows, headers, { range: timelineRange, durationBounds, phaseBounds }),
+    [scopedRows, headers, timelineRange, durationBounds, phaseBounds],
   )
   const busiest = useMemo(
     () => computeBusiest(scopedRows, headers, { range: timelineRange }),

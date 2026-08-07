@@ -245,3 +245,20 @@ export function activeDurationBounds(state) {
   if (minMs == null && maxMs == null) return null
   return { minMs, maxMs }
 }
+
+/**
+ * The Widget view's per-phase duration thresholds (Render / Network / Backend),
+ * read from persisted UI state. Returns `{ render, network, backend }` where
+ * each is a `{ minMs, maxMs }` filter or null. The Summary applies each to the
+ * matching widget ranking by that phase's own value — so clicking the Widget
+ * view's "p95 render" card (which sets Render > p95) narrows the Summary's
+ * "Widgets by render" list to the render tail, mirroring the Widget table.
+ */
+export function activeWidgetPhaseBounds(state) {
+  const w = state?.viewUi?.widget ?? {}
+  return {
+    render: w.renderFilter ?? null,
+    network: w.networkFilter ?? null,
+    backend: w.backendFilter ?? null,
+  }
+}

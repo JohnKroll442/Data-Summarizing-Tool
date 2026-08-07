@@ -56,7 +56,7 @@ function makeEmptyViewUi() {
   return {
     session: { search: '', filters: {}, sort: { key: 'total_action_duration', dir: 'desc' }, durationFilter: null, hiddenColumns: [] },
     action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' }, durationFilter: null, hiddenColumns: [] },
-    widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' }, durationFilter: null, hiddenColumns: [] },
+    widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' }, durationFilter: null, renderFilter: null, networkFilter: null, backendFilter: null, hiddenColumns: [] },
   }
 }
 

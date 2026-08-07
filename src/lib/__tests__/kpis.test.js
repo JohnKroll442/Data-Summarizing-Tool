@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeKpis } from '../kpis'
+import { computeKpis, percentile } from '../kpis'
 
 const SESSION_HEADERS = ['SESSION_ID', 'USER_NAME', 'STORY_NAME', 'DURATION']
 const ACTION_HEADERS = [
@@ -23,7 +23,7 @@ describe('computeKpis', () => {
     const kpis = computeKpis('session', rows, SESSION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
       'Total sessions', 'Unique users',
-      'Avg actions / session', 'Max session duration',
+      'p95 session duration', 'Max session duration',
     ])
   })
 
@@ -55,14 +55,14 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('action', rows, ACTION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
-      'Total actions', 'Unique names', 'Avg duration', 'Slowest action',
+      'Total actions', 'Unique names', 'p95 action duration', 'Slowest action',
     ])
     const slowest = kpis.find((k) => k.label === 'Slowest action')
     expect(slowest.value).toContain('Slow')
     expect(slowest.value).toContain('900 ms')
   })
 
-  it('produces the expected widget KPI labels', () => {
+  it('produces the expected widget KPI labels (per-phase p95s)', () => {
     const rows = [
       { WIDGET_ID: 'w1', WIDGET_NAME: 'Bar', WIDGET_MEASURE: 'render',  DURATION: 100 },
       { WIDGET_ID: 'w1', WIDGET_NAME: 'Bar', WIDGET_MEASURE: 'network', DURATION: 300 },
@@ -70,15 +70,24 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('widget', rows, WIDGET_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
-      'Total widgets', 'Avg render time', 'Avg network time', 'Avg backend time',
+      'p95 render', 'p95 network', 'p95 backend', 'p95 total',
     ])
     const byLabel = Object.fromEntries(kpis.map((k) => [k.label, k.value]))
-    expect(byLabel['Total widgets']).toBe('1')
-    // Nested phases show exclusive time: render 100−300=−200, network 300−50=250,
-    // backend unchanged at 50.
-    expect(byLabel['Avg render time']).toBe('-200 ms')
-    expect(byLabel['Avg network time']).toBe('250 ms')
-    expect(byLabel['Avg backend time']).toBe('50 ms')
+    // One widget → each phase's p95 is just that widget's exclusive phase time
+    // (network 300−50=250, backend 50; render's exclusive time can go negative).
+    expect(byLabel['p95 render']).toBe('-200 ms')
+    expect(byLabel['p95 network']).toBe('250 ms')
+    expect(byLabel['p95 backend']).toBe('50 ms')
+    expect(byLabel['p95 total']).toBeDefined()
+  })
+
+  it('computes percentiles by linear interpolation, ignoring non-numbers', () => {
+    // rank = 0.95 * (5-1) = 3.8 → between 40 (idx 3) and 50 (idx 4): 40 + 10*0.8
+    expect(percentile([10, 20, 30, 40, 50], 0.95)).toBeCloseTo(48)
+    expect(percentile([50, 10, 30], 0.5)).toBe(30) // median, unsorted input
+    expect(percentile([100], 0.95)).toBe(100)      // single value
+    expect(percentile([], 0.95)).toBe('')          // nothing to rank
+    expect(percentile([5, 'x', null, 15], 1)).toBe(15) // skips non-finite
   })
 
   it('derives headers from row keys when the headers arg is empty', () => {
