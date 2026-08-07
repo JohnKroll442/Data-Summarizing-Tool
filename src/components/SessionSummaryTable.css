@@ -18,13 +18,13 @@
 }
 
 /* Filter dropdowns (Sessions / User / Duration / Columns / …) size to their
-   label so the full filter name stays readable, and only shrink (label
-   ellipsis) once the row would otherwise overflow. A slightly smaller font lets
-   more of them fit before any truncation kicks in. */
+   label and never shrink, so the full filter name always stays readable on
+   every view — the search field (below) is the one elastic element that
+   absorbs the slack. A slightly smaller font keeps them compact. */
 .summary-filters .multi-filter {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-  max-width: 14rem;
+  max-width: 16rem;
 }
 
 .summary-filters .multi-filter-trigger {
@@ -107,8 +107,8 @@
 }
 
 .summary-filter-search {
-  flex: 0 1 11rem;
-  min-width: 5rem;
+  flex: 1 1 8rem;
+  min-width: 4rem;
   font: inherit;
   font-size: var(--text-sm);
   padding: 0.4rem 0.65rem;
