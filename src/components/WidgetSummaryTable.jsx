@@ -8,6 +8,7 @@ import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import ColumnChooserMenu from './ColumnChooserMenu'
+import DurationFilterMenu from './DurationFilterMenu'
 import WidgetTimingModal from './WidgetTimingModal'
 import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByWidget } from '../lib/widgetAggregate'
@@ -26,6 +27,7 @@ import { sortRows } from '../lib/sortRows'
 import { rowsToCsv, downloadCsv, buildExportFilename } from '../lib/exportCsv'
 import { countActiveMultiFilters, facetedOptionsByColumn } from '../lib/multiFilter'
 import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelections } from '../lib/timeBuckets'
+import { matchesDurationFilter } from '../lib/durationFilter'
 import { filterAggRows, WIDGET_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
 import './SessionSummaryTable.css'
@@ -172,6 +174,8 @@ function WidgetSummaryTable({ rows, headers }) {
     })
   }, [widgetMultiFilter])
   const [sort, setSort] = useState(() => viewUi.widget.sort)
+  // Threshold filter for the Total column: { minMs, maxMs } or null.
+  const [durationFilter, setDurationFilter] = useState(() => viewUi.widget.durationFilter)
   // Which columns are hidden (display-only preference). The first column is
   // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
   const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.widget.hiddenColumns ?? [])
@@ -200,8 +204,8 @@ function WidgetSummaryTable({ rows, headers }) {
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('widget', { search, filters, sort, hiddenColumns })
-  }, [search, filters, sort, hiddenColumns, setViewUi])
+    setViewUi('widget', { search, filters, sort, durationFilter, hiddenColumns })
+  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
   // Clicking a widget name opens the per-widget timing modal. We store the
   // index of the selected widget within the filtered + sorted rows (null =
   // closed) so the modal's picker/arrows can flip through exactly the widgets
@@ -214,8 +218,9 @@ function WidgetSummaryTable({ rows, headers }) {
   const optionsByColumn = useMemo(
     () => facetedOptionsByColumn(summaryRows, FILTERABLE_COLUMNS, filters,
       (row) => matchesTimeFilter(row, WIDGET_TS, timeFilter)
-        && matchesTimeRange(row, WIDGET_TS, timelineRange)),
-    [summaryRows, filters, timeFilter, timelineRange],
+        && matchesTimeRange(row, WIDGET_TS, timelineRange)
+        && matchesDurationFilter(row, 'total', durationFilter)),
+    [summaryRows, filters, timeFilter, timelineRange, durationFilter],
   )
 
   // Rows the Time filter derives its buckets from — narrowed by the column
@@ -227,9 +232,11 @@ function WidgetSummaryTable({ rows, headers }) {
       timeFilter,
       timelineRange,
       filters,
+      durationKey: 'total',
+      durationFilter,
       search,
     }),
-    [summaryRows, search, filters, columns, timeFilter, timelineRange],
+    [summaryRows, search, filters, columns, timeFilter, timelineRange, durationFilter],
   )
 
   const sortedRows = useMemo(() => {
@@ -301,6 +308,7 @@ function WidgetSummaryTable({ rows, headers }) {
     (actionMultiFilter.length > 0 ? 1 : 0) +
     (hasTimeSelection(timeFilter) ? 1 : 0) +
     (timelineRange ? 1 : 0) +
+    (durationFilter ? 1 : 0) +
     (hiddenColumns.length > 0 ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
@@ -540,6 +548,11 @@ function WidgetSummaryTable({ rows, headers }) {
             />
           )
         })}
+        <DurationFilterMenu
+          label="Total duration"
+          value={durationFilter}
+          onChange={setDurationFilter}
+        />
         <ColumnChooserMenu
           columns={chooserColumns}
           hidden={hiddenColumns}
@@ -575,6 +588,7 @@ function WidgetSummaryTable({ rows, headers }) {
               setWidgetMultiFilter([])
               setWidgetFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
+              setDurationFilter(null)
               setHiddenColumns([])
               resetTimeline()
             }}

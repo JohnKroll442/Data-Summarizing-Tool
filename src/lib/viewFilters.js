@@ -223,16 +223,19 @@ export function computeSummaryScope(rows, headers, state) {
 /**
  * The effective duration threshold the Summary rankings should honor, gathered
  * from every view that carries one (Session's "Total action duration", Action's
- * "Action duration"; Widget View has no duration UI). Returns a single
- * `{ minMs, maxMs }` — the INTERSECTION of the active bounds (tightest lower and
- * upper), so an entity must satisfy every set threshold — or `null` when none is
- * active. Applied per-ranking against each entity's own ranked value, so a
- * "< 2 min" bound hides any widget/action whose displayed time exceeds 2 min and
- * a "> 2 min" bound surfaces exactly the long (ttfb/incomplete) ones.
+ * "Action duration", Widget's "Total"). Returns a single `{ minMs, maxMs }` —
+ * the INTERSECTION of the active bounds (tightest lower and upper), so an entity
+ * must satisfy every set threshold — or `null` when none is active. Applied
+ * per-ranking against each entity's own ranked value, so a "< 2 min" bound hides
+ * any widget/action whose displayed time exceeds 2 min and a "> 2 min" bound
+ * surfaces exactly the long (ttfb/incomplete) ones.
  */
 export function activeDurationBounds(state) {
-  const fs = [state?.viewUi?.session?.durationFilter, state?.viewUi?.action?.durationFilter]
-    .filter(Boolean)
+  const fs = [
+    state?.viewUi?.session?.durationFilter,
+    state?.viewUi?.action?.durationFilter,
+    state?.viewUi?.widget?.durationFilter,
+  ].filter(Boolean)
   let minMs = null
   let maxMs = null
   for (const f of fs) {

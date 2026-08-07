@@ -65,10 +65,11 @@ function SummaryView() {
     ],
   )
 
-  // The active duration threshold (from Session/Action View's duration filter)
-  // applies to the rankings by each entity's OWN value — so "< 2 min" hides
-  // long entities everywhere and "> 2 min" surfaces the long ttfb/incomplete
-  // ones — rather than by session membership (excluded from the scope above).
+  // The active duration threshold (from any view's duration filter —
+  // Session/Action/Widget) applies to the rankings by each entity's OWN value —
+  // so "< 2 min" hides long entities everywhere and "> 2 min" surfaces the long
+  // ttfb/incomplete ones — rather than by session membership (excluded from the
+  // scope above).
   const durationBounds = useMemo(
     () => activeDurationBounds({ viewUi }),
     [viewUi],
