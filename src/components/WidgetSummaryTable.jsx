@@ -300,7 +300,8 @@ function WidgetSummaryTable({ rows, headers }) {
     (sessionMultiFilter.length > 0 ? 1 : 0) +
     (actionMultiFilter.length > 0 ? 1 : 0) +
     (hasTimeSelection(timeFilter) ? 1 : 0) +
-    (timelineRange ? 1 : 0)
+    (timelineRange ? 1 : 0) +
+    (hiddenColumns.length > 0 ? 1 : 0)
 
   const unrecognizedMeasure = useMemo(() => {
     if (!mapping.measure) return null
@@ -574,6 +575,7 @@ function WidgetSummaryTable({ rows, headers }) {
               setWidgetMultiFilter([])
               setWidgetFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
+              setHiddenColumns([])
               resetTimeline()
             }}
           >

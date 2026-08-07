@@ -157,7 +157,7 @@ function SessionSummaryTable({ rows, headers }) {
 
   const activeFilterCount =
     countActiveMultiFilters(filters, search) + (hasTimeSelection(timeFilter) ? 1 : 0) +
-    (timelineRange ? 1 : 0) + (durationFilter ? 1 : 0)
+    (timelineRange ? 1 : 0) + (durationFilter ? 1 : 0) + (hiddenColumns.length > 0 ? 1 : 0)
 
   // Update a column's selected values, mirroring the Session column into the
   // shared multi-filter that Action View reads (matches the drill-down flow).
@@ -301,6 +301,7 @@ function SessionSummaryTable({ rows, headers }) {
               setSessionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
               setDurationFilter(null)
+              setHiddenColumns([])
               resetTimeline()
             }}
           >

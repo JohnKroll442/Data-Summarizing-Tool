@@ -206,7 +206,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     (hasTimeSelection(timeFilter) ? 1 : 0) +
     (timelineRange ? 1 : 0) +
     (actionInvocationFilter.length > 0 ? 1 : 0) +
-    (durationFilter ? 1 : 0)
+    (durationFilter ? 1 : 0) +
+    (hiddenColumns.length > 0 ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
   // but contains none of render/frontend/network/backend/offset, every phase
@@ -453,6 +454,7 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
               setActionFilterWindow(null)
               setTimeFilter(emptyTimeSelections())
               setDurationFilter(null)
+              setHiddenColumns([])
               resetTimeline()
             }}
           >
