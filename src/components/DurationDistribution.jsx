@@ -1,83 +1,16 @@
 import { useMemo } from 'react'
-import { SLOW_ACTION_MS } from '../lib/anomalyDetect'
 import { formatCount } from '../lib/format'
+import { bucketDurations, computeDurationBands } from '../lib/durationBands'
 import './DurationDistribution.css'
 
-/**
- * Fixed, semantic duration buckets for the Action view's distribution histogram.
- * Edges are the same round numbers a reader reasons in ("half a second", "five
- * seconds", "thirty seconds"), and the top edge (30s) is the slow_action cutoff
- * — so the ">30s" bar counts exactly the actions the slow_action flag counts.
- *
- * Each bucket is [min, max): min inclusive, max exclusive. The last bucket is
- * open-ended (max = Infinity) and tinted as the danger bucket.
- *
- * `tier` is a green/orange/red traffic light for at-a-glance health:
- *   good (green)  < 2s      — snappy
- *   okay (orange) 2s–30s    — noticeable but tolerable
- *   bad  (red)    ≥ 30s     — the slow_action bucket
- */
-export const DURATION_GOOD_MAX = 2000            // < 2s  → green
-export const DURATION_OKAY_MAX = SLOW_ACTION_MS  // < 30s → orange, else red
-
-export function durationTier(ms) {
-  const n = Number(ms)
-  if (!Number.isFinite(n)) return null
-  if (n < DURATION_GOOD_MAX) return 'good'
-  if (n < DURATION_OKAY_MAX) return 'okay'
-  return 'bad'
-}
-
-export const DURATION_BUCKETS = [
-  { key: 'lt0_5', label: '<0.5s',  min: 0,               max: 500 },
-  { key: '0_5_2', label: '0.5–2s', min: 500,             max: 2000 },
-  { key: '2_5',   label: '2–5s',   min: 2000,            max: 5000 },
-  { key: '5_10',  label: '5–10s',  min: 5000,            max: 10000 },
-  { key: '10_30', label: '10–30s', min: 10000,           max: SLOW_ACTION_MS },
-  { key: 'gt30',  label: '>30s',   min: SLOW_ACTION_MS,  max: Infinity, danger: true },
-].map((b) => ({ ...b, tier: durationTier(b.min) }))
-
-/**
- * The DURATION_BUCKETS key a single value lands in, or null for a blank /
- * non-finite value (which no bucket owns). This is the ONE place that decides
- * bucket membership — both the histogram tally below and the click-to-filter
- * predicate in the table go through it, so a bar's height always equals the
- * number of rows filtering to it selects.
- */
-export function bucketKeyOf(value) {
-  // Skip blanks before Number() — an empty string / null both coerce to a
-  // (finite) 0 and would otherwise masquerade as instant 0-duration actions.
-  if (value === '' || value === null || value === undefined) return null
-  const n = Number(value)
-  if (!Number.isFinite(n)) return null
-  // Below the first bucket's floor (e.g. a negative span) still lands in the
-  // first bucket so nothing is silently dropped.
-  const i = DURATION_BUCKETS.findIndex((b) => n < b.max)
-  return DURATION_BUCKETS[i === -1 ? DURATION_BUCKETS.length - 1 : i].key
-}
-
-/**
- * Tally each numeric value into DURATION_BUCKETS. Returns one entry per bucket
- * `{ key, label, min, max, danger?, count }` in bucket order. Non-finite values
- * (blank/unparseable durations) are skipped, not forced into a bucket.
- */
-export function bucketDurations(values) {
-  const out = DURATION_BUCKETS.map((b) => ({ ...b, count: 0 }))
-  const index = new Map(out.map((b, i) => [b.key, i]))
-  for (const v of values || []) {
-    const key = bucketKeyOf(v)
-    if (key === null) continue
-    out[index.get(key)].count++
-  }
-  return out
-}
 
 /**
  * Horizontal duration-distribution histogram for the Action view's left rail.
- * One bar per semantic bucket, colored green/orange/red by its `tier` so the
- * health of the distribution reads at a glance (green < 2s, orange 2–30s, red
- * ≥ 30s — the last bucket ties to the slow_action flag). `durations` is the
- * list of per-action `action_duration` values (ms) for the actions in scope.
+ * One bar per semantic bucket, colored on a 5-band green→red scale by its `tier`
+ * so the health of the distribution reads at a glance (green < 5s, grey 5–30s,
+ * yellow 30s–1m, orange 1–2m, red ≥ 2m — the last bucket ties to the slow_action
+ * flag). `durations` is the list of per-action `action_duration` values (ms) for
+ * the actions in scope.
  *
  * When `highlightDuration` is set (a single action is hovered), the histogram
  * collapses to just THAT action: its bucket fills, every other bucket reads 0 —
@@ -91,15 +24,24 @@ export function bucketDurations(values) {
  */
 function DurationDistribution({
   durations,
+  bands = null,
   highlightDuration = null,
   activeBucketKey = null,
   onSelectBucket,
 }) {
   const isHighlight = highlightDuration !== null && highlightDuration !== undefined
   const interactive = !isHighlight && typeof onSelectBucket === 'function'
+  // The band EDGES are the canonical set passed in (computed once over the full
+  // scope, so they stay put while the table filters); fall back to deriving them
+  // from `durations` when used standalone. Only the COUNTS reflect the visible /
+  // hovered set.
+  const activeBands = useMemo(
+    () => (bands && bands.length ? bands : computeDurationBands(durations)),
+    [bands, durations],
+  )
   const buckets = useMemo(
-    () => bucketDurations(isHighlight ? [highlightDuration] : durations),
-    [isHighlight, highlightDuration, durations],
+    () => bucketDurations(isHighlight ? [highlightDuration] : durations, activeBands),
+    [isHighlight, highlightDuration, durations, activeBands],
   )
   const total = buckets.reduce((n, b) => n + b.count, 0)
   const max = buckets.reduce((m, b) => (b.count > m ? b.count : m), 0)

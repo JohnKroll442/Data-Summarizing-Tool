@@ -8,24 +8,27 @@
  *
  * Every anomaly is a FIXED-THRESHOLD, eyeball-verifiable two-value comparison
  * (no black-box scores): the reader can locate both numbers in the raw data.
- * All eight types are performance flags (colored symbol + row tint):
+ * All types are performance flags (colored symbol + row tint):
  *
- *     slow_action        action_duration ≥ 30s
- *     first_paint        firstRender − ACTION_TIMESTAMP ≥ 20s
+ *     slow_action        action_duration ≥ 2m
+ *     large_offset       a widget's pre-render offset (wait) ≥ the dataset's terminal duration band (its lower edge)
  *     straggler          a widget ≥ 5× the action's median widget render (and ≥ 5s), ≥3 widgets
  *     frontend_bound     client render is > 50% of summed widget busy time (action ≥ 10s)
  *     network_bound      network ttfb is > 50% of summed widget busy time (action ≥ 10s)
  *     backend_bound      backend is > 50% of summed widget busy time (action ≥ 10s)
  *     fragmented         action ≥ 10s, ≥3 widgets, ≥50% of wall-clock unexplained by the slowest widget
  *     offset_overrun     a widget's offset (pre-render wait) exceeds the whole action duration (impossible timing)
+ *     negative_phase     an exclusive phase is negative even at its MAX across widgets — render−network or
+ *                        network−backend < 0 (an inner phase outran the one that should contain it)
+ *     component_overrun  a single widget's summed phases exceed the whole action duration (impossible timing)
  *
  * frontend/network/backend_bound are mutually exclusive: at most one fires per
  * action (the phase holding a majority of summed widget busy time). They are a
  * SUBCATEGORY — a lens on WHERE the busy time went — shown indented under a
- * sub-header in the panel, but like every other flag they DO count toward the
- * "any anomaly" total (an action carrying any flag is a flagged action).
- * fragmented says HOW MUCH wall-clock wasn't busy work at all (serialization /
- * scheduling / fan-out).
+ * sub-header in the panel, and they do NOT count toward the "any anomaly" total:
+ * an action flagged ONLY by a phase attribution isn't itself an anomaly (see
+ * isAnomalyFlagged). fragmented says HOW MUCH wall-clock wasn't busy work at all
+ * (serialization / scheduling / fan-out).
  *
  * Flagging ALL relationship anomalies lights up the majority of actions, which
  * defeats the purpose — so only the performance tier tints rows; the data tier
@@ -36,14 +39,13 @@
 
 import { actionEndDuration, actionRenderDuration } from './actionAggregate'
 import { detectSessionKey } from './drillDown'
+import { computeDurationBands } from './durationBands'
 import { stripUserPrefix } from './format'
 import { memoizeAggregate } from './memoize'
-import { parseStrictTimestamp } from './timeBuckets'
 import { detectWidgetMapping, measureMatches } from './widgetAggregate'
 
 /* ——— tunable thresholds (fixed, top-of-file so they're trivial to adjust) ——— */
-export const SLOW_ACTION_MS = 30000     // slow_action: total action duration
-export const FIRST_PAINT_MS = 20000     // first_paint: time to the first widget render
+export const SLOW_ACTION_MS = 120000    // slow_action: total action duration (≥ 2 min)
 export const STRAGGLER_RATIO = 5        // straggler: widget vs action-median multiple
 export const STRAGGLER_MIN_WIDGETS = 3  // straggler: don't judge a "median" of 1–2 widgets
 export const STRAGGLER_MIN_MS = 5000    // straggler: the slow widget must itself be ≥ 5s
@@ -54,7 +56,7 @@ export const OVERHEAD_SHARE = 0.5       // fragmented: unexplained share of wall
 export const OVERHEAD_MIN_WIDGETS = 3   // fragmented: need enough widgets to serialize
 
 /**
- * The eight anomaly types, in display order. Single source of truth driving
+ * The anomaly types, in display order. Single source of truth driving
  * the detector, the summary panel rows, the inline badge, and any legend. The
  * three phase-attribution types carry `subgroup: 'phase'` — the panel indents
  * them under a sub-header and they're excluded from the headline total.
@@ -73,15 +75,19 @@ export const ANOMALY_TYPES = [
     label: 'Slow action',
     icon: 'fob-watch',
     color: '#bb0000',
-    description: 'Action took ≥ 30s end-to-end.',
+    description: 'Action took ≥ 2m end-to-end.',
   },
   {
-    key: 'first_paint',
+    // Data-integrity-adjacent, but loud: a widget's pre-render offset (the wait
+    // before it starts rendering) was as long as the dataset's slowest actions —
+    // ≥ the lower edge of the terminal duration band (computeDurationBands),
+    // capped at 2m. Relative threshold, so it stays meaningful on any dataset.
+    key: 'large_offset',
     tier: 'performance',
-    label: 'Slow first paint',
+    label: 'Large offset',
     icon: 'history',
     color: '#e76500',
-    description: 'First widget rendered ≥ 20s after the action started.',
+    description: 'A widget waited (pre-render) as long as the slowest actions in view — ≥ the top duration band.',
   },
   {
     key: 'straggler',
@@ -133,15 +139,55 @@ export const ANOMALY_TYPES = [
     // (no subgroup) so it counts toward the headline total and is filterable.
     key: 'offset_overrun',
     tier: 'performance',
-    label: 'Impossible timing',
+    label: 'Offset > Duration',
     icon: 'alert',
     color: '#5b738b',
     description: 'A widget’s offset (pre-render wait) exceeds the whole action’s duration — the source timestamps are inconsistent.',
+  },
+  {
+    // Data-integrity: an exclusive phase is negative even at its MAX across the
+    // action's widgets — render−network or network−backend < 0 — so an inner
+    // phase measured LONGER than the phase that should contain it (phases nest:
+    // render ⊇ network ⊇ backend). Max-based, so every widget's slice is negative,
+    // not just one. Corrupts the busy-time math behind frontend/network_bound.
+    key: 'negative_phase',
+    tier: 'performance',
+    label: 'Negative phase',
+    icon: 'less',
+    color: '#5b738b',
+    description: 'An exclusive phase (render−network or network−backend) is negative for every widget — an inner phase outran the one that contains it.',
+  },
+  {
+    // Data-integrity: a single widget's summed phases (its total wall-clock)
+    // exceed the whole action's duration — impossible, since the widget runs
+    // inside the action. Signals inconsistent action-vs-widget timestamps.
+    key: 'component_overrun',
+    tier: 'performance',
+    label: 'Component overrun',
+    icon: 'overflow',
+    color: '#5b738b',
+    description: 'A widget’s summed phases exceed the whole action’s duration — the source timestamps are inconsistent.',
   },
 ]
 
 const TYPE_BY_KEY = new Map(ANOMALY_TYPES.map((t) => [t.key, t]))
 const tierOf = (key) => TYPE_BY_KEY.get(key)?.tier ?? 'performance'
+
+// The HEADLINE anomaly types — every type NOT in a subgroup. The phase-
+// attribution subgroup (frontend/network/backend-bound) is a lens on WHERE a
+// slow-ish action's time went, not an anomaly in itself, so it never adds an
+// action to the "Any anomaly" union.
+const HEADLINE_KEYS = new Set(ANOMALY_TYPES.filter((t) => !t.subgroup).map((t) => t.key))
+
+/**
+ * Whether an action counts toward the "Any anomaly" total. True iff it carries
+ * at least one HEADLINE flag — an action flagged ONLY by the phase-attribution
+ * subgroup is not itself an anomaly, so it doesn't. Shared by the detector, the
+ * panel re-tally, and the table's `__total__` filter so all three agree.
+ */
+export function isAnomalyFlagged(flags) {
+  return Array.isArray(flags) && flags.some((f) => HEADLINE_KEYS.has(f.type))
+}
 
 /**
  * Re-tally anomaly counts over an arbitrary SUBSET of actions — used to keep the
@@ -160,8 +206,10 @@ export function summarizeActionFlags(actionKeys, byActionKey) {
   for (const key of actionKeys || []) {
     const flags = byActionKey?.get(key)
     if (!flags || !flags.length) continue
-    totalFlagged++
     for (const f of flags) if (counts[f.type]) counts[f.type].actions++
+    // "Any anomaly" = actions with a HEADLINE flag; a phase-only action is
+    // counted in its phase row but not in the union (see isAnomalyFlagged).
+    if (isAnomalyFlagged(flags)) totalFlagged++
   }
 
   for (const key of Object.keys(counts)) {
@@ -242,6 +290,7 @@ function detectAnomaliesImpl(rows, headers) {
       counts: emptyCounts(),
       totalFlagged: { actions: 0, pct: 0 },
       totalActions: 0,
+      bands: computeDurationBands([]),
     }
   }
 
@@ -257,18 +306,35 @@ function detectAnomaliesImpl(rows, headers) {
   }
 
   const totalActions = groups.size
+
+  // Canonical duration bands over the FULL scope — the single source of truth
+  // shared by the histogram, the table's bucket filter, and the large_offset
+  // threshold. Computed once here (not per visible/filtered set) so the band
+  // edges — and thus the flags — stay stable regardless of table filtering.
+  const durationByKey = new Map()
+  for (const [actionKey, groupRows] of groups) {
+    durationByKey.set(actionKey, computeActionDuration(groupRows, mapping))
+  }
+  const bands = computeDurationBands([...durationByKey.values()])
+  // large_offset fires at the terminal band's lower edge (≤ 2m by construction).
+  const largeOffsetMs = bands[bands.length - 1].min
+
   const counts = emptyCounts()
   const byActionKey = new Map()
   const outRows = []
   let totalFlaggedActions = 0
 
   for (const [actionKey, groupRows] of groups) {
-    const flags = detectActionFlags(groupRows, mapping)
+    const flags = detectActionFlags(groupRows, mapping, largeOffsetMs)
     byActionKey.set(actionKey, flags)
     if (!flags.length) continue
 
-    totalFlaggedActions++
+    // Per-type counts include every flag (the panel shows the phase subgroup's
+    // own counts); the "Any anomaly" total counts an action only if it has a
+    // HEADLINE flag, so a phase-attribution-only action isn't in the union.
     for (const f of flags) counts[f.type].actions++
+    if (!isAnomalyFlagged(flags)) continue
+    totalFlaggedActions++
 
     const actionTs = mapping.actionTimestamp ? firstNonEmpty(groupRows, mapping.actionTimestamp) : ''
     outRows.push({
@@ -278,7 +344,7 @@ function detectAnomaliesImpl(rows, headers) {
       story_name: firstNonEmpty(groupRows, mapping.storyName),
       action_name: firstNonEmpty(groupRows, mapping.actionName),
       action_timestamp: actionTs,
-      action_duration: computeActionDuration(groupRows, mapping),
+      action_duration: durationByKey.get(actionKey),
       flags,
     })
   }
@@ -304,6 +370,7 @@ function detectAnomaliesImpl(rows, headers) {
       pct: totalActions ? totalFlaggedActions / totalActions : 0,
     },
     totalActions,
+    bands,
   }
 }
 
@@ -316,24 +383,14 @@ function detectAnomaliesImpl(rows, headers) {
  * come first (matching ANOMALY_TYPES order) so the badge renders loud symbols
  * ahead of quiet ones.
  */
-function detectActionFlags(groupRows, mapping) {
+function detectActionFlags(groupRows, mapping, largeOffsetMs = Infinity) {
   const flags = []
   const add = (type, value, detail) => flags.push({ type, tier: tierOf(type), value, detail })
 
-  // 1. slow_action — total action duration ≥ 30s.
+  // 1. slow_action — total action duration ≥ 2m.
   const duration = computeActionDuration(groupRows, mapping)
   if (Number.isFinite(duration) && duration >= SLOW_ACTION_MS) {
     add('slow_action', duration, `Action took ${fmtMs(duration)} (≥ ${fmtMs(SLOW_ACTION_MS)}).`)
-  }
-
-  // 2. first_paint — first widget render ≥ 20s after the action started.
-  const startMs = actionStartMs(groupRows, mapping)
-  const firstMs = firstRenderMs(groupRows, mapping)
-  if (startMs !== null && firstMs !== null) {
-    const gap = firstMs - startMs
-    if (gap >= FIRST_PAINT_MS) {
-      add('first_paint', gap, `First paint ${fmtMs(gap)} after start (≥ ${fmtMs(FIRST_PAINT_MS)}).`)
-    }
   }
 
   // Per-widget stats — the remaining rules compare values WITHIN a widget or a
@@ -409,17 +466,73 @@ function detectActionFlags(groupRows, mapping) {
     }
   }
 
-  // 5. offset_overrun — data-integrity: a single widget's offset (pre-render
-  // wait) can't exceed the whole action's duration, since the offset window is
-  // contained in the action. Compare MAX offset across widgets (one widget alone
-  // exceeding the total is proof), NOT the sum. When it trips, the action's
-  // timestamps are internally inconsistent and its durations can't be trusted.
+  // 5. Offset anomalies — both keyed off the MAX widget offset (pre-render wait;
+  // one widget alone is proof, so max not sum):
+  //   offset_overrun (data-integrity) — the offset exceeds the whole action's
+  //     duration, which is impossible (the offset window is contained in the
+  //     action), so the timestamps are internally inconsistent.
+  //   large_offset (magnitude) — the offset alone is ≥ the dataset's terminal
+  //     duration band (its lower edge, ≤ 2m): a widget waited as long as the
+  //     slowest actions before it even started rendering. Relative threshold, so
+  //     it stays meaningful across datasets.
   const offsets = widgets.map((w) => w.offset).filter(Number.isFinite)
-  if (offsets.length && Number.isFinite(duration)) {
+  if (offsets.length) {
     const maxOffset = Math.max(...offsets)
-    if (maxOffset > duration) {
+    if (Number.isFinite(duration) && maxOffset > duration) {
       add('offset_overrun', maxOffset,
         `Max widget offset ${fmtMs(maxOffset)} exceeds the ${fmtMs(duration)} action duration — timestamps are inconsistent.`)
+    }
+    if (maxOffset >= largeOffsetMs) {
+      add('large_offset', maxOffset,
+        `A widget waited ${fmtMs(maxOffset)} before rendering (≥ ${fmtMs(largeOffsetMs)}, the top duration band) — as long as the slowest actions.`)
+    }
+  }
+
+  // 6. negative_phase — data-integrity: an exclusive phase is negative even at
+  // its MAX across widgets. Phases nest (render ⊇ network ⊇ backend), so the
+  // exclusive slices are render−network (frontend) and network−backend. If the
+  // LARGEST such slice across the action's widgets is still < 0, an inner phase
+  // outran its container for every widget. Un-clamped (the *_bound block above
+  // clamps with Math.max(…,0); here the negative is exactly the signal).
+  let maxFrontendExcl = -Infinity
+  let maxNetworkExcl = -Infinity
+  for (const w of widgets) {
+    if (Number.isFinite(w.render)) {
+      const fe = w.render - (Number.isFinite(w.network) ? w.network : 0)
+      if (fe > maxFrontendExcl) maxFrontendExcl = fe
+    }
+    if (Number.isFinite(w.network)) {
+      const ne = w.network - (Number.isFinite(w.backend) ? w.backend : 0)
+      if (ne > maxNetworkExcl) maxNetworkExcl = ne
+    }
+  }
+  const negFrontend = maxFrontendExcl !== -Infinity && maxFrontendExcl < 0
+  const negNetwork = maxNetworkExcl !== -Infinity && maxNetworkExcl < 0
+  if (negFrontend || negNetwork) {
+    const worst = negFrontend ? maxFrontendExcl : maxNetworkExcl
+    const which = negFrontend ? 'frontend (render − network)' : 'network (network − backend)'
+    add('negative_phase', worst,
+      `Max exclusive ${which} is ${fmtMs(worst)} (< 0) — an inner phase outran the one that contains it.`)
+  }
+
+  // 7. component_overrun — data-integrity: a single widget's summed phases (its
+  // total wall-clock = the exclusive slices added back together) exceed the whole
+  // action's duration. A widget can't outlast the action that contains it, so the
+  // action-vs-widget timestamps are inconsistent. Compare the MAX widget total.
+  if (Number.isFinite(duration)) {
+    let maxWidgetTotalPhases = -Infinity
+    for (const w of widgets) {
+      const fe = Number.isFinite(w.render) ? w.render - (Number.isFinite(w.network) ? w.network : 0) : NaN
+      const ne = Number.isFinite(w.network) ? w.network - (Number.isFinite(w.backend) ? w.backend : 0) : NaN
+      const be = Number.isFinite(w.backend) ? w.backend : NaN
+      let total = 0
+      let any = false
+      for (const v of [fe, ne, be]) if (Number.isFinite(v)) { total += v; any = true }
+      if (any && total > maxWidgetTotalPhases) maxWidgetTotalPhases = total
+    }
+    if (maxWidgetTotalPhases !== -Infinity && maxWidgetTotalPhases > duration) {
+      add('component_overrun', maxWidgetTotalPhases,
+        `A widget’s phases total ${fmtMs(maxWidgetTotalPhases)}, exceeding the ${fmtMs(duration)} action duration — timestamps are inconsistent.`)
     }
   }
 
@@ -498,28 +611,6 @@ function computeActionDuration(groupRows, mapping) {
     return actionRenderDuration(groupRows, mapping.renderTimestamp, mapping.actionTimestamp)
   }
   return maxNumeric(groupRows, mapping.duration)
-}
-
-// Epoch-ms of the action's start (its ACTION_TIMESTAMP), or null.
-function actionStartMs(groupRows, mapping) {
-  if (!mapping.actionTimestamp) return null
-  for (const r of groupRows) {
-    const d = parseStrictTimestamp(r?.[mapping.actionTimestamp])
-    if (d) return d.getTime()
-  }
-  return null
-}
-
-// Epoch-ms of the EARLIEST widget render in the action (the first paint), or
-// null when there's no render-timestamp column / no parseable render.
-function firstRenderMs(groupRows, mapping) {
-  if (!mapping.renderTimestamp) return null
-  let min = Infinity
-  for (const r of groupRows) {
-    const d = parseStrictTimestamp(r?.[mapping.renderTimestamp])
-    if (d) { const t = d.getTime(); if (t < min) min = t }
-  }
-  return min === Infinity ? null : min
 }
 
 /* ——— small utilities ——— */

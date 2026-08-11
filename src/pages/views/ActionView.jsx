@@ -3,13 +3,14 @@ import ActionSummaryTable from '../../components/ActionSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallModal from '../../components/ActionWaterfallModal'
 import KpiStrip from '../../components/KpiStrip'
-import DurationDistribution, { DURATION_BUCKETS, bucketKeyOf } from '../../components/DurationDistribution'
+import DurationDistribution from '../../components/DurationDistribution'
 import AnomalySummaryPanel from '../../components/AnomalySummaryPanel'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 import { aggregateByAction } from '../../lib/actionAggregate'
 import { actionKpisFromAgg } from '../../lib/kpis'
+import { bucketKeyOf } from '../../lib/durationBands'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers } from '../../lib/anomalyDetect'
 import './ActionView.css'
 
@@ -52,6 +53,11 @@ function ActionView() {
     () => detectAnomalies(scopedRows, headers),
     [scopedRows, headers],
   )
+
+  // The canonical duration bands the detector computed over the full scope — the
+  // single source of truth shared by the histogram, the table's bucket filter,
+  // and the large_offset threshold. Edges stay stable while the table filters.
+  const bands = anomalies.bands
 
   // Column mapping for the KPI helper — a cache hit on the table's own
   // aggregateByAction(scopedRows, headers) call.
@@ -99,7 +105,7 @@ function ActionView() {
   }, [anomalyTypeFilter, durationBucket, setViewUi])
 
   const durationBucketFilter = durationBucket
-    ? DURATION_BUCKETS.find((b) => b.key === durationBucket) ?? null
+    ? bands.find((b) => b.key === durationBucket) ?? null
     : null
 
   // The visible action set narrowed to the selected duration bucket. This feeds
@@ -110,27 +116,20 @@ function ActionView() {
   const bucketedRows = useMemo(
     () =>
       durationBucket
-        ? filteredActionRows.filter((r) => bucketKeyOf(r.action_duration) === durationBucket)
+        ? filteredActionRows.filter((r) => bucketKeyOf(r.action_duration, bands) === durationBucket)
         : filteredActionRows,
-    [filteredActionRows, durationBucket],
+    [filteredActionRows, durationBucket, bands],
   )
 
   // Rail KPIs track the visible (filtered) action set, matching the old header
-  // strip. The ">30s actions" tile doubles as a one-click slow_action filter,
-  // tying the headline number to the panel row + table.
-  const kpis = useMemo(() => {
-    const base = actionKpisFromAgg(bucketedRows, mapping)
-    return base.map((k) =>
-      k.key === 'over_30s'
-        ? {
-            ...k,
-            onClick: () => selectAnomalyType('slow_action'),
-            active: anomalyTypeFilter === 'slow_action',
-            hint: 'Filter the table to actions ≥ 30s',
-          }
-        : k,
-    )
-  }, [bucketedRows, mapping, anomalyTypeFilter])
+  // strip. The ">30s actions" tile is a pure headline count: timeframe
+  // drill-down lives in the duration histogram (click a 30s–1m / 1–2m / >2m bar
+  // to filter the table to that band), so the tile no longer doubles as a filter
+  // — its ≥30s count and the slow_action anomaly (≥2m) are now different sets.
+  const kpis = useMemo(
+    () => actionKpisFromAgg(bucketedRows, mapping),
+    [bucketedRows, mapping],
+  )
 
   const durations = useMemo(
     () => filteredActionRows.map((r) => r.action_duration),
@@ -204,6 +203,7 @@ function ActionView() {
         <aside className="action-view__rail" aria-label="Action anomaly summary">
           <DurationDistribution
             durations={durations}
+            bands={bands}
             highlightDuration={hoveredDuration}
             activeBucketKey={durationBucket}
             onSelectBucket={selectDurationBucket}
@@ -231,6 +231,7 @@ function ActionView() {
             onClearAnomalyFilter={() => setAnomalyTypeFilter(null)}
             durationBucketFilter={durationBucketFilter}
             onClearDurationBucket={() => setDurationBucket(null)}
+            bands={bands}
             tierByType={tierByType}
           />
 

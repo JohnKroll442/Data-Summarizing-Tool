@@ -5,7 +5,6 @@ import {
   rankAnomalyTiers,
   ANOMALY_TYPES,
   SLOW_ACTION_MS,
-  FIRST_PAINT_MS,
 } from '../anomalyDetect'
 
 // Full-shape headers: action name + timestamps, widget id/measure/submeasure,
@@ -40,10 +39,10 @@ const flagsFor = (result, name = 'Open story', ts = T0) =>
 const typesOf = (flags) => flags.map((f) => f.type)
 
 describe('ANOMALY_TYPES config', () => {
-  it('has eight types, unique keys, valid tiers', () => {
-    expect(ANOMALY_TYPES).toHaveLength(8)
+  it('has ten types, unique keys, valid tiers', () => {
+    expect(ANOMALY_TYPES).toHaveLength(10)
     const keys = ANOMALY_TYPES.map((t) => t.key)
-    expect(new Set(keys).size).toBe(8)
+    expect(new Set(keys).size).toBe(10)
     for (const t of ANOMALY_TYPES) {
       expect(['performance', 'data']).toContain(t.tier)
       expect(typeof t.label).toBe('string')
@@ -55,7 +54,7 @@ describe('ANOMALY_TYPES config', () => {
   it('is all-performance, with the three phase flags in a "phase" subgroup', () => {
     const perf = ANOMALY_TYPES.filter((t) => t.tier === 'performance').map((t) => t.key)
     const data = ANOMALY_TYPES.filter((t) => t.tier === 'data').map((t) => t.key)
-    expect(perf).toEqual(['slow_action', 'first_paint', 'straggler', 'frontend_bound', 'network_bound', 'backend_bound', 'fragmented', 'offset_overrun'])
+    expect(perf).toEqual(['slow_action', 'large_offset', 'straggler', 'frontend_bound', 'network_bound', 'backend_bound', 'fragmented', 'offset_overrun', 'negative_phase', 'component_overrun'])
     expect(data).toEqual([])
     const phase = ANOMALY_TYPES.filter((t) => t.subgroup === 'phase').map((t) => t.key)
     expect(phase).toEqual(['frontend_bound', 'network_bound', 'backend_bound'])
@@ -78,43 +77,53 @@ describe('detectAnomalies — empty / missing columns', () => {
   })
 })
 
-describe('slow_action (≥ 30s end-to-end)', () => {
-  it('flags an action whose END − START ≥ 30s', () => {
-    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' })]
+describe('slow_action (≥ 2m end-to-end)', () => {
+  it('flags an action whose END − START ≥ 2m', () => {
+    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:02:05.000' })]
     const r = detectAnomalies(rows, HEADERS)
     expect(typesOf(flagsFor(r))).toContain('slow_action')
-    expect(r.rows[0].action_duration).toBe(35000)
+    expect(r.rows[0].action_duration).toBe(125000)
   })
 
-  it('does not flag an action just under 30s', () => {
-    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:29.000' })]
+  it('does not flag an action just under 2m', () => {
+    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:01:55.000' })]
     const r = detectAnomalies(rows, HEADERS)
     expect(typesOf(flagsFor(r))).not.toContain('slow_action')
-    expect(SLOW_ACTION_MS).toBe(30000)
+    expect(SLOW_ACTION_MS).toBe(120000)
   })
 })
 
-describe('first_paint (first render ≥ 20s after start)', () => {
-  it('flags a slow first paint', () => {
-    const rows = [row({ WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:21.000' })]
-    const r = detectAnomalies(rows, HEADERS)
-    expect(typesOf(flagsFor(r))).toContain('first_paint')
+describe('large_offset (widget offset ≥ the terminal duration band)', () => {
+  // A dataset containing a ≥2m action forces the terminal band to the 2m ceiling
+  // (`>2m`, min = 120000), so the large_offset threshold is a known 120000.
+  const anchor = row({ USER_ACTION: 'Anchor', ACTION_TIMESTAMP_END: '2026-07-01 10:02:05.000' })
+
+  it('exposes the canonical bands the detector computed', () => {
+    const r = detectAnomalies([anchor], HEADERS)
+    expect(Array.isArray(r.bands)).toBe(true)
+    expect(r.bands.length).toBeGreaterThan(0)
   })
 
-  it('does not flag a fast first paint', () => {
-    const rows = [row({ WIDGET_RENDER_TIMESTAMP: '2026-07-01 10:00:19.000' })]
+  it('flags a widget whose offset ≥ the terminal band lower edge', () => {
+    // A long (5m) action so the 130s offset stays under its duration (no
+    // offset_overrun), but 130000 ≥ the 120000 terminal-band edge.
+    const rows = [
+      anchor,
+      row({ USER_ACTION: 'Big', ACTION_TIMESTAMP_END: '2026-07-01 10:05:00.000', WIDGET_MEASURE: 'offset', DURATION: 130000 }),
+    ]
     const r = detectAnomalies(rows, HEADERS)
-    expect(typesOf(flagsFor(r))).not.toContain('first_paint')
-    expect(FIRST_PAINT_MS).toBe(20000)
+    expect(r.bands[r.bands.length - 1].min).toBe(120000)
+    expect(typesOf(flagsFor(r, 'Big'))).toContain('large_offset')
+    expect(typesOf(flagsFor(r, 'Big'))).not.toContain('offset_overrun')
   })
 
-  it('a "ttfb" sentinel render never reads as a first paint', () => {
-    const rows = [row({
-      WIDGET_RENDER_TIMESTAMP: 'ttfb',
-      WIDGET_RENDER_TIMESTAMP_START: 'ttfb',
-    })]
+  it('does not flag a widget whose offset is below the terminal edge', () => {
+    const rows = [
+      anchor,
+      row({ USER_ACTION: 'Small', ACTION_TIMESTAMP_END: '2026-07-01 10:05:00.000', WIDGET_MEASURE: 'offset', DURATION: 100000 }),
+    ]
     const r = detectAnomalies(rows, HEADERS)
-    expect(flagsFor(r)).toEqual([])
+    expect(typesOf(flagsFor(r, 'Small'))).not.toContain('large_offset')
   })
 })
 
@@ -161,8 +170,8 @@ describe('straggler (a widget ≥ 5× the action median and ≥ 5s, ≥3 widgets
 
 describe('phase attribution (*_bound, action ≥ 10s, phase > 50% of busy time)', () => {
   // A 15s action (via END − START) so the ≥10s attribution gate is open but the
-  // 30s slow_action gate stays shut. One widget, no render timestamp → no
-  // first_paint / straggler noise, so the sole flag is the attribution one.
+  // 30s slow_action gate stays shut. One widget, no straggler peers → no
+  // straggler noise, so the sole flag is the attribution one.
   const slow = { ACTION_TIMESTAMP_END: '2026-07-01 10:00:15.000' }
 
   it('flags frontend_bound when client render dominates busy time', () => {
@@ -258,7 +267,7 @@ describe('offset_overrun (a widget offset exceeds the whole action duration)', (
       row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'offset', DURATION: 8000 }),
     ]
     const r = detectAnomalies(rows, HEADERS)
-    expect(typesOf(flagsFor(r))).toEqual(['offset_overrun'])
+    expect(typesOf(flagsFor(r))).toContain('offset_overrun')
     expect(r.rows[0].flags.find((f) => f.type === 'offset_overrun').value).toBe(8000)
   })
 
@@ -299,22 +308,80 @@ describe('offset_overrun (a widget offset exceeds the whole action duration)', (
   })
 })
 
+describe('negative_phase (max exclusive phase < 0 across all widgets)', () => {
+  it('flags when the max exclusive frontend (render − network) is negative', () => {
+    // 5s action (no attribution/slow noise); one widget with network > render, so
+    // its exclusive frontend slice is −200ms and — with only one widget — that IS
+    // the max across the action.
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 300 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 500 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).toContain('negative_phase')
+    expect(flagsFor(r).find((f) => f.type === 'negative_phase').value).toBe(-200)
+  })
+
+  it('does not flag when only SOME widgets are negative but the max is positive', () => {
+    // w1 is negative (render 300 < network 500 → −200) but w2 is strongly positive
+    // (render 1000 − network 200 → 800). Max-based, so 800 > 0 → no flag.
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 300 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 500 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w2', WIDGET_MEASURE: 'render', DURATION: 1000 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w2', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 200 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).not.toContain('negative_phase')
+  })
+
+  it('does not flag a well-ordered nesting (render ⊇ network ⊇ backend)', () => {
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 600 }),
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'backend', DURATION: 300 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).not.toContain('negative_phase')
+  })
+})
+
+describe('component_overrun (a widget’s summed phases exceed the action duration)', () => {
+  it('flags when a single widget’s phases total more than the whole action', () => {
+    // 5s action but a widget whose render alone is 8s → its phases total 8s > 5s.
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 8000 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).toContain('component_overrun')
+    expect(flagsFor(r).find((f) => f.type === 'component_overrun').value).toBe(8000)
+  })
+
+  it('does not flag when the widget’s phases fit within the action duration', () => {
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:05.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 3000 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).not.toContain('component_overrun')
+  })
+})
+
 describe('aggregation across an action & the whole view', () => {
   it('collects multiple flags into one action, in ANOMALY_TYPES order', () => {
     const rows = [
-      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 300, ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' }),
-      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 500, ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' }),
+      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000, ACTION_TIMESTAMP_END: '2026-07-01 10:02:35.000' }),
+      row({ WIDGET_ID: 'w1', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 900, ACTION_TIMESTAMP_END: '2026-07-01 10:02:35.000' }),
     ]
     const r = detectAnomalies(rows, HEADERS)
     const flags = flagsFor(r)
-    // 35s → slow_action; ≥10s + ttfb-dominated busy time → network_bound.
+    // 155s → slow_action; ≥10s + ttfb-dominated busy time → network_bound.
     expect(typesOf(flags)).toEqual(['slow_action', 'network_bound'])
     expect(flags.every((f) => f.tier === 'performance')).toBe(true)
   })
 
   it('computes per-type counts, percentages and the any-flag total', () => {
     const rows = [
-      row({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' }),
+      row({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:02:35.000' }),
       row({ USER_ACTION: 'B', ACTION_TIMESTAMP: '2026-07-01 11:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 11:00:01.000' }),
       row({ USER_ACTION: 'C', ACTION_TIMESTAMP: '2026-07-01 12:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 12:00:01.000' }),
       row({ USER_ACTION: 'D', ACTION_TIMESTAMP: '2026-07-01 13:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 13:00:01.000' }),
@@ -327,19 +394,33 @@ describe('aggregation across an action & the whole view', () => {
     expect(r.rows[0].action_name).toBe('A')
   })
 
+  it('excludes a phase-attribution-only action from the any-flag total', () => {
+    // A 12s single-widget action dominated by frontend render fires only
+    // frontend_bound. It's counted in the Frontend row but is NOT an anomaly, so
+    // it stays out of the "any anomaly" union and the findings list.
+    const rows = [
+      row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:12.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000 }),
+    ]
+    const r = detectAnomalies(rows, HEADERS)
+    expect(typesOf(flagsFor(r))).toEqual(['frontend_bound'])
+    expect(r.counts.frontend_bound.actions).toBe(1)
+    expect(r.totalFlagged).toEqual({ actions: 0, pct: 0 })
+    expect(r.rows).toEqual([]) // no headline flag → not a finding
+  })
+
   it('sorts findings so the most-flagged actions surface first', () => {
     const rows = [
       // lighter: a 12s single-widget action → frontend_bound only (one flag)
       row({ USER_ACTION: 'Light', ACTION_TIMESTAMP: '2026-07-01 09:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 09:00:12.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000 }),
-      // heavier: a 40s single-widget action → slow_action + frontend_bound
-      row({ USER_ACTION: 'Heavy', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:00:40.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000 }),
+      // heavier: a 160s single-widget action → slow_action + frontend_bound
+      row({ USER_ACTION: 'Heavy', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:02:40.000', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 1000 }),
     ]
     const r = detectAnomalies(rows, HEADERS)
     expect(r.rows[0].action_name).toBe('Heavy')
   })
 
   it('strips the user prefix on finding rows', () => {
-    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' })]
+    const rows = [row({ ACTION_TIMESTAMP_END: '2026-07-01 10:02:35.000' })]
     const r = detectAnomalies(rows, HEADERS)
     expect(r.rows[0].user).toBe('alice')
   })
@@ -348,9 +429,9 @@ describe('aggregation across an action & the whole view', () => {
 describe('summarizeActionFlags — re-tally over a visible subset', () => {
   // One slow action (A), one clean action (B), one out-of-view action (C).
   const rows = [
-    row({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:00:35.000' }),
+    row({ USER_ACTION: 'A', ACTION_TIMESTAMP: '2026-07-01 10:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 10:02:35.000' }),
     row({ USER_ACTION: 'B', ACTION_TIMESTAMP: '2026-07-01 11:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 11:00:01.000' }),
-    row({ USER_ACTION: 'C', ACTION_TIMESTAMP: '2026-07-01 12:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 12:00:40.000' }),
+    row({ USER_ACTION: 'C', ACTION_TIMESTAMP: '2026-07-01 12:00:00.000', ACTION_TIMESTAMP_END: '2026-07-01 12:02:40.000' }),
   ]
   const full = detectAnomalies(rows, HEADERS)
 
@@ -370,16 +451,33 @@ describe('summarizeActionFlags — re-tally over a visible subset', () => {
     for (const t of ANOMALY_TYPES) expect(s.counts[t.key]).toEqual({ actions: 0, pct: 0 })
   })
 
-  it('counts a phase-only action toward the any-flag total', () => {
-    // An action whose only flag is a phase attribution (no headline flag) still
-    // counts as flagged — "any anomaly" is any flagged action.
+  it('excludes a phase-only action from the any-flag total', () => {
+    // An action whose ONLY flag is a phase attribution is a lens on where its
+    // time went, not an anomaly — so it counts in the phase row but NOT toward
+    // the "any anomaly" union.
     const byActionKey = new Map([
       ['P::t', [{ type: 'frontend_bound', tier: 'performance', value: 60, detail: '' }]],
       ['B::t', []],
     ])
     const s = summarizeActionFlags(['P::t', 'B::t'], byActionKey)
     expect(s.totalActions).toBe(2)
+    expect(s.totalFlagged).toEqual({ actions: 0, pct: 0 })
+    expect(s.counts.frontend_bound).toEqual({ actions: 1, pct: 0.5 })
+  })
+
+  it('counts an action toward the total when it also carries a headline flag', () => {
+    // slow_action (headline) + frontend_bound (phase) → the action is in the
+    // union; the phase flag just adds context.
+    const byActionKey = new Map([
+      ['P::t', [
+        { type: 'slow_action', tier: 'performance', value: 130000, detail: '' },
+        { type: 'frontend_bound', tier: 'performance', value: 60, detail: '' },
+      ]],
+      ['B::t', []],
+    ])
+    const s = summarizeActionFlags(['P::t', 'B::t'], byActionKey)
     expect(s.totalFlagged).toEqual({ actions: 1, pct: 0.5 })
+    expect(s.counts.slow_action).toEqual({ actions: 1, pct: 0.5 })
     expect(s.counts.frontend_bound).toEqual({ actions: 1, pct: 0.5 })
   })
 })
@@ -410,16 +508,16 @@ describe('rankAnomalyTiers — T1/T2/T3 by prevalence', () => {
   })
 
   it('only ranks types that flagged an action (zero-count types get no tier)', () => {
-    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.5, first_paint: 0.2 }))
+    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.5, large_offset: 0.2 }))
     expect(tiers.has('straggler')).toBe(false) // absent → no badge
     expect(tiers.get('slow_action')).toBe(1)
   })
 
   it('gives equal percentages the same tier', () => {
     // Two types tie for the top share; the lower one falls to the next band.
-    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.4, first_paint: 0.4, straggler: 0.1 }))
+    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.4, large_offset: 0.4, straggler: 0.1 }))
     expect(tiers.get('slow_action')).toBe(1)
-    expect(tiers.get('first_paint')).toBe(1)
+    expect(tiers.get('large_offset')).toBe(1)
     // Two DISTINCT percentages → the lower lands in T2 (floor(1*3/2)+1).
     expect(tiers.get('straggler')).toBe(2)
   })
@@ -432,9 +530,9 @@ describe('rankAnomalyTiers — T1/T2/T3 by prevalence', () => {
   })
 
   it('puts every present type in T1 when they all share one percentage', () => {
-    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.3, first_paint: 0.3 }))
+    const tiers = rankAnomalyTiers(mkCounts({ slow_action: 0.3, large_offset: 0.3 }))
     expect(tiers.get('slow_action')).toBe(1)
-    expect(tiers.get('first_paint')).toBe(1)
+    expect(tiers.get('large_offset')).toBe(1)
   })
 
   it('never tiers the phase-attribution subcategory, even when it is most prevalent', () => {

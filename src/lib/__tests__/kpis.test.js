@@ -48,7 +48,7 @@ describe('computeKpis', () => {
     }
   })
 
-  it('produces the expected action KPI labels and slowest-action string', () => {
+  it('produces the expected action KPI labels', () => {
     const rows = [
       { USER_NAME: 'a', USER_ACTION: 'Fast', ACTION_TIMESTAMP: 't1', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 50 },
       { USER_NAME: 'a', USER_ACTION: 'Slow', ACTION_TIMESTAMP: 't2', WIDGET_ID: 'w1', WIDGET_MEASURE: 'render', DURATION: 900 },
@@ -56,11 +56,8 @@ describe('computeKpis', () => {
     const kpis = computeKpis('action', rows, ACTION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
       'Total actions', 'Unique names', '>30s actions',
-      'Median duration', 'p90 duration', 'p95 action duration', 'Slowest action',
+      'Median duration', 'p90 duration', 'p95 action duration',
     ])
-    const slowest = kpis.find((k) => k.label === 'Slowest action')
-    expect(slowest.value).toContain('Slow')
-    expect(slowest.value).toContain('900 ms')
   })
 
   it('reports median, p90 and the >30s-action count as count + share', () => {

@@ -11,9 +11,9 @@ import ColumnChooserMenu from './ColumnChooserMenu'
 import DurationFilterMenu from './DurationFilterMenu'
 import PhaseHoverCell from './PhaseHoverCell'
 import TierBadge from './TierBadge'
-import { bucketKeyOf } from './DurationDistribution'
+import { bucketKeyOf } from '../lib/durationBands'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
-import { ANOMALY_TYPES } from '../lib/anomalyDetect'
+import { ANOMALY_TYPES, isAnomalyFlagged } from '../lib/anomalyDetect'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
 import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
@@ -52,6 +52,7 @@ function ActionSummaryTable({
   onClearAnomalyFilter,
   durationBucketFilter = null,
   onClearDurationBucket,
+  bands = null,
   tierByType = null,
 }) {
   const navigate = useNavigate()
@@ -200,20 +201,20 @@ function ActionSummaryTable({
   const anomalyFilteredRows = useMemo(() => {
     if (!byActionKey) return visibleRows
     let base = visibleRows
-    // Hide-anomalies toggle: drop every flagged action, leaving clean ones.
+    // Hide-anomalies toggle: drop the any-anomaly set — actions with a HEADLINE
+    // flag — so the number hidden equals the panel's "Any anomaly" total. A
+    // phase-attribution-only action isn't an anomaly, so it stays visible.
     if (!showAnomalies) {
-      base = base.filter((row) => {
-        const flags = byActionKey.get(actionKey(row))
-        return !flags || flags.length === 0
-      })
+      base = base.filter((row) => !isAnomalyFlagged(byActionKey.get(actionKey(row))))
     }
     if (!anomalyTypeFilter) return base
     return base.filter((row) => {
       const flags = byActionKey.get(actionKey(row))
       if (!flags || flags.length === 0) return false
-      // '__total__' is the any-flag union — every flagged action, matching the
-      // panel's "Any anomaly" total (which also counts any flagged action).
-      if (anomalyTypeFilter === '__total__') return true
+      // '__total__' is the any-anomaly union — actions carrying a HEADLINE flag,
+      // matching the panel's "Any anomaly" total (a phase-attribution-only action
+      // isn't in the union, see isAnomalyFlagged).
+      if (anomalyTypeFilter === '__total__') return isAnomalyFlagged(flags)
       return flags.some((f) => f.type === anomalyTypeFilter)
     })
   }, [visibleRows, anomalyTypeFilter, byActionKey, showAnomalies])
@@ -233,9 +234,9 @@ function ActionSummaryTable({
   const displayRows = useMemo(() => {
     if (!durationBucketFilter) return sortedRows
     return sortedRows.filter(
-      (r) => bucketKeyOf(r.action_duration) === durationBucketFilter.key,
+      (r) => bucketKeyOf(r.action_duration, bands) === durationBucketFilter.key,
     )
-  }, [sortedRows, durationBucketFilter])
+  }, [sortedRows, durationBucketFilter, bands])
 
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
     usePagination(displayRows)

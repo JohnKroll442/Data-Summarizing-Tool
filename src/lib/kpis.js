@@ -1,10 +1,15 @@
 import { aggregateBySession } from './sessionAggregate'
 import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
-import { SLOW_ACTION_MS } from './anomalyDetect'
 import { formatCount, formatDurationMs } from './format'
 
 const MISSING = '—'
+
+// ">30s actions" KPI cutoff — a fixed 30s reference kept independent of the
+// slow_action anomaly threshold (which is 2m). The two answer different
+// questions: "how many actions are noticeably slow" vs "which are anomalously
+// slow", so they must not move together.
+const OVER_ACTION_MS = 30000
 
 /**
  * Compute KPI cards for a given view variant. Returns an array of
@@ -92,26 +97,16 @@ export function actionKpisFromAgg(agg, mapping) {
   const p90Duration = percentile(durations, 0.9)
   const p95Duration = percentile(durations, 0.95)
 
-  // ">30s actions" — how many actions crossed the slow_action threshold (the
-  // same 30s cutoff the anomaly detector uses), as a count + share of all
-  // actions. Ties the headline number to the slow_action flag / panel row.
+  // ">30s actions" — how many actions crossed a fixed 30s "noticeably slow"
+  // cutoff, as a count + share of all actions. Independent of the slow_action
+  // anomaly flag (which fires at 2m); this is a broader health headline.
   const over30 = durations.reduce((n, v) => {
     const d = Number(v)
-    return Number.isFinite(d) && d >= SLOW_ACTION_MS ? n + 1 : n
+    return Number.isFinite(d) && d >= OVER_ACTION_MS ? n + 1 : n
   }, 0)
   const over30Value = agg.length
     ? `${formatCount(over30)} (${Math.round((over30 / agg.length) * 100)}%)`
     : MISSING
-
-  const perAction = agg.map((r) => ({
-    name: r.action_name,
-    total: maxOfValues([r.max_frontend, r.max_network, r.max_backend]),
-  })).filter((r) => Number.isFinite(r.total))
-  let slowest = ''
-  if (perAction.length) {
-    const top = perAction.reduce((a, b) => (b.total > a.total ? b : a))
-    slowest = `${top.name || MISSING} · ${formatDurationMs(top.total)}`
-  }
 
   return [
     { key: 'total_actions',   label: 'Total actions',       value: fmt(totalActions, formatCount) },
@@ -120,7 +115,6 @@ export function actionKpisFromAgg(agg, mapping) {
     { key: 'median_duration', label: 'Median duration',      value: fmt(medianDuration, formatDurationMs) },
     { key: 'p90_duration',    label: 'p90 duration',         value: fmt(p90Duration, formatDurationMs) },
     { key: 'p95_duration',    label: 'p95 action duration',  value: fmt(p95Duration, formatDurationMs) },
-    { key: 'slowest_action',  label: 'Slowest action',       value: slowest || MISSING },
   ]
 }
 
@@ -201,13 +195,4 @@ function maxOf(values) {
     if (Number.isFinite(n)) { if (n > max) max = n; found = true }
   }
   return found ? max : ''
-}
-
-function maxOfValues(values) {
-  let max = -Infinity
-  for (const v of values) {
-    const n = Number(v)
-    if (Number.isFinite(n) && n > max) max = n
-  }
-  return max === -Infinity ? '' : max
 }
