@@ -63,15 +63,23 @@ function KpiValue({ value }) {
  * `onClick` (with optional `active` for the pressed state and `hint` for the
  * tooltip) — used by the Widget view to turn each p95 card into a one-click
  * "isolate this phase's slow tail" filter.
+ *
+ * `columns` pins the grid to that many equal columns, keeping every card on a
+ * single row regardless of count (used by the Action view's 7-KPI header strip).
+ * When omitted, the responsive CSS grid (4-up → 2-up → 1-up) applies. Values
+ * still auto-shrink to fit, so a one-row strip stays legible as it narrows.
  */
-function KpiStrip({ variant, rows, headers, kpis: kpisProp }) {
+function KpiStrip({ variant, rows, headers, kpis: kpisProp, columns }) {
   const kpis = useMemo(
     () => (kpisProp !== undefined ? kpisProp : computeKpis(variant, rows, headers)),
     [kpisProp, variant, rows, headers],
   )
   if (!kpis) return null
+  const style = columns
+    ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
+    : undefined
   return (
-    <div className="kpi-strip" role="group" aria-label={`${variant} KPIs`}>
+    <div className="kpi-strip" role="group" aria-label={`${variant} KPIs`} style={style}>
       {kpis.map((k) => {
         const clickable = typeof k.onClick === 'function'
         const inner = (

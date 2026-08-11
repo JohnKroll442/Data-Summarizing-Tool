@@ -81,12 +81,13 @@ function aggregateBySessionImpl(rows, headers) {
       neverEnded && laterStamp(latestStamp, rawEnd)
         ? latestStamp
         : rawEnd
-    // Per-action render-durations (MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP
-    // per action) when the CSV carries a render-timestamp column, so Session
-    // View's total/max match Action View's new `action_duration`. Falls back to
-    // the DURATION-based per-action max when there's no render-timestamp column.
-    const renderDurations = mapping.renderTimestamp
-      ? actionRenderDurations(groupRows, mapping.renderTimestamp, mapping.actionTimestamp, mapping.actionName)
+    // Per-action durations (preferring ACTION_TIMESTAMP_END − ACTION_TIMESTAMP,
+    // else MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP) when the CSV carries
+    // either timestamp column, so Session View's total/max match Action View's
+    // `action_duration`. Falls back to the DURATION-based per-action max when
+    // the CSV has neither an end nor a render-timestamp column.
+    const renderDurations = (mapping.renderTimestamp || mapping.actionTimestampEnd)
+      ? actionRenderDurations(groupRows, mapping.renderTimestamp, mapping.actionTimestamp, mapping.actionName, mapping.actionTimestampEnd)
       : null
     outRows.push({
       session: sessionId,
@@ -326,6 +327,13 @@ function detectMapping(headers, rows) {
       ['actiontimestamp'],
       ['actiontimestamp'],
       (h) => norm(h).includes('end'),
+    ),
+    // ACTION_TIMESTAMP_END — real action-completion cell. When present, the
+    // per-action durations Session View sums/maxes are measured END − START
+    // from it (matching Action View's preferred `action_duration`).
+    actionTimestampEnd: find(
+      ['actiontimestampend'],
+      ['actiontimestampend'],
     ),
     // Render END timestamp — the latest of these across an action's widgets,
     // minus ACTION_TIMESTAMP, is the per-action duration (see actionAggregate).

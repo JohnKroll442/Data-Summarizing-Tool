@@ -1,6 +1,7 @@
 import { aggregateBySession } from './sessionAggregate'
 import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
+import { SLOW_ACTION_MS } from './anomalyDetect'
 import { formatCount, formatDurationMs } from './format'
 
 const MISSING = '—'
@@ -81,11 +82,26 @@ export function actionKpisFromAgg(agg, mapping) {
   const totalActions = mapping.actionName ? agg.length : ''
   const uniqueNames = mapping.actionName ? distinct(agg.map((r) => r.action_name)) : ''
 
-  // p95 of action_duration — the action's real wall-clock span (action start →
-  // last render end), so offset and all widget phases are included. More accurate
-  // than max(frontend, network, backend) which ignores offset and only reflects
-  // the largest single widget phase slice.
-  const p95Duration = percentile(agg.map((r) => r.action_duration), 0.95)
+  const durations = agg.map((r) => r.action_duration)
+
+  // Median (p50) and p90 sit alongside p95: the median is the typical action,
+  // p90/p95 mark where the slow tail begins. All three cover the action's real
+  // wall-clock span (action start → last render end), so offset and every widget
+  // phase are included.
+  const medianDuration = percentile(durations, 0.5)
+  const p90Duration = percentile(durations, 0.9)
+  const p95Duration = percentile(durations, 0.95)
+
+  // ">30s actions" — how many actions crossed the slow_action threshold (the
+  // same 30s cutoff the anomaly detector uses), as a count + share of all
+  // actions. Ties the headline number to the slow_action flag / panel row.
+  const over30 = durations.reduce((n, v) => {
+    const d = Number(v)
+    return Number.isFinite(d) && d >= SLOW_ACTION_MS ? n + 1 : n
+  }, 0)
+  const over30Value = agg.length
+    ? `${formatCount(over30)} (${Math.round((over30 / agg.length) * 100)}%)`
+    : MISSING
 
   const perAction = agg.map((r) => ({
     name: r.action_name,
@@ -98,10 +114,13 @@ export function actionKpisFromAgg(agg, mapping) {
   }
 
   return [
-    { label: 'Total actions',       value: fmt(totalActions, formatCount) },
-    { label: 'Unique names',        value: fmt(uniqueNames, formatCount) },
-    { label: 'p95 action duration', value: fmt(p95Duration, formatDurationMs) },
-    { label: 'Slowest action',      value: slowest || MISSING },
+    { key: 'total_actions',   label: 'Total actions',       value: fmt(totalActions, formatCount) },
+    { key: 'unique_names',    label: 'Unique names',         value: fmt(uniqueNames, formatCount) },
+    { key: 'over_30s',        label: '>30s actions',         value: over30Value },
+    { key: 'median_duration', label: 'Median duration',      value: fmt(medianDuration, formatDurationMs) },
+    { key: 'p90_duration',    label: 'p90 duration',         value: fmt(p90Duration, formatDurationMs) },
+    { key: 'p95_duration',    label: 'p95 action duration',  value: fmt(p95Duration, formatDurationMs) },
+    { key: 'slowest_action',  label: 'Slowest action',       value: slowest || MISSING },
   ]
 }
 

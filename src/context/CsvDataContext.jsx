@@ -55,7 +55,7 @@ const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
 function makeEmptyViewUi() {
   return {
     session: { search: '', filters: {}, sort: { key: 'total_action_duration', dir: 'desc' }, durationFilter: null, hiddenColumns: [] },
-    action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' }, durationFilter: null, hiddenColumns: [] },
+    action: { search: '', filters: {}, sort: { key: 'action_duration', dir: 'desc' }, durationFilter: null, anomalyTypeFilter: null, durationBucket: null, showAnomalies: true, hiddenColumns: [] },
     widget: { search: '', filters: {}, sort: { key: 'render', dir: 'desc' }, durationFilter: null, renderFilter: null, networkFilter: null, backendFilter: null, hiddenColumns: [] },
   }
 }

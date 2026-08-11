@@ -236,4 +236,51 @@ describe('aggregateByAction', () => {
     expect(mapping.duration).toBe('')
     expect(out[0].action_duration).toBe('')
   })
+
+  // ACTION_TIMESTAMP_END is the real, findable moment the action finished. When
+  // the column exists, _action_end is that raw cell and action_duration is
+  // END − START — both endpoints locatable in the raw data.
+  it('uses ACTION_TIMESTAMP_END for _action_end and END − START for the duration', () => {
+    const headers = [...HEADERS, 'WIDGET_RENDER_TIMESTAMP', 'ACTION_TIMESTAMP_END']
+    const rows = [
+      row({ ACTION_TIMESTAMP: '2026-07-30 06:07:28.299',
+            WIDGET_RENDER_TIMESTAMP: '2026-07-30 06:07:46.239',
+            ACTION_TIMESTAMP_END: '2026-07-30 06:07:46.416' }),
+    ]
+    const { rows: out, mapping } = aggregateByAction(rows, headers)
+    expect(mapping.actionTimestampEnd).toBe('ACTION_TIMESTAMP_END')
+    // End is the raw END cell (not the earlier render completion).
+    expect(out[0]._action_end).toBe('2026-07-30 06:07:46.416')
+    // 06:07:46.416 − 06:07:28.299 = 18117 ms.
+    expect(out[0].action_duration).toBe(18117)
+  })
+
+  // When the END cell is missing/unparseable but a render timestamp exists, both
+  // the end and the duration fall back to the render-based value — no action is
+  // dropped just because it lacks an END cell.
+  it('falls back to render timestamp for end/duration when ACTION_TIMESTAMP_END is blank', () => {
+    const headers = [...HEADERS, 'WIDGET_RENDER_TIMESTAMP', 'ACTION_TIMESTAMP_END']
+    const rows = [
+      row({ ACTION_TIMESTAMP: '2026-07-30 06:07:28.299',
+            WIDGET_RENDER_TIMESTAMP: '2026-07-30 06:07:46.239',
+            ACTION_TIMESTAMP_END: '' }),
+    ]
+    const { rows: out } = aggregateByAction(rows, headers)
+    expect(out[0]._action_end).toBe('2026-07-30 06:07:46.239')
+    // 06:07:46.239 − 06:07:28.299 = 17940 ms.
+    expect(out[0].action_duration).toBe(17940)
+  })
+
+  it('rejects ACTION_TIMESTAMP as the ACTION_TIMESTAMP_END column', () => {
+    const headers = ['USER_ACTION', 'ACTION_TIMESTAMP', 'ACTION_TIMESTAMP_END', 'DURATION']
+    const rows = [{
+      USER_ACTION: 'A',
+      ACTION_TIMESTAMP: 'start',
+      ACTION_TIMESTAMP_END: 'end',
+      DURATION: 10,
+    }]
+    const { mapping } = aggregateByAction(rows, headers)
+    expect(mapping.actionTimestamp).toBe('ACTION_TIMESTAMP')
+    expect(mapping.actionTimestampEnd).toBe('ACTION_TIMESTAMP_END')
+  })
 })

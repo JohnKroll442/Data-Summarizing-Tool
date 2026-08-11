@@ -95,13 +95,18 @@ function aggregateByActionImpl(rows, headers) {
       // row so click handlers can disambiguate two invocations of the
       // same action name fired at different times.
       _action_timestamp: actionTs,
-      // Effective action END: the raw WIDGET_RENDER_TIMESTAMP of the
-      // last-rendering widget. Paired with the start (_action_timestamp) it
-      // feeds the Action duration cell's hover popover (see ActionSummaryTable /
-      // PhaseHoverCell). '' when no render stamp is parseable.
-      _action_end: mapping.renderTimestamp
-        ? actionEndTimestamp(groupRows, mapping.renderTimestamp)
-        : '',
+      // Effective action END: the raw ACTION_TIMESTAMP_END cell when the CSV
+      // carries one (the real, findable moment the action finished), else the
+      // WIDGET_RENDER_TIMESTAMP of the last-rendering widget. Paired with the
+      // start (_action_timestamp) it feeds the Action duration cell's hover
+      // popover (see ActionSummaryTable / PhaseHoverCell). '' when neither is
+      // available.
+      _action_end: mapping.actionTimestampEnd
+        ? (firstNonEmpty(groupRows, mapping.actionTimestampEnd) ||
+           (mapping.renderTimestamp ? actionEndTimestamp(groupRows, mapping.renderTimestamp) : ''))
+        : mapping.renderTimestamp
+          ? actionEndTimestamp(groupRows, mapping.renderTimestamp)
+          : '',
       session_id:   firstNonEmpty(groupRows, mapping.session),
       // Displayed copy of the action timestamp (underscore-prefixed key stays
       // the click-handler meta; this one renders in the table).
@@ -109,16 +114,12 @@ function aggregateByActionImpl(rows, headers) {
       user:         stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
       action_name:  firstNonEmpty(groupRows, mapping.actionName),
       story_name:   firstNonEmpty(groupRows, mapping.storyName),
-      // The action's duration: the span from ACTION_TIMESTAMP to the LATEST
-      // WIDGET_RENDER_TIMESTAMP among the action's widgets — i.e. how long
-      // until the last widget in this action finished rendering. Per the data
-      // owner this is more robust than max(DURATION) (which mixes measures and
-      // is prone to the incomplete-load inconsistencies). Falls back to
-      // max(DURATION) only when the CSV carries no WIDGET_RENDER_TIMESTAMP
-      // column at all. Session View sums/maxes this same per-action value.
-      action_duration: mapping.renderTimestamp
-        ? actionRenderDuration(groupRows, mapping.renderTimestamp, mapping.actionTimestamp)
-        : maxNumeric(groupRows, mapping.duration),
+      // The action's duration. Preferred: ACTION_TIMESTAMP_END − ACTION_TIMESTAMP
+      // (both real, findable cells — matches the raw data exactly). Falls back to
+      // MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP when there's no END
+      // column, then to max(DURATION) when there's no render-timestamp column
+      // either. Session View sums/maxes this same per-action value.
+      action_duration: actionDuration(groupRows, mapping),
       // Exclusive phase maxes, matching the Widget View table (drill into this
       // action to reproduce them). See maxExclusivePhases / the header comment.
       max_frontend: frontend,
@@ -131,6 +132,28 @@ function aggregateByActionImpl(rows, headers) {
 }
 
 /* ——— helpers ——— */
+
+/**
+ * The action's duration for one group of rows, using the best source available:
+ *   1. ACTION_TIMESTAMP_END − ACTION_TIMESTAMP  (real, findable end cell)
+ *   2. MAX(WIDGET_RENDER_TIMESTAMP) − ACTION_TIMESTAMP  (last render completion)
+ *   3. max(DURATION)  (no timestamp columns at all)
+ * Steps 1→2 fall through only when the earlier source can't produce a value, so a
+ * row missing the END cell still gets a render-based duration. But once a render
+ * column EXISTS its span is authoritative even when unparseable (returns '') — we
+ * don't mask a bad render stamp with the raw DURATION max; the DURATION fallback
+ * is only for CSV shapes with no render-timestamp column at all.
+ */
+function actionDuration(groupRows, mapping) {
+  if (mapping.actionTimestampEnd) {
+    const d = actionEndDuration(groupRows, mapping.actionTimestampEnd, mapping.actionTimestamp)
+    if (d !== '') return d
+  }
+  if (mapping.renderTimestamp) {
+    return actionRenderDuration(groupRows, mapping.renderTimestamp, mapping.actionTimestamp)
+  }
+  return maxNumeric(groupRows, mapping.duration)
+}
 
 function firstNonEmpty(rows, key) {
   if (!key) return ''
@@ -194,6 +217,35 @@ export function actionRenderDuration(groupRows, renderTsKey, actionTsKey) {
 }
 
 /**
+ * The action's duration measured from the raw ACTION_TIMESTAMP_END column:
+ *   parse(ACTION_TIMESTAMP_END) − parse(ACTION_TIMESTAMP), in ms.
+ * This is the most direct, findable duration — both endpoints are real cells on
+ * the action's rows (constant across the group). Preferred over the render-based
+ * span when the CSV carries an ACTION_TIMESTAMP_END column. Both sides are
+ * strict-parsed so a sentinel ("ttfb"-style) value never masquerades as a
+ * timestamp; the raw difference is returned even if negative so an inconsistent
+ * row stays visible. Returns '' when either endpoint can't be parsed.
+ */
+export function actionEndDuration(groupRows, endTsKey, actionTsKey) {
+  if (!endTsKey || !actionTsKey || !groupRows?.length) return ''
+  let actionMs = null
+  let endMs = null
+  for (const r of groupRows) {
+    if (actionMs === null) {
+      const a = parseStrictTimestamp(r?.[actionTsKey])
+      if (a) actionMs = a.getTime()
+    }
+    if (endMs === null) {
+      const e = parseStrictTimestamp(r?.[endTsKey])
+      if (e) endMs = e.getTime()
+    }
+    if (actionMs !== null && endMs !== null) break
+  }
+  if (actionMs === null || endMs === null) return ''
+  return endMs - actionMs
+}
+
+/**
  * The raw WIDGET_RENDER_TIMESTAMP of the last-rendering widget in the action —
  * i.e. the action's effective END timestamp. Returns the original CSV value
  * (string or Date) so formatCsvTime can render it exactly like every other
@@ -224,10 +276,16 @@ export function actionEndTimestamp(groupRows, renderTsKey) {
  * duration can't be computed (no parseable render/action stamp) are omitted.
  * Used by Session View to sum/max per-action durations consistently with
  * Action View's `action_duration` column.
+ *
+ * When `endTsKey` (ACTION_TIMESTAMP_END) is supplied, each action's duration is
+ * measured END − START from that real column (matching Action View's preferred
+ * `action_duration`); otherwise it falls back to the render-based span. An
+ * action that has no parseable END but does have a render stamp still gets a
+ * duration via the render fallback, so mixing shapes never drops an action.
  */
-export function actionRenderDurations(rows, renderTsKey, actionTsKey, actionNameKey) {
+export function actionRenderDurations(rows, renderTsKey, actionTsKey, actionNameKey, endTsKey = '') {
   const byKey = new Map()
-  if (!renderTsKey || !actionNameKey || !rows?.length) return byKey
+  if ((!renderTsKey && !endTsKey) || !actionNameKey || !rows?.length) return byKey
   const groups = new Map()
   for (const r of rows) {
     const name = r?.[actionNameKey]
@@ -238,7 +296,8 @@ export function actionRenderDurations(rows, renderTsKey, actionTsKey, actionName
     groups.get(key).push(r)
   }
   for (const [key, groupRows] of groups) {
-    const d = actionRenderDuration(groupRows, renderTsKey, actionTsKey)
+    let d = endTsKey ? actionEndDuration(groupRows, endTsKey, actionTsKey) : ''
+    if (d === '' && renderTsKey) d = actionRenderDuration(groupRows, renderTsKey, actionTsKey)
     if (d !== '') byKey.set(key, d)
   }
   return byKey
@@ -280,6 +339,16 @@ function detectMapping(headers) {
     ['actiontimestamp', 'timestamp'],
     ['actiontimestamp', 'timestamp'],
     (h) => norm(h).includes('end'),
+  )
+
+  // ACTION_TIMESTAMP_END — the real, findable moment the action finished.
+  // When present it's the preferred source for the action's END and duration
+  // (see aggregateByActionImpl), pairing with ACTION_TIMESTAMP so both
+  // endpoints are locatable in the raw data. Matched precisely so it's never
+  // confused with the start (ACTION_TIMESTAMP) or a widget timestamp.
+  const actionTimestampEnd = find(
+    ['actiontimestampend'],
+    ['actiontimestampend'],
   )
 
   const widgetId = find(
@@ -334,6 +403,7 @@ function detectMapping(headers) {
     user: find(['username', 'user'], ['user']),
     actionName,
     actionTimestamp,
+    actionTimestampEnd,
     widgetId,
     measure,
     submeasure,

@@ -135,6 +135,15 @@
   margin: 0;
 }
 
+/* The rank badge leads the row, but .cell-link-row bleeds 0.85rem into the
+   cell's left padding (so the whole cell is clickable) — the .cell-link makes
+   up for it with its own left padding, but the badge has none, so it lands on
+   the cell border and gets clipped. Nudge it right by the same 0.85rem to sit
+   at the normal content start. */
+.cell-link-row .tier-badge {
+  margin-left: 0.85rem;
+}
+
 .cell-icon-btn {
   flex: 0 0 auto;
   display: inline-flex;

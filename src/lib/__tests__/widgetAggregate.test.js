@@ -124,6 +124,64 @@ describe('aggregateByWidget', () => {
     expect(out[0].render_start).toBe('2024-01-01T00:00:00.000Z')
   })
 
+  // When the CSV carries an ACTION_TIMESTAMP column, every phase's Start is
+  // re-anchored to that real, findable value (the moment the parent action
+  // fired), while End stays the phase's real completion cell — so both
+  // endpoints can be located in the raw data by WIDGET_ID + ACTION_TIMESTAMP +
+  // WIDGET_MEASURE. This is the fix for Starts that pointed at obscure
+  // per-phase stamps nowhere near the action time.
+  it('anchors each phase Start to ACTION_TIMESTAMP when the column exists', () => {
+    const headers = [...HEADERS, 'ACTION_TIMESTAMP', 'WIDGET_SUBMEASURE']
+    const rows = [
+      row({ WIDGET_MEASURE: 'render', DURATION: 500, ACTION_TIMESTAMP: '8:00:43',
+            WIDGET_RENDER_TIMESTAMP_START: 'r-start', WIDGET_RENDER_TIMESTAMP: 'r-end' }),
+      row({ WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb', DURATION: 400, ACTION_TIMESTAMP: '8:00:43',
+            WIDGET_TIMESTAMP_START: 'n-start', WIDGET_TIMESTAMP: 'n-end' }),
+      row({ WIDGET_MEASURE: 'backend', DURATION: 30, ACTION_TIMESTAMP: '8:00:43',
+            WIDGET_TIMESTAMP_START: 'b-start', WIDGET_TIMESTAMP: 'b-end' }),
+    ]
+    const { rows: out, mapping } = aggregateByWidget(rows, headers)
+    expect(mapping.actionTimestamp).toBe('ACTION_TIMESTAMP')
+    // Starts all come from the action timestamp…
+    expect(out[0].render_start).toBe('8:00:43')
+    expect(out[0].network_start).toBe('8:00:43')
+    expect(out[0].backend_start).toBe('8:00:43')
+    // …while Ends stay the real per-phase completion cells.
+    expect(out[0].render_end).toBe('r-end')
+    expect(out[0].network_end).toBe('n-end')
+    expect(out[0].backend_end).toBe('b-end')
+  })
+
+  // Each phase's Start is the ACTION_TIMESTAMP of the SAME row that won that
+  // phase's max — so two fires of the widget at different action times keep the
+  // winning row's own action timestamp.
+  it('uses the winning row\'s own ACTION_TIMESTAMP for the phase Start', () => {
+    const headers = [...HEADERS, 'ACTION_TIMESTAMP']
+    const rows = [
+      row({ WIDGET_MEASURE: 'render', DURATION: 100, ACTION_TIMESTAMP: '8:00:10',
+            WIDGET_RENDER_TIMESTAMP: 'loser-end' }),
+      row({ WIDGET_MEASURE: 'render', DURATION: 900, ACTION_TIMESTAMP: '8:05:55',
+            WIDGET_RENDER_TIMESTAMP: 'winner-end' }),
+    ]
+    const { rows: out } = aggregateByWidget(rows, headers)
+    expect(out[0].render).toBe(900)
+    expect(out[0].render_start).toBe('8:05:55')
+    expect(out[0].render_end).toBe('winner-end')
+  })
+
+  // A blank ACTION_TIMESTAMP on the winning row must not blank the Start — it
+  // falls back to the dedicated *_START column (then end − duration).
+  it('falls back to the *_START column when the winning row has no action timestamp', () => {
+    const headers = [...HEADERS, 'ACTION_TIMESTAMP']
+    const rows = [
+      row({ WIDGET_MEASURE: 'render', DURATION: 500, ACTION_TIMESTAMP: '',
+            WIDGET_RENDER_TIMESTAMP_START: 'r-start', WIDGET_RENDER_TIMESTAMP: 'r-end' }),
+    ]
+    const { rows: out } = aggregateByWidget(rows, headers)
+    expect(out[0].render_start).toBe('r-start')
+    expect(out[0].render_end).toBe('r-end')
+  })
+
   it('skips rows with empty widget ids', () => {
     const rows = [
       row({ WIDGET_ID: '' }),

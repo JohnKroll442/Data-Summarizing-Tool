@@ -2,17 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import WaterfallIcon from './icons/WaterfallIcon'
 import AnalyticalDataTable from './AnalyticalDataTable'
-import KpiStrip from './KpiStrip'
-import { HeaderPortal } from '../context/HeaderSlot'
 import { FilterPills } from './FilterPill'
 import BackButton from './BackButton'
 import { usePagination, PageSizeSelect, TablePager } from './Pagination'
+import { Button } from '@ui5/webcomponents-react/Button'
 import MultiFilterMenu from './MultiFilterMenu'
 import ColumnChooserMenu from './ColumnChooserMenu'
 import DurationFilterMenu from './DurationFilterMenu'
 import PhaseHoverCell from './PhaseHoverCell'
+import TierBadge from './TierBadge'
+import { bucketKeyOf } from './DurationDistribution'
 import { aggregateByAction, RECOGNIZED_MEASURES } from '../lib/actionAggregate'
-import { actionKpisFromAgg } from '../lib/kpis'
+import { ANOMALY_TYPES } from '../lib/anomalyDetect'
 import { applySessionFilter, applySessionMultiFilter, detectSessionKey } from '../lib/drillDown'
 import { formatDurationMs, formatTimeRangeLabel } from '../lib/format'
 import { sortRows } from '../lib/sortRows'
@@ -40,7 +41,19 @@ import './SessionSummaryTable.css'
 // invocation timestamp (not session), so both are needed to identify one.
 const actionKey = (r) => `${r.action_name}::${r._action_timestamp ?? ''}`
 
-function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsChange }) {
+function ActionSummaryTable({
+  rows,
+  headers,
+  onOpenWaterfall,
+  onFilteredActionsChange,
+  byActionKey,
+  anomalyTypeFilter = null,
+  onHoverAction,
+  onClearAnomalyFilter,
+  durationBucketFilter = null,
+  onClearDurationBucket,
+  tierByType = null,
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const {
@@ -116,6 +129,11 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   // Which columns are hidden (display-only preference). The first column is
   // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
   const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.action.hiddenColumns ?? [])
+  // Show/Hide anomalies toggle — a plain boolean filter (default: show). When
+  // OFF, every flagged action is dropped from the table (and therefore from the
+  // rail's KPIs / histogram / panel counts, which recompute off the published
+  // rows), leaving only clean actions. Persisted like the other filters.
+  const [showAnomalies, setShowAnomalies] = useState(() => viewUi.action.showAnomalies ?? true)
 
   // Action name is always shown and never offered as a toggle (see
   // ACTION_LOCKED_COLUMNS). `chooserColumns` is the toggleable set the dropdown
@@ -141,8 +159,8 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('action', { search, filters, sort, durationFilter, hiddenColumns })
-  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
+    setViewUi('action', { search, filters, sort, durationFilter, showAnomalies, hiddenColumns })
+  }, [search, filters, sort, durationFilter, showAnomalies, hiddenColumns, setViewUi])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters, the time filter, the timeline range, and any
@@ -174,22 +192,53 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     [summaryRows, search, filters, columns, timeFilter, timelineRange, actionInvocationFilter, durationFilter],
   )
 
-  const sortedRows = useMemo(() => {
-    if (!sort) return visibleRows
-    const col = columns.find((c) => c.key === sort.key)
-    return sortRows(visibleRows, sort.key, sort.dir, col?.sortType)
-  }, [visibleRows, sort, columns])
+  // Overlay the click-to-filter anomaly selection (from the left-rail panel or
+  // the >30s KPI tile) on top of every other filter. Detection is global and
+  // lives in ActionView (passed down as `byActionKey`); here we just intersect
+  // the already-filtered rows with the flagged action keys for the chosen type.
+  // '__total__' keeps any-flag rows; a specific type keeps rows carrying it.
+  const anomalyFilteredRows = useMemo(() => {
+    if (!byActionKey) return visibleRows
+    let base = visibleRows
+    // Hide-anomalies toggle: drop every flagged action, leaving clean ones.
+    if (!showAnomalies) {
+      base = base.filter((row) => {
+        const flags = byActionKey.get(actionKey(row))
+        return !flags || flags.length === 0
+      })
+    }
+    if (!anomalyTypeFilter) return base
+    return base.filter((row) => {
+      const flags = byActionKey.get(actionKey(row))
+      if (!flags || flags.length === 0) return false
+      // '__total__' is the any-flag union — every flagged action, matching the
+      // panel's "Any anomaly" total (which also counts any flagged action).
+      if (anomalyTypeFilter === '__total__') return true
+      return flags.some((f) => f.type === anomalyTypeFilter)
+    })
+  }, [visibleRows, anomalyTypeFilter, byActionKey, showAnomalies])
 
-  // KPIs track the filters: they summarize the actions currently visible (the
-  // session scope + every local filter), not the whole file. `visibleRows` is
-  // already the filtered set of aggregated action rows.
-  const kpis = useMemo(
-    () => actionKpisFromAgg(visibleRows, mapping),
-    [visibleRows, mapping],
-  )
+  const sortedRows = useMemo(() => {
+    if (!sort) return anomalyFilteredRows
+    const col = columns.find((c) => c.key === sort.key)
+    return sortRows(anomalyFilteredRows, sort.key, sort.dir, col?.sortType)
+  }, [anomalyFilteredRows, sort, columns])
+
+  // Overlay the duration-histogram bucket selection (from the left-rail
+  // DurationDistribution) as the LAST layer, shown in the table body / pager /
+  // export. We publish the pre-bucket `sortedRows` up (below) so the rail's
+  // histogram keeps the full distribution; ActionView re-applies this same
+  // bucket predicate to reshape the KPIs + anomaly panel. `bucketKeyOf` is the
+  // same helper that draws the bars, so the rows shown equal the bar's height.
+  const displayRows = useMemo(() => {
+    if (!durationBucketFilter) return sortedRows
+    return sortedRows.filter(
+      (r) => bucketKeyOf(r.action_duration) === durationBucketFilter.key,
+    )
+  }, [sortedRows, durationBucketFilter])
 
   const { pageRows, page, setPage, pageSize, setPageSize, pageCount } =
-    usePagination(sortedRows)
+    usePagination(displayRows)
 
   // Publish the fully filtered + sorted action rows up so the Action Waterfall
   // modal navigates exactly the actions shown in this table (respecting every
@@ -207,6 +256,9 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     (timelineRange ? 1 : 0) +
     (actionInvocationFilter.length > 0 ? 1 : 0) +
     (durationFilter ? 1 : 0) +
+    (anomalyTypeFilter ? 1 : 0) +
+    (durationBucketFilter ? 1 : 0) +
+    (!showAnomalies ? 1 : 0) +
     (hiddenColumns.length > 0 ? 1 : 0)
 
   // Sanity-check the WIDGET_MEASURE values themselves. If the column exists
@@ -284,6 +336,23 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
     </>
   )
 
+  // The rank badge (T1/T2/T3) for an action row: the MOST severe tier — the
+  // lowest number — among its anomaly flags. Tiers are computed in ActionView
+  // from the visible anomaly-type percentages (rankAnomalyTiers) and passed
+  // down, so a row's badge tracks the same ranking the summary panel shows.
+  // null → the row has no flagged (ranked) anomaly, so no badge.
+  const rowTier = (row) => {
+    if (!tierByType || tierByType.size === 0 || !byActionKey) return null
+    const flags = byActionKey.get(actionKey(row))
+    if (!flags || !flags.length) return null
+    let best = null
+    for (const f of flags) {
+      const t = tierByType.get(f.type)
+      if (t != null && (best === null || t < best)) best = t
+    }
+    return best
+  }
+
   if (!mapping.actionName) {
     return (
       <>
@@ -341,9 +410,6 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
   return (
     <>
       {pill}
-      <HeaderPortal>
-        <KpiStrip variant="action" kpis={kpis} />
-      </HeaderPortal>
       {missing.length > 0 && (
         <div className="summary-note">
           Some columns couldn't be auto-matched and show as <code>—</code>:{' '}
@@ -382,6 +448,42 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
           <span className="summary-active-window-count">
             · {actionInvocationFilter.length} action{actionInvocationFilter.length === 1 ? '' : 's'}
           </span>
+        </div>
+      )}
+
+      {anomalyTypeFilter && (
+        <div className="summary-active-window" role="status">
+          <span className="summary-active-window-dot" aria-hidden="true" />
+          Filtered to <strong>{anomalyFilterLabel(anomalyTypeFilter)}</strong>
+          <span className="summary-active-window-count">
+            · {sortedRows.length} action{sortedRows.length === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={() => onClearAnomalyFilter?.()}
+            title="Clear the anomaly filter"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {durationBucketFilter && (
+        <div className="summary-active-window" role="status">
+          <span className="summary-active-window-dot" aria-hidden="true" />
+          Filtered to durations <strong>{durationBucketFilter.label}</strong>
+          <span className="summary-active-window-count">
+            · {displayRows.length} action{displayRows.length === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            className="summary-active-window-clear"
+            onClick={() => onClearDurationBucket?.()}
+            title="Clear the duration filter"
+          >
+            Clear
+          </button>
         </div>
       )}
 
@@ -432,10 +534,10 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
         <button
           type="button"
           className="summary-filter-export"
-          disabled={sortedRows.length === 0}
-          title={sortedRows.length === 0 ? 'No rows to export' : 'Download visible rows as CSV'}
+          disabled={displayRows.length === 0}
+          title={displayRows.length === 0 ? 'No rows to export' : 'Download visible rows as CSV'}
           onClick={() => {
-            const csv = rowsToCsv(sortedRows, columns)
+            const csv = rowsToCsv(displayRows, columns)
             downloadCsv(buildExportFilename(fileName, 'action'), csv)
           }}
         >
@@ -455,12 +557,23 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
               setTimeFilter(emptyTimeSelections())
               setDurationFilter(null)
               setHiddenColumns([])
+              setShowAnomalies(true)
+              onClearAnomalyFilter?.()
+              onClearDurationBucket?.()
               resetTimeline()
             }}
           >
             Clear
           </button>
         )}
+        <Button
+          className="summary-filter-anomaly-toggle"
+          design="Emphasized"
+          onClick={() => setShowAnomalies((v) => !v)}
+          title={showAnomalies ? 'Hide flagged actions from the table' : 'Show flagged actions in the table'}
+        >
+          {showAnomalies ? 'Hide anomalies' : 'Show anomalies'}
+        </Button>
       </div>
 
       <AnalyticalDataTable
@@ -493,7 +606,15 @@ function ActionSummaryTable({ rows, headers, onOpenWaterfall, onFilteredActionsC
             if (DURATION_COLUMNS.has(c.key)) return formatDurationMs(v)
             if (c.key === 'action_name') {
               return (
-                <div className="cell-link-row">
+                <div
+                  className="cell-link-row"
+                  // Hover the action NAME only (not the whole row) to drive the
+                  // rail's "this action" mode — hovering anywhere in the row made
+                  // the left panel flicker while you were trying to read it.
+                  onMouseEnter={onHoverAction ? () => onHoverAction(actionKey(row)) : undefined}
+                  onMouseLeave={onHoverAction ? () => onHoverAction(null) : undefined}
+                >
+                  <TierBadge tier={rowTier(row)} />
                   <button
                     type="button"
                     className="cell-link"
@@ -571,5 +692,12 @@ const DURATION_COLUMNS = new Set(['action_duration', 'max_frontend', 'max_networ
 // Action name always shows and can't be hidden, so it's excluded from the
 // column-chooser dropdown (a row must always keep its label).
 const ACTION_LOCKED_COLUMNS = ['action_name']
+
+// Human label for the active click-to-filter anomaly selection (panel row or
+// >30s tile). '__total__' is the any-flag union.
+function anomalyFilterLabel(type) {
+  if (type === '__total__') return 'flagged actions (any anomaly)'
+  return ANOMALY_TYPES.find((t) => t.key === type)?.label ?? 'flagged actions'
+}
 
 export default ActionSummaryTable

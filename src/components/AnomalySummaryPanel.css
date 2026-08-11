@@ -1,0 +1,164 @@
+.anomaly-panel {
+  background: var(--sap-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 0.9rem 0.9rem;
+}
+
+.anomaly-panel__title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--sap-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.anomaly-panel__group-label {
+  font-size: 0.65rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--sap-text-muted);
+  margin: 0.6rem 0 0.25rem;
+}
+
+.anomaly-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+/* An indented subcategory inside a tier (e.g. the phase-attribution flags
+   nested under "Dominant phase"), with a rail to signal the parent relation. */
+.anomaly-panel__subgroup {
+  margin: 0.15rem 0 0.15rem 0.5rem;
+  padding-left: 0.55rem;
+  border-left: 2px solid var(--color-border-subtle);
+}
+
+.anomaly-panel__subgroup-label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--sap-text-muted);
+  margin: 0.1rem 0 0.15rem 0.4rem;
+}
+
+.anomaly-panel__sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.anomaly-panel__row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  padding: 0.32rem 0.4rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--sap-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.anomaly-panel__row:hover {
+  background: var(--sap-blue-bg, rgba(0, 112, 242, 0.08));
+}
+
+.anomaly-panel__row:focus-visible {
+  outline: none;
+  border-color: var(--sap-blue, #0070f2);
+}
+
+.anomaly-panel__row.is-active {
+  background: var(--sap-blue-bg, rgba(0, 112, 242, 0.1));
+  border-color: var(--sap-blue, #0070f2);
+}
+
+.anomaly-panel__row--total {
+  grid-template-columns: 1fr auto;
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+  padding-top: 0.5rem;
+  font-weight: var(--weight-semibold);
+}
+
+.anomaly-panel__label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow: visible;
+  white-space: normal;
+}
+
+.anomaly-panel__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--sap-text);
+  white-space: nowrap;
+}
+
+.anomaly-panel__row.is-active .anomaly-panel__count {
+  color: var(--sap-text);
+}
+
+.anomaly-panel__tag {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sap-text-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+  padding: 0 0.2rem;
+}
+
+.anomaly-panel__footnote {
+  margin-top: 0.5rem;
+  font-size: var(--text-xs);
+  color: var(--sap-text-muted);
+}
+
+.anomaly-panel__empty {
+  font-size: var(--text-sm);
+  color: var(--sap-text-muted);
+}
+
+/* Keep the rank badge proportional to the enlarged row text in the panel
+   (the table keeps the smaller default set in TierBadge.css). */
+.anomaly-panel__label .tier-badge {
+  font-size: 0.72rem;
+}
+
+/* Contextual (hovered-action) rows: label · detail. */
+.anomaly-panel__ctx-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  font-size: var(--text-sm);
+}
+
+.anomaly-panel__detail {
+  color: var(--sap-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

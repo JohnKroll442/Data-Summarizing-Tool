@@ -8,6 +8,7 @@ import {
   SAP_TEXT_MUTED,
   chartFontSizes,
 } from '../../../lib/chartColors'
+import { formatCsvTime } from '../../../lib/format'
 
 /**
  * Per-widget timing chart — opened from a Widget summary row click. Renders
@@ -19,9 +20,13 @@ import {
  *   widget WITHOUT backend → Offset · Render
  *
  * Two vertical markLines anchor the chart to the parent action's start and
- * end timestamps. Action start comes from the ACTION_TIMESTAMP column;
- * action end is derived from the max widget end-time observed in the rows
- * passed in (callers should pass action-scoped rows).
+ * end timestamps, both shown as real, findable clock values (via
+ * `formatCsvTime`, matching the Widget summary table exactly):
+ *   Action Start = the ACTION_TIMESTAMP cell (when the action fired).
+ *   Action End   = the latest WIDGET_RENDER_TIMESTAMP across the action's
+ *                  rows (real render completion); falls back to
+ *                  action-start + total plotted duration when render
+ *                  timestamps are missing.
  *
  * Inputs:
  *   widgetRows — rows for the chosen widget only (already scoped)
@@ -32,7 +37,7 @@ import {
  * Returns a complete ECharts option, or an option with a "no data" title
  * when the rows are too sparse to plot.
  */
-export function buildWidgetTimingOption(widgetRows /* allActionRows kept off — duration-based layout */) {
+export function buildWidgetTimingOption(widgetRows, allActionRows) {
   if (!widgetRows?.length) return emptyOption('No data for this widget.')
 
   const headers = Object.keys(widgetRows[0] ?? {})
@@ -40,6 +45,16 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
   if (!m.measure || !m.duration) {
     return emptyOption('CSV is missing WIDGET_MEASURE or DURATION columns.')
   }
+
+  // Real, findable anchors pulled straight from the raw cells (NOT the
+  // ms-of-day parser), so the chart's Action Start/End read identically to
+  // the Widget table's Start/End and can be located in the raw data view.
+  // actionEndRaw scans the whole action's rows for the latest render
+  // completion; both fall back gracefully when the columns are absent.
+  const actionRows = allActionRows?.length ? allActionRows : widgetRows
+  const actionStartRaw = m.actionTimestamp ? firstNonEmptyCell(actionRows, m.actionTimestamp) : ''
+  const actionEndRaw = m.renderTimestamp ? latestCell(actionRows, m.renderTimestamp) : ''
+  const actionStartMs = parseTs(actionStartRaw)
 
   const offset  = pickPhase(widgetRows, m, ['offset'])
   const render  = pickPhase(widgetRows, m, ['render', 'frontend'])
@@ -166,8 +181,8 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
           borderType: 'solid',
         },
         phaseLabel: seg.label,
-        startAbs: seg.p?.start,
-        endAbs: seg.p?.end,
+        phaseEndRaw: seg.p?.rawEnd,
+        endElapsedMs: seg.endX,
       })
       extensionData.push({
         value: extDur,
@@ -177,8 +192,8 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         },
         phaseLabel: seg.label,
         isExtension: true,
-        startAbs: seg.p?.start,
-        endAbs: seg.p?.end,
+        phaseEndRaw: seg.p?.rawEnd,
+        endElapsedMs: seg.endX,
       })
     } else {
       spacerData.push(0)
@@ -195,10 +210,20 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
 
   // markLines anchor Action Start at x=0 (left edge of Offset) and Action
   // End at x=totalDuration (right edge of the last phase). Each line gets
-  // TWO labels stacked above it: the formatted time on top, then the
+  // TWO labels stacked above it: the formatted CLOCK TIME on top (the real,
+  // findable ACTION_TIMESTAMP / render-completion cell), then the
   // "Action Start/End Timestamp" tag just below it. Middle x-axis ticks
   // (500 ms, 1.00 s, etc.) stay below the plot as usual.
   const xMax = totalDuration * 1.12
+
+  // Displayed clock times for the two anchors. Prefer the raw cells (matching
+  // the table); fall back to the ms-of-day path only when a cell is missing.
+  const startLabel = actionStartRaw ? formatCsvTime(actionStartRaw) : fmtMs(0)
+  const endLabel = actionEndRaw
+    ? formatCsvTime(actionEndRaw)
+    : Number.isFinite(actionStartMs)
+      ? fmtTs(actionStartMs + totalDuration)
+      : fmtMs(totalDuration)
 
   // Responsive type sizes, derived from the current root font-size.
   const f = chartFontSizes()
@@ -219,12 +244,12 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       },
       lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
     },
-    // Action Start — duration readout ABOVE the tag (transparent line so
+    // Action Start — clock time ABOVE the tag (transparent line so
     // we don't double-draw).
     {
       xAxis: 0,
       label: {
-        formatter: fmtMs(0),
+        formatter: startLabel,
         position: 'end',
         distance: [0, f.markLine + 10],
         color: '#1d2d3e',
@@ -251,11 +276,11 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
       },
       lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
     },
-    // Action End — total duration ABOVE the tag.
+    // Action End — clock time ABOVE the tag.
     {
       xAxis: totalDuration,
       label: {
-        formatter: fmtMs(totalDuration),
+        formatter: endLabel,
         position: 'end',
         distance: [0, f.markLine + 10],
         color: '#1d2d3e',
@@ -284,11 +309,20 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
         // extension segment shows the same duration but flags that this
         // half is the stretched portion.
         const ms = Number(d.trueDurationMs ?? d.value)
+        // Start is the parent action's real timestamp (same anchor as the
+        // Action Start markLine and the table). End is the phase's real
+        // completion cell; when that's missing, fall back to action-start +
+        // the phase's elapsed offset so the tooltip still reads a clock time.
+        const endDisplay = d.phaseEndRaw
+          ? formatCsvTime(d.phaseEndRaw)
+          : Number.isFinite(actionStartMs) && Number.isFinite(d.endElapsedMs)
+            ? fmtTs(actionStartMs + d.endElapsedMs)
+            : ''
         const lines = [
           `<strong>${escape(d.phaseLabel)}</strong>`,
           `Duration: ${fmtMs(ms)}`,
-          `Start: ${fmtTs(d.startAbs)}`,
-          `End: ${fmtTs(d.endAbs)}`,
+          `Start: ${startLabel}`,
+          `End: ${endDisplay}`,
         ]
         if (d.isExtension) lines.push('<em>extended for layout</em>')
         return lines.join('<br/>')
@@ -361,6 +395,33 @@ export function buildWidgetTimingOption(widgetRows /* allActionRows kept off —
 }
 
 /* ——— helpers ——— */
+
+// First non-empty raw cell for `key` across rows (the action timestamp is the
+// same on every row of an action, so first-seen is the action's start).
+function firstNonEmptyCell(rows, key) {
+  if (!key || !rows?.length) return ''
+  for (const r of rows) {
+    const v = r?.[key]
+    if (v !== undefined && v !== null && v !== '') return v
+  }
+  return ''
+}
+
+// The latest REAL timestamp cell for `key` across rows, compared by ms-of-day
+// but returned as the original raw value so display keeps the CSV's formatting.
+// Used for the Action End anchor (latest render completion in the action).
+function latestCell(rows, key) {
+  if (!key || !rows?.length) return ''
+  let best = ''
+  let bestMs = -Infinity
+  for (const r of rows) {
+    const v = r?.[key]
+    if (v === undefined || v === null || v === '') continue
+    const ms = parseTs(v)
+    if (Number.isFinite(ms) && ms > bestMs) { bestMs = ms; best = v }
+  }
+  return best
+}
 
 // Turn an SAP palette color (`#RRGGBB`, `rgb(...)`, or named) into an
 // rgba() string at the given alpha. Used to draw the "extended" portion
@@ -493,6 +554,9 @@ function pickPhase(rows, m, measureTargets, subMatch = null) {
   return {
     start: Number.isFinite(start) ? start : null,
     end:   Number.isFinite(end)   ? end   : null,
+    // The RAW completion cell (unparsed), so the tooltip can show the real,
+    // findable End clock time via formatCsvTime — matching the table.
+    rawEnd: best?.[endKey] ?? '',
     // Trust the CSV's DURATION column for bar widths — timestamps in this
     // dataset are often missing/zero for sub-measure rows even when DURATION
     // is correct, so deriving width from end-start would lose those bars.
@@ -588,6 +652,17 @@ function detectMapping(headers) {
   return {
     measure: find(['widgetmeasure', 'measure'], ['widgetmeasure'], (h) => norm(h).includes('sub')),
     submeasure: find(['widgetsubmeasure', 'submeasure'], ['widgetsubmeasure', 'submeasure']),
+    // ACTION_TIMESTAMP — the real, findable moment the action fired; anchors
+    // the Action Start markLine and every phase tooltip's Start (mirrors the
+    // widget table's phaseStart). Match ONLY a genuine action-timestamp column
+    // (exact, then non-"end" substring) — never a bare/row TIMESTAMP, so a CSV
+    // without an action timestamp cleanly falls back to the "0 ms" anchor
+    // rather than mislabeling a widget end-stamp as the action start.
+    actionTimestamp: find(
+      ['actiontimestamp'],
+      ['actiontimestamp'],
+      (h) => norm(h).includes('end'),
+    ),
     duration: find(
       ['duration'],
       ['duration'],

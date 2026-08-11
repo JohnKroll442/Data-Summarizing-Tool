@@ -16,6 +16,13 @@ import './AnalyticalDataTable.css'
  *   isRowViewed: (rowOriginal) => boolean   (optional) — rows for which this
  *                returns true get a `viewed-row` class (full-row "already
  *                viewed" tint). Omit to disable highlighting entirely.
+ *   rowFlagTier: (rowOriginal) => 'performance' | null   (optional) — rows for
+ *                which this returns 'performance' get an `anomaly-row
+ *                anomaly-row--performance` class (loud tint). Data-quality
+ *                anomalies deliberately return null (no tint — symbol only).
+ *   onRowHover:  (rowOriginal | null) => void   (optional) — fired with a row's
+ *                original data on mouse-enter and null on leave, so callers can
+ *                drive a contextual side panel. Omit to disable.
  *
  * Sorting stays CONTROLLED/EXTERNAL: the table runs in manual-sort mode and
  * only reflects the `sort` prop, so callers keep sorting the full dataset and
@@ -33,6 +40,8 @@ function AnalyticalDataTable({
   emptyMessage = 'No rows to display.',
   height = '65vh',
   isRowViewed,
+  rowFlagTier,
+  onRowHover,
 }) {
   const resolvedColumns =
     columns && columns.length > 0
@@ -55,24 +64,44 @@ function AnalyticalDataTable({
   const isRowViewedRef = useRef(isRowViewed)
   isRowViewedRef.current = isRowViewed
 
-  // Append a `viewed-row` class to rows the caller marks as viewed. react-table
-  // CONCATENATES className across every getRowProps contributor (it doesn't
-  // overwrite the table's built-in row class), and the row <div> renders in
-  // light DOM, so the `.viewed-row` CSS rule matches. undefined when no
-  // predicate is supplied, leaving other callers' behavior unchanged.
+  // Same stable-ref pattern for the anomaly-tint predicate and the hover
+  // callback: callers rebuild them every render, the refs keep `tableHooks`
+  // identity-stable so the table doesn't re-init its state.
+  const rowFlagTierRef = useRef(rowFlagTier)
+  rowFlagTierRef.current = rowFlagTier
+  const onRowHoverRef = useRef(onRowHover)
+  onRowHoverRef.current = onRowHover
+
+  // Whether any per-row feature is active. Fixed for the table's lifetime (the
+  // caller either wires these up or not), so it can gate the stable hook below.
+  const hasRowFeatures = Boolean(isRowViewed || rowFlagTier || onRowHover)
+
+  // Contribute per-row props: a `viewed-row` / `anomaly-row` className and the
+  // hover handlers. react-table CONCATENATES className across every
+  // getRowProps contributor (it doesn't overwrite the table's built-in row
+  // class), and the row <div> renders in light DOM, so the CSS rules match.
+  // undefined when no feature is supplied, leaving other callers unchanged.
   const tableHooks = useMemo(() => {
-    if (!isRowViewedRef.current) return undefined
+    if (!hasRowFeatures) return undefined
     return [
       (hooks) => {
-        hooks.getRowProps.push((rowProps, { row }) => [
-          rowProps,
-          isRowViewedRef.current?.(row.original) ? { className: 'viewed-row' } : {},
-        ])
+        hooks.getRowProps.push((rowProps, { row }) => {
+          const classes = []
+          if (isRowViewedRef.current?.(row.original)) classes.push('viewed-row')
+          const tier = rowFlagTierRef.current?.(row.original)
+          if (tier === 'performance') classes.push('anomaly-row', 'anomaly-row--performance')
+          const extra = classes.length ? { className: classes.join(' ') } : {}
+          if (onRowHoverRef.current) {
+            extra.onMouseEnter = () => onRowHoverRef.current?.(row.original)
+            extra.onMouseLeave = () => onRowHoverRef.current?.(null)
+          }
+          return [rowProps, extra]
+        })
       },
     ]
-    // Stable identity; the ref supplies the current predicate on each render.
+    // Stable identity; the refs supply the current predicates on each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [hasRowFeatures])
 
   // Rebuild the table's column definitions only when the column STRUCTURE
   // changes (keys/labels/sortability), not when render-fn identity changes —

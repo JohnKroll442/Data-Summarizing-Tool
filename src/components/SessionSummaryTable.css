@@ -38,6 +38,7 @@
 .summary-filters .summary-filter-count,
 .summary-filters .raw-page-size,
 .summary-filters .summary-filter-export,
+.summary-filters .summary-filter-anomaly-toggle,
 .summary-filters .summary-filter-clear {
   flex: 0 0 auto;
 }

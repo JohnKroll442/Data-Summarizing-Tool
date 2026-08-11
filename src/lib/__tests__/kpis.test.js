@@ -55,11 +55,31 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('action', rows, ACTION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
-      'Total actions', 'Unique names', 'p95 action duration', 'Slowest action',
+      'Total actions', 'Unique names', '>30s actions',
+      'Median duration', 'p90 duration', 'p95 action duration', 'Slowest action',
     ])
     const slowest = kpis.find((k) => k.label === 'Slowest action')
     expect(slowest.value).toContain('Slow')
     expect(slowest.value).toContain('900 ms')
+  })
+
+  it('reports median, p90 and the >30s-action count as count + share', () => {
+    // Four actions with END−START durations of 10s / 20s / 35s / 40s. Two cross
+    // the 30s slow_action cutoff → "2 (50%)". Median of the four is 27.5s.
+    const headers = ['USER_ACTION', 'ACTION_TIMESTAMP', 'ACTION_TIMESTAMP_END', 'DURATION']
+    const mk = (name, start, end) => ({
+      USER_ACTION: name, ACTION_TIMESTAMP: start, ACTION_TIMESTAMP_END: end, DURATION: 1,
+    })
+    const rows = [
+      mk('A', '2026-07-01 10:00:00.000', '2026-07-01 10:00:10.000'),
+      mk('B', '2026-07-01 11:00:00.000', '2026-07-01 11:00:20.000'),
+      mk('C', '2026-07-01 12:00:00.000', '2026-07-01 12:00:35.000'),
+      mk('D', '2026-07-01 13:00:00.000', '2026-07-01 13:00:40.000'),
+    ]
+    const kpis = computeKpis('action', rows, headers)
+    const byLabel = Object.fromEntries(kpis.map((k) => [k.label, k.value]))
+    expect(byLabel['>30s actions']).toBe('2 (50%)')
+    expect(byLabel['Median duration']).toBe('27.5 s')
   })
 
   it('produces the expected widget KPI labels (per-phase p95s)', () => {

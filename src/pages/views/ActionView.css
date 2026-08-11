@@ -1,0 +1,33 @@
+/* Two-column Action view: a fixed-width left rail (duration histogram · anomaly
+   summary) beside the main table + charts. The KPI strip sits in the shared
+   page header (above the timeline), matching the Session/Widget views.
+   Collapses to a single column on narrow screens so the table keeps full width
+   on a laptop. */
+.action-view {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.action-view__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  /* Keep the rail in view while scrolling the (often long) table. */
+  position: sticky;
+  top: 0.5rem;
+}
+
+.action-view__main {
+  min-width: 0; /* let the table shrink instead of overflowing the grid cell */
+}
+
+@media (max-width: 1100px) {
+  .action-view {
+    grid-template-columns: 1fr;
+  }
+  .action-view__rail {
+    position: static;
+  }
+}

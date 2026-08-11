@@ -140,10 +140,13 @@ export function buildActionSequenceOption(actionRows) {
   const f = chartFontSizes()
 
   // Two vertical markLines anchor the sequence to the action's start (x=0) and
-  // end (x=totalDuration), mirroring the per-widget timing chart. Each line
-  // carries two stacked labels above the plot: the "Action Start/End Timestamp"
-  // tag, and the elapsed value above it. (Elapsed, not a wall-clock time — the
-  // layout is duration-based, same as the widget chart the user likes.)
+  // the summed-phase total (x=totalDuration). The end marker is the sum of every
+  // phase bar stacked end-to-end — NOT the action's real end. Because phases
+  // overlap (widget offsets run concurrently; render ⊇ network ⊇ backend nest),
+  // this total overcounts wall-clock and won't match the action duration, so it's
+  // labeled "Total Phase Timestamp" rather than "Action End" to avoid implying
+  // it's the true end. (Elapsed, not a wall-clock time — the layout is
+  // duration-based, same as the widget chart the user likes.)
   const markLineData = [
     {
       xAxis: 0,
@@ -166,7 +169,7 @@ export function buildActionSequenceOption(actionRows) {
     {
       xAxis: totalDuration,
       label: {
-        formatter: 'Action End Timestamp',
+        formatter: 'Total Phase Timestamp',
         position: 'end', distance: [0, 6], color: '#1d2d3e',
         fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },

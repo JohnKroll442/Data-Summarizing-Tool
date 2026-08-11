@@ -1,0 +1,18 @@
+/* The T1/T2/T3 rank badge — a compact UI5 Tag pill. It leads an anomaly row in
+   the summary panel and an action name in the table, so keep it from stretching
+   or shrinking. Keep it small via a reduced host font-size, but leave enough
+   horizontal padding that the "T1"/"T2"/"T3" text can't hit the Tag's internal
+   overflow:hidden clip (too-tight padding shears the digit off). The state icon
+   (✕ / ! / i) is dropped via the component's `hideStateIcon`.
+
+   UI5 sizes the Tag from the host font-size and these private custom properties
+   (custom props inherit into the shadow DOM), so overriding them here is enough
+   — no need to reach into shadow parts. */
+.tier-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  overflow: visible;
+  font-size: 0.625rem;
+  --_ui5-tag-text-padding: 0.1rem 0.4rem;
+  --_ui5-tag-letter-spacing: 0;
+}

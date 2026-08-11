@@ -408,13 +408,20 @@ function phaseEnd(pick, mapping, phase) {
 }
 
 /**
- * Phase start timestamp. Prefers the dedicated *_START column; falls back to
- * (row TIMESTAMP − DURATION) when the CSV doesn't carry a start column.
- * Returns '' if the row timestamp isn't a parseable date or duration isn't
- * finite — better to leave the cell blank than show garbage.
+ * Phase start timestamp. Anchored to the parent action: the ACTION_TIMESTAMP of
+ * the SAME row that won this phase's max duration — a real, findable value (the
+ * moment the action fired) that pairs with phaseEnd's real completion timestamp,
+ * so both endpoints can be located in the raw data by WIDGET_ID + ACTION_TIMESTAMP
+ * + WIDGET_MEASURE. Falls back (for CSV shapes with no ACTION_TIMESTAMP column)
+ * to the dedicated *_START column, then to (row TIMESTAMP − DURATION). Returns ''
+ * if nothing is resolvable.
  */
 function phaseStart(pick, mapping, phase) {
   if (!pick?.row) return ''
+  if (mapping.actionTimestamp) {
+    const ts = cellValue(pick.row, mapping.actionTimestamp)
+    if (ts !== '') return ts
+  }
   const startKey = phase === 'render' ? mapping.renderTimestampStart : mapping.widgetTimestampStart
   if (startKey) return cellValue(pick.row, startKey)
   const endStr = cellValue(pick.row, mapping.rowTimestamp)
@@ -581,6 +588,19 @@ function detectMapping(headers) {
     },
   )
 
+  // ACTION_TIMESTAMP — when the parent action fired. This is the real, findable
+  // anchor every phase's Start is pulled from (see phaseStart), so displayed
+  // Start/End times can be located in the raw data. Match ONLY a genuine
+  // action-timestamp column (exact, then a non-"end" substring) — deliberately
+  // NOT a bare TIMESTAMP, which is the row's generic/end stamp: falling back to
+  // that would clobber phaseStart's *_START / (end − duration) path for CSV
+  // shapes that have no action timestamp at all.
+  const actionTimestamp = find(
+    ['actiontimestamp'],
+    ['actiontimestamp'],
+    (h) => norm(h).includes('end'),
+  )
+
   return {
     widgetId,
     widgetName,
@@ -592,6 +612,7 @@ function detectMapping(headers) {
     widgetTimestamp,
     widgetTimestampStart,
     rowTimestamp,
+    actionTimestamp,
   }
 }
 
