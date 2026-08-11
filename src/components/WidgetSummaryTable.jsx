@@ -9,7 +9,6 @@ import { usePagination, PageSizeSelect, TablePager } from './Pagination'
 import MultiFilterMenu from './MultiFilterMenu'
 import ColumnChooserMenu from './ColumnChooserMenu'
 import DurationFilterMenu from './DurationFilterMenu'
-import WidgetTimingModal from './WidgetTimingModal'
 import PhaseHoverCell from './PhaseHoverCell'
 import { aggregateByWidget } from '../lib/widgetAggregate'
 import { widgetKpisFromAgg, percentile } from '../lib/kpis'
@@ -40,7 +39,7 @@ import './SessionSummaryTable.css'
  * widgets that ran in the chosen scope. Two pills at the top show the
  * active filters; clicking the × on either clears just that filter.
  */
-function WidgetSummaryTable({ rows, headers }) {
+function WidgetSummaryTable({ rows, headers, onTimingChange }) {
   const location = useLocation()
   const {
     sessionFilter,
@@ -341,6 +340,41 @@ function WidgetSummaryTable({ rows, headers }) {
     const row = sortedRows[timingIdx]
     return row ? resolveWidgetTiming(row) : null
   }, [timingIdx, sortedRows, resolveWidgetTiming])
+
+  // The timing chart now renders inline in the Widget view's chart region (no
+  // popup), but the selection state lives here in the table. Publish it UP to
+  // WidgetView via onTimingChange, mirroring ActionSummaryTable's
+  // onFilteredActionsChange pattern. The two handlers MUST be stable-identity
+  // (useCallback) so the published object only changes when the selection or
+  // data actually changes — otherwise the parent's setState would re-render us
+  // and loop.
+  const handleTimingIndexChange = useCallback(
+    (next) => setTimingIdx((prev) =>
+      prev == null ? prev : Math.max(0, Math.min(sortedRows.length - 1, next)),
+    ),
+    [sortedRows.length],
+  )
+  const handleTimingClose = useCallback(() => setTimingIdx(null), [])
+  useEffect(() => {
+    onTimingChange?.(
+      timingModal
+        ? {
+            ...timingModal,
+            items: widgetPickList,
+            index: timingIdx,
+            onIndexChange: handleTimingIndexChange,
+            onClose: handleTimingClose,
+          }
+        : null,
+    )
+  }, [
+    timingModal,
+    widgetPickList,
+    timingIdx,
+    handleTimingIndexChange,
+    handleTimingClose,
+    onTimingChange,
+  ])
 
   const activeFilterCount =
     countActiveMultiFilters(filters, search) +
@@ -692,19 +726,6 @@ function WidgetSummaryTable({ rows, headers }) {
       />
 
       <TablePager page={page} pageCount={pageCount} onPage={setPage} />
-
-      <WidgetTimingModal
-        open={timingModal != null}
-        onClose={() => setTimingIdx(null)}
-        widgetName={timingModal?.widgetName}
-        widgetRows={timingModal?.widgetRows ?? []}
-        actionRows={timingModal?.actionRows ?? []}
-        items={widgetPickList}
-        index={timingIdx ?? 0}
-        onIndexChange={(next) =>
-          setTimingIdx(Math.max(0, Math.min(sortedRows.length - 1, next)))
-        }
-      />
     </>
   )
 }

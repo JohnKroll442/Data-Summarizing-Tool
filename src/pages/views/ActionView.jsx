@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ActionSummaryTable from '../../components/ActionSummaryTable'
 import ChartGrid from '../../components/charts/ChartGrid'
-import ActionWaterfallModal from '../../components/ActionWaterfallModal'
+import ActionWaterfallPanel from '../../components/ActionWaterfallPanel'
 import KpiStrip from '../../components/KpiStrip'
 import DurationDistribution from '../../components/DurationDistribution'
 import AnomalySummaryPanel from '../../components/AnomalySummaryPanel'
@@ -170,8 +170,8 @@ function ActionView() {
     return hit ? hit.action_duration : null
   }, [hoveredActionKey, bucketedRows])
 
-  // The picker list for the Action Waterfall modal mirrors the table's filtered
-  // + sorted rows, so the modal's "N / total" and its arrow navigation always
+  // The picker list for the Action Waterfall panel mirrors the table's filtered
+  // + sorted rows, so the panel's "N / total" and its arrow navigation always
   // match the count shown above the table. EVERY filter flows through
   // `filteredActionRows` — the Session/User/Story/Page dropdowns, the Time
   // menu, the Activity Timeline range, AND the anomaly filter — so all stay
@@ -192,6 +192,19 @@ function ActionView() {
     setWaterfallInitialKey(`${name}::${timestamp ?? ''}`)
     setWaterfallOpen(true)
   }
+
+  // Scroll the inline waterfall panel into view when it opens (or when a
+  // per-row icon retargets it to a different action while already open). Keyed
+  // on open + initialKey, NOT on the picker index, so stepping through actions
+  // doesn't yank the page. Respects reduced-motion.
+  const panelRef = useRef(null)
+  useEffect(() => {
+    if (!waterfallOpen) return
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth'
+    panelRef.current?.scrollIntoView({ behavior, block: 'start' })
+  }, [waterfallOpen, waterfallInitialKey])
 
   return (
     <>
@@ -235,38 +248,22 @@ function ActionView() {
             tierByType={tierByType}
           />
 
-          <div className="chart-grid-toolbar" style={{ marginTop: '1.25rem' }}>
-            <button
-              type="button"
-              className="chart-grid-add"
-              onClick={() => {
-                setWaterfallInitialKey(null)
-                setWaterfallOpen(true)
-              }}
-              disabled={bucketedRows.length === 0}
-              title={
-                bucketedRows.length === 0
-                  ? 'No actions match the current filters'
-                  : 'Open the Action Waterfall Chart'
-              }
-            >
-              Action Waterfall Chart
-            </button>
-          </div>
-
+          {waterfallOpen && (
+            <div ref={panelRef}>
+              <ActionWaterfallPanel
+                open={waterfallOpen}
+                onClose={() => setWaterfallOpen(false)}
+                rows={scopedRows}
+                headers={headers}
+                actions={waterfallActions}
+                initialKey={waterfallInitialKey}
+              />
+            </div>
+          )}
           <h3 className="view-section-heading">Charts</h3>
           <ChartGrid viewId="action" rows={scopedRows} headers={headers} />
         </div>
       </div>
-
-      <ActionWaterfallModal
-        open={waterfallOpen}
-        onClose={() => setWaterfallOpen(false)}
-        rows={scopedRows}
-        headers={headers}
-        actions={waterfallActions}
-        initialKey={waterfallInitialKey}
-      />
     </>
   )
 }

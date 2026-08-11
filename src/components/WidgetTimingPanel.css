@@ -1,43 +1,66 @@
-.action-waterfall-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: grid;
-  place-items: center;
-  z-index: 100;
-  padding: 1.5rem;
-}
-
-.action-waterfall-modal {
-  width: min(1400px, 100%);
-  max-height: 92vh;
+/* Inline widget-timing panel (no popup). Lives in the bottom chart region of
+   the Widget view and swapped in-place inside the Action Waterfall panel. */
+.widget-timing-panel {
   background: var(--sap-surface);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   color: var(--sap-text);
+  margin: 0.5rem 0 1.25rem;
 }
 
-.action-waterfall-header {
+.widget-timing-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.9rem 1.1rem;
   border-bottom: var(--border-width) solid var(--sap-border);
   background: var(--sap-blue);
   color: #fff;
 }
 
-.action-waterfall-header h2 {
+.widget-timing-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.widget-timing-header h2 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.action-waterfall-close {
+.widget-timing-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  height: 28px;
+  padding: 0 0.6rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.widget-timing-back:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.widget-timing-close {
   background: rgba(255, 255, 255, 0.15);
   border: none;
   color: #fff;
@@ -48,13 +71,16 @@
   display: grid;
   place-items: center;
   line-height: 1;
+  flex-shrink: 0;
 }
 
-.action-waterfall-close:hover {
+.widget-timing-close:hover {
   background: rgba(255, 255, 255, 0.28);
 }
 
-.action-waterfall-toolbar {
+/* Picker + ◀ N / total ▶ stepper for flipping through the widgets shown in the
+   table. Mirrors the Action Waterfall panel's toolbar. */
+.widget-timing-toolbar {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -64,13 +90,13 @@
   flex-wrap: wrap;
 }
 
-.action-waterfall-toolbar label {
+.widget-timing-toolbar label {
   font-size: var(--text-sm);
   color: var(--sap-text-muted);
   font-weight: var(--weight-medium);
 }
 
-.action-waterfall-select {
+.widget-timing-select {
   flex: 1;
   min-width: 240px;
   max-width: 640px;
@@ -82,15 +108,14 @@
   font-size: var(--text-sm);
 }
 
-/* ◀ N / total ▶ stepper for flipping through the session's actions. */
-.action-waterfall-stepper {
+.widget-timing-stepper {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
 }
 
-.action-waterfall-step {
+.widget-timing-step {
   display: grid;
   place-items: center;
   width: 30px;
@@ -103,18 +128,18 @@
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.action-waterfall-step:hover:not(:disabled) {
+.widget-timing-step:hover:not(:disabled) {
   background: var(--sap-blue);
   border-color: var(--sap-blue);
   color: #fff;
 }
 
-.action-waterfall-step:disabled {
+.widget-timing-step:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.action-waterfall-position {
+.widget-timing-position {
   min-width: 3.5rem;
   text-align: center;
   font-size: var(--text-sm);
@@ -123,26 +148,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.action-waterfall-body {
+.widget-timing-body {
   padding: 0.75rem 1rem 1rem;
   background: var(--sap-surface);
-  overflow: auto;
-  flex: 1;
-}
-
-/* Honest footnote: names the widgets in this action that had no timed phases
-   and therefore aren't drawn as bars, so nothing is silently hidden. */
-.action-waterfall-footnote {
-  margin: 0.25rem 0 0;
-  padding: 0.6rem 0.75rem;
-  border-top: var(--border-width) solid var(--sap-border);
-  background: var(--sap-surface-muted, #f7f9fb);
-  color: var(--sap-text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.45;
-}
-
-.action-waterfall-footnote-list {
-  color: var(--sap-text);
-  font-weight: var(--weight-medium);
 }

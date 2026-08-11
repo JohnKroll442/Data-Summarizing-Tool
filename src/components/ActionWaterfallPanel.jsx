@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { buildActionSequenceOption, detectMapping } from './charts/options/actionSequence'
-import WidgetTimingModal from './WidgetTimingModal'
+import WidgetTimingPanel from './WidgetTimingPanel'
 import { applyActionFilter } from '../lib/drillDown'
 import { useViewportWidth } from '../lib/useViewportWidth'
-import './ActionWaterfallModal.css'
+import './ActionWaterfallPanel.css'
 
 /**
- * ActionWaterfallModal — a bigger, action-scoped version of the widget
- * timing waterfall. Shows one bar per (widget, phase) for every widget in
- * the chosen action, colored blue (Local) / orange (Remote).
+ * ActionWaterfallPanel — inline, action-scoped waterfall (one bar per (widget,
+ * phase) for every widget in the chosen action, colored blue (Local) / orange
+ * (Remote)). Rendered in the bottom chart region of the Action view — no popup.
+ *
+ * Two modes in one panel:
+ *   - waterfall mode (widgetIdx == null): action picker/stepper + the waterfall
+ *     chart + the untimed-widgets footnote.
+ *   - widget-timing mode (widgetIdx != null): clicking a bar swaps the body to
+ *     that widget's timing chart (WidgetTimingPanel) with a "← Back to action"
+ *     control that restores the waterfall on the still-selected action.
  *
  * Props:
  *   open: boolean
@@ -20,27 +27,26 @@ import './ActionWaterfallModal.css'
  *   actions: [{ name, timestamp, label }] — options for the picker; the
  *            first entry is used as the initial selection.
  *   initialKey: optional "name::timestamp" string identifying which action
- *            should be pre-selected when the modal opens. Falsy → first
- *            action.
+ *            should be pre-selected when the panel opens. Falsy → first action.
  */
-function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKey }) {
+function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKey }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   // Which widget (if any) the user drilled into by clicking a bar — an index
   // into `actionWidgets` (the charted widgets in the current action), or null
-  // when the drill-down modal is closed. Kept as an index so the drill-down
-  // modal's arrows/picker can step through the action's widgets.
+  // in waterfall mode. Kept as an index so the widget-timing mode's
+  // arrows/picker can step through the action's widgets.
   const [widgetIdx, setWidgetIdx] = useState(null)
 
   const total = actions?.length ?? 0
-  // Clamp-step through the action list. Guarded by the caller so it never
-  // fires while the widget drill-down is open.
+  // Clamp-step through the action list. Guarded so it never fires while the
+  // widget drill-down is showing.
   const step = (delta) => {
     setSelectedIdx((i) => Math.max(0, Math.min(total - 1, i + delta)))
   }
 
   // On open (or when the target action changes), align the dropdown with
   // the requested initialKey — that's how "click the icon on row N" opens
-  // the modal already showing action N. Falls back to index 0 when there's
+  // the panel already showing action N. Falls back to index 0 when there's
   // no key or no match, so the below-table button still opens on the first
   // action as before.
   //
@@ -66,7 +72,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   useEffect(() => {
     if (!open) return
     const onKey = (e) => {
-      // While the widget drill-down is open it owns Esc + arrows (stepping
+      // While the widget drill-down is showing it owns Esc + arrows (stepping
       // through the action's widgets), so the waterfall ignores keys.
       if (widgetIdx != null) return
       if (e.key === 'Escape') { onClose(); return }
@@ -92,7 +98,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   }, [rows, headers, selected])
 
   // Track viewport width so the chart's responsive font sizes rescale live
-  // when the window is resized while the modal is open.
+  // when the window is resized while the panel is open.
   const viewportWidth = useViewportWidth()
 
   const option = useMemo(
@@ -143,7 +149,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   }, [option, actionRows, widgetIdKey, mapping.widgetName])
 
   // The widgets charted in this action (distinct, in chart order), so the
-  // drill-down modal can step through exactly the bars you can click.
+  // widget-timing mode can step through exactly the bars you can click.
   const actionWidgets = useMemo(() => {
     const durationSeries = option?.series?.find?.((s) => s?.name === 'duration')
     const seen = new Set()
@@ -160,7 +166,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
 
   // The currently drilled-into widget + its rows, derived from the index.
   const selectedWidget = widgetIdx != null ? actionWidgets[widgetIdx] ?? null : null
-  const widgetModalRows = useMemo(() => {
+  const widgetPanelRows = useMemo(() => {
     if (!selectedWidget || !widgetIdKey) return []
     return actionRows.filter(
       (r) => String(r?.[widgetIdKey] ?? '') === String(selectedWidget.id)
@@ -169,7 +175,7 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
 
   // Click a bar → drill into that widget's timing chart, scoped to the current
   // action (so its Action End markLine is correct). Opening by index lets the
-  // drill-down modal's arrows/picker step through the action's widgets.
+  // widget-timing mode's arrows/picker step through the action's widgets.
   const onChartClick = (params) => {
     const d = params?.data
     if (!d || typeof d !== 'object' || d.widgetId === undefined) return
@@ -179,6 +185,24 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
 
   if (!open) return null
 
+  // Widget-timing mode: swap the body in place for the drilled-into widget.
+  if (selectedWidget != null) {
+    return (
+      <WidgetTimingPanel
+        open
+        widgetName={selectedWidget.label}
+        widgetRows={widgetPanelRows}
+        actionRows={actionRows}
+        items={actionWidgets}
+        index={widgetIdx ?? 0}
+        onIndexChange={(next) =>
+          setWidgetIdx(Math.max(0, Math.min(actionWidgets.length - 1, next)))
+        }
+        onBack={() => setWidgetIdx(null)}
+      />
+    )
+  }
+
   // Chart height scales with the number of series so tall actions don't
   // squash their bars unreadably. Roughly 26px per row with sensible bounds.
   const seriesCount =
@@ -186,103 +210,84 @@ function ActionWaterfallModal({ open, onClose, rows, headers, actions, initialKe
   const chartHeight = Math.max(420, Math.min(1200, 120 + seriesCount * 26))
 
   return (
-    <>
-      <div className="action-waterfall-backdrop" onClick={onClose}>
-      <div
-        className="action-waterfall-modal"
-        role="dialog"
-        aria-labelledby="action-waterfall-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="action-waterfall-header">
-          <h2 id="action-waterfall-title">Action Waterfall Chart</h2>
-          <button
-            type="button"
-            className="action-waterfall-close"
-            onClick={onClose}
-            aria-label="Close"
+    <section
+      className="action-waterfall-panel"
+      aria-labelledby="action-waterfall-title"
+    >
+      <header className="action-waterfall-header">
+        <h2 id="action-waterfall-title">Action Waterfall Chart</h2>
+        <button
+          type="button"
+          className="action-waterfall-close"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+      </header>
+      {actions && actions.length > 1 && (
+        <div className="action-waterfall-toolbar">
+          <label htmlFor="action-waterfall-picker">Action:</label>
+          <select
+            id="action-waterfall-picker"
+            className="action-waterfall-select"
+            value={selectedIdx}
+            onChange={(e) => setSelectedIdx(Number(e.target.value))}
           >
-            <X size={16} />
-          </button>
-        </header>
-        {actions && actions.length > 1 && (
-          <div className="action-waterfall-toolbar">
-            <label htmlFor="action-waterfall-picker">Action:</label>
-            <select
-              id="action-waterfall-picker"
-              className="action-waterfall-select"
-              value={selectedIdx}
-              onChange={(e) => setSelectedIdx(Number(e.target.value))}
+            {actions.map((a, i) => (
+              <option key={`${a.name}::${a.timestamp}::${i}`} value={i}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+          <div className="action-waterfall-stepper">
+            <button
+              type="button"
+              className="action-waterfall-step"
+              onClick={() => step(-1)}
+              disabled={selectedIdx <= 0}
+              aria-label="Previous action"
+              title="Previous action (←)"
             >
-              {actions.map((a, i) => (
-                <option key={`${a.name}::${a.timestamp}::${i}`} value={i}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-            <div className="action-waterfall-stepper">
-              <button
-                type="button"
-                className="action-waterfall-step"
-                onClick={() => step(-1)}
-                disabled={selectedIdx <= 0}
-                aria-label="Previous action"
-                title="Previous action (←)"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="action-waterfall-position">
-                {selectedIdx + 1} / {total}
-              </span>
-              <button
-                type="button"
-                className="action-waterfall-step"
-                onClick={() => step(1)}
-                disabled={selectedIdx >= total - 1}
-                aria-label="Next action"
-                title="Next action (→)"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="action-waterfall-body">
-          <ReactECharts
-            option={option}
-            style={{ height: chartHeight, width: '100%' }}
-            notMerge
-            lazyUpdate
-            onEvents={{ click: onChartClick }}
-          />
-        </div>
-        {untimedWidgets.length > 0 && (
-          <p className="action-waterfall-footnote">
-            {untimedWidgets.length} widget{untimedWidgets.length === 1 ? '' : 's'} in
-            this action {untimedWidgets.length === 1 ? 'has' : 'have'} no timed
-            phases and {untimedWidgets.length === 1 ? "isn't" : "aren't"} charted:{' '}
-            <span className="action-waterfall-footnote-list">
-              {untimedWidgets.join(', ')}
+              <ChevronLeft size={16} />
+            </button>
+            <span className="action-waterfall-position">
+              {selectedIdx + 1} / {total}
             </span>
-          </p>
-        )}
+            <button
+              type="button"
+              className="action-waterfall-step"
+              onClick={() => step(1)}
+              disabled={selectedIdx >= total - 1}
+              aria-label="Next action"
+              title="Next action (→)"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="action-waterfall-body">
+        <ReactECharts
+          option={option}
+          style={{ height: chartHeight, width: '100%' }}
+          notMerge
+          lazyUpdate
+          onEvents={{ click: onChartClick }}
+        />
       </div>
-    </div>
-
-      <WidgetTimingModal
-        open={selectedWidget != null}
-        onClose={() => setWidgetIdx(null)}
-        widgetName={selectedWidget?.label}
-        widgetRows={widgetModalRows}
-        actionRows={actionRows}
-        items={actionWidgets}
-        index={widgetIdx ?? 0}
-        onIndexChange={(next) =>
-          setWidgetIdx(Math.max(0, Math.min(actionWidgets.length - 1, next)))
-        }
-      />
-    </>
+      {untimedWidgets.length > 0 && (
+        <p className="action-waterfall-footnote">
+          {untimedWidgets.length} widget{untimedWidgets.length === 1 ? '' : 's'} in
+          this action {untimedWidgets.length === 1 ? 'has' : 'have'} no timed
+          phases and {untimedWidgets.length === 1 ? "isn't" : "aren't"} charted:{' '}
+          <span className="action-waterfall-footnote-list">
+            {untimedWidgets.join(', ')}
+          </span>
+        </p>
+      )}
+    </section>
   )
 }
 
-export default ActionWaterfallModal
+export default ActionWaterfallPanel

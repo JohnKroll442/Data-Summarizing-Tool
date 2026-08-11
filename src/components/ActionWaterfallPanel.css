@@ -1,28 +1,17 @@
-.widget-timing-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: grid;
-  place-items: center;
-  /* Above the Action Waterfall modal (z-index 100) so drilling into a widget
-     from that chart stacks on top rather than behind it. */
-  z-index: 110;
-  padding: 1.5rem;
-}
-
-.widget-timing-modal {
-  width: min(1200px, 100%);
-  max-height: 88vh;
+/* Inline action-waterfall panel (no popup). Lives at the top of the Action
+   view's bottom chart region, above the user-added ChartGrid. */
+.action-waterfall-panel {
   background: var(--sap-surface);
+  border: var(--border-width) solid var(--sap-border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   color: var(--sap-text);
+  margin: 0.5rem 0 1.25rem;
 }
 
-.widget-timing-header {
+.action-waterfall-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -32,14 +21,14 @@
   color: #fff;
 }
 
-.widget-timing-header h2 {
+.action-waterfall-header h2 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: 1.3;
 }
 
-.widget-timing-close {
+.action-waterfall-close {
   background: rgba(255, 255, 255, 0.15);
   border: none;
   color: #fff;
@@ -52,13 +41,11 @@
   line-height: 1;
 }
 
-.widget-timing-close:hover {
+.action-waterfall-close:hover {
   background: rgba(255, 255, 255, 0.28);
 }
 
-/* Picker + ◀ N / total ▶ stepper for flipping through the widgets shown in the
-   table. Mirrors the Action Waterfall modal's toolbar. */
-.widget-timing-toolbar {
+.action-waterfall-toolbar {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -68,13 +55,13 @@
   flex-wrap: wrap;
 }
 
-.widget-timing-toolbar label {
+.action-waterfall-toolbar label {
   font-size: var(--text-sm);
   color: var(--sap-text-muted);
   font-weight: var(--weight-medium);
 }
 
-.widget-timing-select {
+.action-waterfall-select {
   flex: 1;
   min-width: 240px;
   max-width: 640px;
@@ -86,14 +73,15 @@
   font-size: var(--text-sm);
 }
 
-.widget-timing-stepper {
+/* ◀ N / total ▶ stepper for flipping through the session's actions. */
+.action-waterfall-stepper {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
 }
 
-.widget-timing-step {
+.action-waterfall-step {
   display: grid;
   place-items: center;
   width: 30px;
@@ -106,18 +94,18 @@
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.widget-timing-step:hover:not(:disabled) {
+.action-waterfall-step:hover:not(:disabled) {
   background: var(--sap-blue);
   border-color: var(--sap-blue);
   color: #fff;
 }
 
-.widget-timing-step:disabled {
+.action-waterfall-step:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.widget-timing-position {
+.action-waterfall-position {
   min-width: 3.5rem;
   text-align: center;
   font-size: var(--text-sm);
@@ -126,7 +114,24 @@
   font-variant-numeric: tabular-nums;
 }
 
-.widget-timing-body {
+.action-waterfall-body {
   padding: 0.75rem 1rem 1rem;
   background: var(--sap-surface);
+}
+
+/* Honest footnote: names the widgets in this action that had no timed phases
+   and therefore aren't drawn as bars, so nothing is silently hidden. */
+.action-waterfall-footnote {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-top: var(--border-width) solid var(--sap-border);
+  background: var(--sap-surface-muted, #f7f9fb);
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.action-waterfall-footnote-list {
+  color: var(--sap-text);
+  font-weight: var(--weight-medium);
 }
