@@ -1,18 +1,38 @@
-/* The T1/T2/T3 rank badge — a compact UI5 Tag pill. It leads an anomaly row in
-   the summary panel and an action name in the table, so keep it from stretching
-   or shrinking. Keep it small via a reduced host font-size, but leave enough
-   horizontal padding that the "T1"/"T2"/"T3" text can't hit the Tag's internal
-   overflow:hidden clip (too-tight padding shears the digit off). The state icon
-   (✕ / ! / i) is dropped via the component's `hideStateIcon`.
-
-   UI5 sizes the Tag from the host font-size and these private custom properties
-   (custom props inherit into the shadow DOM), so overriding them here is enough
-   — no need to reach into shadow parts. */
+/* The T1/T2/T3 rank badge — a compact oval pill. It leads an anomaly row in the
+   summary panel and an action name in the table, so keep it from stretching or
+   shrinking. The color tracks severity (T1 red → T2 amber → T3 blue) but with a
+   muted, low-saturation palette so it reads as a quiet rank marker rather than a
+   bright alert. */
 .tier-badge {
   flex: 0 0 auto;
   align-self: center;
-  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.625rem;
-  --_ui5-tag-text-padding: 0.1rem 0.4rem;
-  --_ui5-tag-letter-spacing: 0;
+  font-weight: var(--weight-semibold, 600);
+  line-height: 1;
+  letter-spacing: 0;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tier-badge--t1 {
+  background: rgba(191, 66, 60, 0.12);
+  color: #a3352f;
+  border-color: rgba(191, 66, 60, 0.22);
+}
+
+.tier-badge--t2 {
+  background: rgba(178, 132, 20, 0.14);
+  color: #8a6510;
+  border-color: rgba(178, 132, 20, 0.24);
+}
+
+.tier-badge--t3 {
+  background: rgba(0, 112, 242, 0.1);
+  color: #2f68b3;
+  border-color: rgba(0, 112, 242, 0.2);
 }
