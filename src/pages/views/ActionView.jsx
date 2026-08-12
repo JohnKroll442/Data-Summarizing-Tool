@@ -210,6 +210,9 @@ function ActionView() {
         label: r._action_timestamp
           ? `${r.action_name} — ${r._action_timestamp}`
           : String(r.action_name),
+        story: r.story_name,
+        user: r.user,
+        durationMs: r.action_duration,
       })),
     [bucketedRows],
   )

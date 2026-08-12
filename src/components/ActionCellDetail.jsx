@@ -48,8 +48,20 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
   // Single-action list for the waterfall panel — its picker hides at length 1,
   // so the left list below IS the instance picker.
   const waterfallActions = useMemo(
-    () => (selected ? [{ name: action, timestamp: selectedTs, label: `${action}` }] : []),
-    [action, selectedTs, selected],
+    () =>
+      selected
+        ? [
+            {
+              name: action,
+              timestamp: selectedTs,
+              label: `${action}`,
+              story,
+              user: selected.user,
+              durationMs: selected.action_duration,
+            },
+          ]
+        : [],
+    [action, selectedTs, selected, story],
   )
 
   const flagsFor = (inst) => byActionKey?.get(`${action}::${inst?._action_timestamp ?? ''}`) ?? []
@@ -121,6 +133,13 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
               headers={headers}
               actions={waterfallActions}
               initialKey={selectedKey}
+              meta={{
+                actionName: action,
+                story,
+                user: selected?.user,
+                timestamp: selectedTs,
+                durationMs: selected?.action_duration,
+              }}
             />
           ) : (
             <div className="cell-detail__empty">No action instances to show.</div>
