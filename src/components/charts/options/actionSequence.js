@@ -29,6 +29,28 @@ import {
 const REMOTE = '#e35b2a' // orange — matches the SAP reference "Remote" swatch
 const LOCAL  = SAP_BLUE
 
+// Per-phase colors — the four categories shown in the waterfall header legend.
+// The three network sub-phases share the single `network` color.
+export const PHASE_COLORS = {
+  offset:  '#8396a8', // muted grey-blue
+  backend: '#0070f2', // SAP blue
+  network: '#e35b2a', // orange
+  render:  '#0f828f', // teal — distinct from backend blue
+}
+
+// Legend categories, in chart order, labeled to match the SAP reference.
+export const PHASE_LEGEND = [
+  { key: 'offset',  label: 'Offset',       color: PHASE_COLORS.offset },
+  { key: 'backend', label: 'Backend',      color: PHASE_COLORS.backend },
+  { key: 'network', label: 'Network wait', color: PHASE_COLORS.network },
+  { key: 'render',  label: 'Render',       color: PHASE_COLORS.render },
+]
+
+// Map any PHASE_ORDER key to its legend group. network-full/wait/cdn → network.
+export function phaseGroupOf(phaseKey) {
+  return String(phaseKey).startsWith('network') ? 'network' : String(phaseKey)
+}
+
 // Phase order within a single widget. Backend/network happen server-side
 // before the widget can render, so they come first; render finishes the
 // widget. Offset (client-side idle before the widget's turn to load) is
