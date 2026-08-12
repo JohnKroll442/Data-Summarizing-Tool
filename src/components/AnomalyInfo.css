@@ -5,9 +5,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Real padding gives a solid, reliable hit target around the small glyph (no
-     hunting for pixels). No negative margin — that previously overlapped rows. */
-  padding: 0.25rem;
+  /* A fixed square target (no negative margins — those overlapped rows before).
+     The WHOLE box is hoverable, not just the glyph, so any point over the icon
+     opens the tip. */
+  width: 1.5rem;
+  height: 1.5rem;
   color: var(--sap-blue, #0070f2);
   cursor: help;
   border-radius: 999px;
@@ -15,16 +17,24 @@
   transition: opacity 0.12s ease, background-color 0.12s ease;
 }
 
-/* Light-blue disc on hover so the target is visible and easy to find. */
+/* Light-blue disc on hover so the whole target is visible and easy to find. */
 .anomaly-info:hover {
   opacity: 1;
   background-color: var(--sap-blue-bg, rgba(0, 112, 242, 0.14));
 }
 
+/* Make the glyph itself transparent to the pointer so hover is caught by the
+   span across its ENTIRE box — not just the icon's thin stroke lines (which is
+   why only the bottom of the circle used to register). The element selector
+   guarantees it applies to the lucide <svg> and all its children. */
+.anomaly-info__icon,
+.anomaly-info svg,
+.anomaly-info svg * {
+  pointer-events: none;
+}
+
 .anomaly-info__icon {
   display: block;
-  /* Route hover to the whole padded span, not just the SVG's thin strokes. */
-  pointer-events: none;
 }
 
 /* Compact explanation inside the UI5 Popover — a title line plus one concise
