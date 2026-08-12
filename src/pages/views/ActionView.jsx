@@ -123,6 +123,12 @@ function ActionView() {
   const selectDurationBucket = (key) =>
     setDurationBucket((prev) => (prev === key ? null : key))
 
+  // Which of the three top-level views is active. Seeded from (and persisted
+  // to) viewUi.action.activeView so it survives drilling to Widget view + Back.
+  const [activeView, setActiveView] = useState(
+    () => resolveActiveView(viewUi.action.activeView),
+  )
+
   // Persist the two rail selections into viewUi so the nav snapshot captures
   // them (setViewUi merges, so this leaves the table's own keys untouched).
   useEffect(() => {
@@ -233,12 +239,6 @@ function ActionView() {
       : 'smooth'
     panelRef.current?.scrollIntoView({ behavior, block: 'start' })
   }, [waterfallOpen, waterfallInitialKey])
-
-  // Which of the three top-level views is active. Seeded from (and persisted
-  // to) viewUi.action.activeView so it survives drilling to Widget view + Back.
-  const [activeView, setActiveView] = useState(
-    () => resolveActiveView(viewUi.action.activeView),
-  )
 
   // Toggle the heatmap cell drill-down: clicking the open cell closes it.
   const handleSelectCell = (story, action) =>
