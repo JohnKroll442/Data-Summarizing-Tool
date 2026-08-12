@@ -53,18 +53,18 @@ export function phaseGroupOf(phaseKey) {
 // widget. Offset (client-side idle before the widget's turn to load) is
 // prepended.
 const PHASE_ORDER = [
-  { key: 'offset',       label: 'Offset',                     kind: 'local',
+  { key: 'offset',       label: 'Offset',
     measure: 'offset' },
   { key: 'backend',      label: 'Query data',
-    measure: 'backend', kind: 'remote' },
+    measure: 'backend' },
   { key: 'network-full', label: 'Network (Full)',
-    measure: 'network', sub: { include: ['ttfb'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['ttfb'] } },
   { key: 'network-wait', label: 'Network (waiting)',
-    measure: 'network', sub: { include: ['waiting', 'wait'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['waiting', 'wait'] } },
   { key: 'network-cdn',  label: 'Network (Content Download)',
-    measure: 'network', sub: { include: ['contentdownload', 'contentdl', 'download'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['contentdownload', 'contentdl', 'download'] } },
   { key: 'render',       label: 'Render',
-    measure: 'render', kind: 'local' },
+    measure: 'render' },
 ]
 
 /**

@@ -43,4 +43,10 @@ describe('resolveHeaderMeta', () => {
       widgetCount: 0,
     })
   })
+
+  it('preserves durationMs: 0 on the selected entry (not treated as missing)', () => {
+    const actions = [{ name: 'A', timestamp: '', durationMs: 0 }]
+    const m = resolveHeaderMeta({ actions, selectedIdx: 0, meta: { durationMs: 999 } })
+    expect(m.durationMs).toBe(0)
+  })
 })

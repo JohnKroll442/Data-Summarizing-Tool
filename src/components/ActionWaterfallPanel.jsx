@@ -14,8 +14,9 @@ import './ActionWaterfallPanel.css'
 
 /**
  * ActionWaterfallPanel — inline, action-scoped waterfall (one bar per (widget,
- * phase) for every widget in the chosen action, colored blue (Local) / orange
- * (Remote)). Rendered in the bottom chart region of the Action view — no popup.
+ * phase) for every widget in the chosen action, bars colored by phase
+ * (Offset/Backend/Network/Render)). Rendered in the bottom chart region of the
+ * Action view — no popup.
  *
  * Two modes in one panel:
  *   - waterfall mode (widgetIdx == null): action picker/stepper + the waterfall
@@ -29,10 +30,13 @@ import './ActionWaterfallPanel.css'
  *   onClose(): void
  *   rows: all CSV rows (already session-scoped by caller)
  *   headers: CSV header list
- *   actions: [{ name, timestamp, label }] — options for the picker; the
- *            first entry is used as the initial selection.
+ *   actions: [{ name, timestamp, label, story?, user?, durationMs? }] — options
+ *            for the picker; each entry may be enriched with story, user,
+ *            and durationMs; the first entry is used as the initial selection.
  *   initialKey: optional "name::timestamp" string identifying which action
  *            should be pre-selected when the panel opens. Falsy → first action.
+ *   meta: optional fallback for the rich header, shape
+ *         { actionName?, story?, user?, timestamp?, durationMs? }.
  */
 function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKey, meta }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
