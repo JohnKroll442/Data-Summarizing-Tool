@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
+import { List } from '@ui5/webcomponents-react/List'
+import { ListItemCustom } from '@ui5/webcomponents-react/ListItemCustom'
+import { ObjectStatus } from '@ui5/webcomponents-react/ObjectStatus'
+import { Tag } from '@ui5/webcomponents-react/Tag'
 import ActionWaterfallPanel from './ActionWaterfallPanel'
-import TierBadge from './TierBadge'
 import { durationTier } from '../lib/durationBands'
 import { formatCsvTime, formatDurationMs } from '../lib/format'
+import { objectStatusStateForDurationTier, tagDesignForAnomalyTier } from '../lib/sapStatus'
 import './ActionCellDetail.css'
 
 /**
@@ -71,37 +75,42 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
       </header>
 
       <div className="cell-detail__body">
-        <ul className="cell-detail__list" aria-label="Action instances">
+        <List
+          className="cell-detail__list"
+          selectionMode="SingleEnd"
+          separators="Inner"
+          accessibleName="Action instances"
+        >
           {instances.map((inst, i) => {
             const tiers = distinctTiers(flagsFor(inst), tierByType)
             const tier = durationTier(inst.action_duration)
-            const active = i === selectedIdx
             return (
-              <li key={`${inst._action_timestamp ?? ''}-${i}`}>
-                <button
-                  type="button"
-                  className={`cell-detail__item${active ? ' is-active' : ''}`}
-                  onClick={() => setSelectedIdx(i)}
-                >
-                  <span className={`cell-detail__dur cell-detail__dur--${tier ?? 'neutral'}`}>
+              <ListItemCustom
+                key={`${inst._action_timestamp ?? ''}-${i}`}
+                type="Active"
+                selected={i === selectedIdx}
+                onClick={() => setSelectedIdx(i)}
+              >
+                <div className="cell-detail__row">
+                  <ObjectStatus large state={objectStatusStateForDurationTier(tier)}>
                     {formatDurationMs(inst.action_duration) || '—'}
-                  </span>
-                  <span className="cell-detail__meta">
+                  </ObjectStatus>
+                  <div className="cell-detail__meta">
                     <span className="cell-detail__user">{inst.user || '—'}</span>
                     <span className="cell-detail__ts">{formatCsvTime(inst._action_timestamp)}</span>
-                  </span>
+                  </div>
                   {tiers.length > 0 && (
-                    <span className="cell-detail__badges">
+                    <div className="cell-detail__badges">
                       {tiers.map((t) => (
-                        <TierBadge key={t} tier={t} />
+                        <Tag key={t} design={tagDesignForAnomalyTier(t)}>{`T${t}`}</Tag>
                       ))}
-                    </span>
+                    </div>
                   )}
-                </button>
-              </li>
+                </div>
+              </ListItemCustom>
             )
           })}
-        </ul>
+        </List>
 
         <div className="cell-detail__waterfall">
           {selected ? (

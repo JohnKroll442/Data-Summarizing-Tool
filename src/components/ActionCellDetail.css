@@ -74,73 +74,27 @@
 }
 
 .cell-detail__list {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem;
   max-height: 32rem;
   overflow-y: auto;
   border-right: 1px solid var(--color-border-subtle);
   background: var(--sap-surface);
 }
 
-.cell-detail__item {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  column-gap: 0.6rem;
-  row-gap: 0.15rem;
+.cell-detail__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   width: 100%;
-  padding: 0.5rem 0.6rem;
-  margin-bottom: 0.35rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--sap-surface);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  min-width: 0;
 }
 
-.cell-detail__item:hover {
-  background: var(--sap-surface-alt);
+.cell-detail__row .cell-detail__meta {
+  flex: 1 1 auto;
 }
 
-.cell-detail__item:focus-visible {
-  outline: none;
-  border-color: var(--sap-blue);
-}
-
-.cell-detail__item.is-active {
-  border-color: var(--sap-blue);
-  box-shadow: inset 0 0 0 1px var(--sap-blue);
-  background: var(--sap-blue-light);
-}
-
-/* Duration: the emphasized figure, tinted by its severity band. */
-.cell-detail__dur {
-  grid-row: 1 / span 2;
-  align-self: center;
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Tier colors mirror the duration histogram (DurationDistribution.css) so a
-   duration reads the same severity everywhere. */
-.cell-detail__dur--good {
-  color: #107e3e;
-}
-.cell-detail__dur--neutral {
-  color: #f57c00;
-}
-.cell-detail__dur--watch {
-  color: #f0ab00;
-}
-.cell-detail__dur--warn {
-  color: #e76500;
-}
-.cell-detail__dur--bad {
-  color: #bb0000;
+.cell-detail__row .cell-detail__badges {
+  flex: none;
+  margin-top: 0;
 }
 
 .cell-detail__meta {
