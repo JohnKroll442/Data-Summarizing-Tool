@@ -13,9 +13,8 @@ import {
  *
  * Each row on the y-axis is one process step for one widget in the action —
  * e.g. `Query data of Widget_A (Backend)`, `Render Widget_A`. Bars are
- * positioned on an elapsed-time x-axis, colored by whether the phase is
- * Local (client-side: render, offset) or Remote (over-the-wire: backend,
- * network).
+ * positioned on an elapsed-time x-axis, colored by their phase group
+ * (offset, backend, network, render).
  *
  * Layout is duration-based, not timestamp-based — the CSV's per-row
  * timestamps are unreliable for sub-measure rows (Network Full / Content
@@ -26,26 +25,46 @@ import {
  * sequence in the chart.
  */
 
-const REMOTE = '#e35b2a' // orange — matches the SAP reference "Remote" swatch
-const LOCAL  = SAP_BLUE
+
+// Per-phase colors — the four categories shown in the waterfall header legend.
+// The three network sub-phases share the single `network` color.
+export const PHASE_COLORS = {
+  offset:  '#8396a8', // muted grey-blue
+  backend: SAP_BLUE, // SAP blue
+  network: '#e35b2a', // orange
+  render:  '#0f828f', // teal — distinct from backend blue
+}
+
+// Legend categories, in chart order, labeled to match the SAP reference.
+export const PHASE_LEGEND = [
+  { key: 'offset',  label: 'Offset',       color: PHASE_COLORS.offset },
+  { key: 'backend', label: 'Backend',      color: PHASE_COLORS.backend },
+  { key: 'network', label: 'Network wait', color: PHASE_COLORS.network },
+  { key: 'render',  label: 'Render',       color: PHASE_COLORS.render },
+]
+
+// Map any PHASE_ORDER key to its legend group. network-full/wait/cdn → network.
+export function phaseGroupOf(phaseKey) {
+  return String(phaseKey).startsWith('network') ? 'network' : String(phaseKey)
+}
 
 // Phase order within a single widget. Backend/network happen server-side
 // before the widget can render, so they come first; render finishes the
 // widget. Offset (client-side idle before the widget's turn to load) is
 // prepended.
 const PHASE_ORDER = [
-  { key: 'offset',       label: 'Offset',                     kind: 'local',
+  { key: 'offset',       label: 'Offset',
     measure: 'offset' },
   { key: 'backend',      label: 'Query data',
-    measure: 'backend', kind: 'remote' },
+    measure: 'backend' },
   { key: 'network-full', label: 'Network (Full)',
-    measure: 'network', sub: { include: ['ttfb'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['ttfb'] } },
   { key: 'network-wait', label: 'Network (waiting)',
-    measure: 'network', sub: { include: ['waiting', 'wait'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['waiting', 'wait'] } },
   { key: 'network-cdn',  label: 'Network (Content Download)',
-    measure: 'network', sub: { include: ['contentdownload', 'contentdl', 'download'] }, kind: 'remote' },
+    measure: 'network', sub: { include: ['contentdownload', 'contentdl', 'download'] } },
   { key: 'render',       label: 'Render',
-    measure: 'render', kind: 'local' },
+    measure: 'render' },
 ]
 
 /**
@@ -108,7 +127,11 @@ export function buildActionSequenceOption(actionRows) {
           ? `Render ${displayName}`
           : `${displayName} — ${phase.label}`
 
-      const color = phase.kind === 'local' ? LOCAL : REMOTE
+      const group = phaseGroupOf(phase.key)
+      const color = PHASE_COLORS[group]
+      const legendLabel = phase.key.startsWith('network')
+        ? 'Network wait'
+        : phase.label
 
       yLabels.push(label)
       spacerData.push(cursor)
@@ -116,7 +139,8 @@ export function buildActionSequenceOption(actionRows) {
         value: pick.durationMs,
         itemStyle: { color, borderRadius: [2, 2, 2, 2] },
         phaseLabel: label,
-        kind: phase.kind === 'local' ? 'Local' : 'Remote',
+        phaseGroup: group,
+        legendLabel,
         startMs: cursor,
         endMs: cursor + pick.durationMs,
         durationMs: pick.durationMs,
@@ -188,15 +212,6 @@ export function buildActionSequenceOption(actionRows) {
 
   return {
     textStyle: BASE_TEXT_STYLE,
-    legend: {
-      top: 8,
-      left: 'center',
-      data: [
-        { name: 'Local',  icon: 'rect', itemStyle: { color: LOCAL } },
-        { name: 'Remote', icon: 'rect', itemStyle: { color: REMOTE } },
-      ],
-      textStyle: { color: '#1d2d3e', fontSize: f.legend },
-    },
     tooltip: {
       ...BASE_TOOLTIP,
       trigger: 'item',
@@ -205,7 +220,7 @@ export function buildActionSequenceOption(actionRows) {
         if (!d || typeof d !== 'object') return ''
         return [
           `<strong>${escape(d.phaseLabel)}</strong>`,
-          `Type: ${escape(d.kind)}`,
+          `Type: ${escape(d.legendLabel)}`,
           `Duration: ${fmtMs(d.durationMs)}`,
           `Start: ${fmtMs(d.startMs)}`,
           `End: ${fmtMs(d.endMs)}`,
@@ -213,7 +228,7 @@ export function buildActionSequenceOption(actionRows) {
         ].join('<br/>')
       },
     },
-    grid: { ...BASE_GRID, left: 288, right: 96, top: 76, bottom: 56 },
+    grid: { ...BASE_GRID, left: 288, right: 96, top: 44, bottom: 56 },
     xAxis: {
       type: 'value',
       min: 0,
@@ -249,24 +264,6 @@ export function buildActionSequenceOption(actionRows) {
         silent: true,
         data: spacerData.slice().reverse(),
         barCategoryGap: '30%',
-      },
-      {
-        name: 'Local',
-        type: 'bar',
-        stack: 'seq',
-        // Real data lives on the "duration" series below, but ECharts needs
-        // a series per legend entry to make the legend toggle-able. We use
-        // two invisible marker series just so the legend swatches render;
-        // toggling them does nothing on purpose (all bars are on `duration`).
-        data: [],
-        itemStyle: { color: LOCAL },
-      },
-      {
-        name: 'Remote',
-        type: 'bar',
-        stack: 'seq',
-        data: [],
-        itemStyle: { color: REMOTE },
       },
       {
         name: 'duration',

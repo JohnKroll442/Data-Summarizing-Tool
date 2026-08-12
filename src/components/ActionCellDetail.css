@@ -1,0 +1,152 @@
+/* Action detail — the drill-down beneath the Story × Action heatmap. A header
+   plus a two-pane body: a scrollable instance list on the left and the selected
+   instance's waterfall on the right. Matches the SAP chart-card look. */
+.cell-detail {
+  margin-top: 0.75rem;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.cell-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--sap-surface-alt);
+}
+
+.cell-detail__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cell-detail__title-label {
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
+}
+
+.cell-detail__title-crumb {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+}
+
+.cell-detail__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--sap-text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.cell-detail__close:hover {
+  background: var(--sap-surface);
+  color: var(--sap-text);
+}
+
+.cell-detail__close:focus-visible {
+  outline: none;
+  border-color: var(--sap-blue);
+}
+
+/* Two panes: a fixed-width instance list, then the waterfall filling the rest. */
+.cell-detail__body {
+  display: grid;
+  grid-template-columns: minmax(15rem, 20rem) 1fr;
+  align-items: stretch;
+}
+
+.cell-detail__list {
+  max-height: 32rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--sap-surface);
+}
+
+.cell-detail__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.cell-detail__row .cell-detail__meta {
+  flex: 1 1 auto;
+}
+
+.cell-detail__row .cell-detail__badges {
+  flex: none;
+  margin-top: 0;
+}
+
+.cell-detail__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cell-detail__user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sap-text);
+  font-size: var(--text-sm);
+}
+
+.cell-detail__ts {
+  color: var(--sap-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
+}
+
+/* Right pane hosts ActionWaterfallPanel; strip the wrapper padding so the panel
+   fills the pane edge-to-edge. */
+.cell-detail__waterfall {
+  min-width: 0;
+  padding: 0.5rem;
+}
+
+.cell-detail__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 8rem;
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 60rem) {
+  .cell-detail__body {
+    grid-template-columns: 1fr;
+  }
+  .cell-detail__list {
+    max-height: 18rem;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+}

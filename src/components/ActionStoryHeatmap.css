@@ -1,0 +1,146 @@
+/* Story × Action heatmap grid. A scrollable table with a sticky header row
+   (actions) and sticky first column (stories); cells are tinted p95 buttons.
+   Matches the SAP card look of the surrounding chart panels. */
+.story-heatmap {
+  width: 100%;
+}
+
+.story-heatmap--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 8rem;
+  border: 1px dashed var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface-alt);
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* The scroll viewport — the grid can be wide (many actions) and tall (many
+   stories); both axes scroll while the header row + story column stay pinned. */
+.story-heatmap__scroll {
+  overflow: auto;
+  max-height: 70vh;
+  border: 1px solid var(--sap-border);
+  border-radius: var(--radius-md);
+}
+
+.story-heatmap__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.story-heatmap__table th,
+.story-heatmap__table td {
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* Sticky top-left corner — pinned on both axes, so it sits above the header
+   row AND the story column while scrolling. */
+.story-heatmap__corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--sap-surface-alt);
+  color: var(--sap-text-muted);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+  min-width: 12rem;
+}
+
+/* Action headers across the top. */
+.story-heatmap__col-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--sap-surface-alt);
+  color: var(--sap-text);
+  font-weight: var(--weight-semibold);
+  padding: 0.4rem 0.5rem;
+  vertical-align: bottom;
+  max-width: 6.5rem;
+}
+
+.story-heatmap__col-head-text {
+  display: block;
+  max-width: 6.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Story names down the left. */
+.story-heatmap__row-head {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--sap-surface);
+  color: var(--sap-text);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+  min-width: 12rem;
+  max-width: 16rem;
+}
+
+.story-heatmap__row-head-text {
+  display: block;
+  max-width: 15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-heatmap__cell {
+  padding: 0;
+  text-align: center;
+}
+
+.story-heatmap__cell--empty {
+  background: var(--sap-surface);
+  color: var(--sap-text-muted);
+}
+
+.story-heatmap__dash {
+  display: inline-block;
+  padding: 0.35rem 0.5rem;
+  color: var(--color-border-subtle);
+}
+
+/* A tinted cell button. Background color + text color are set inline from the
+   p95 value; this rule owns layout, sizing and the interaction affordances. */
+.story-heatmap__btn {
+  display: block;
+  width: 100%;
+  min-width: 4.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid transparent;
+  background: var(--sap-blue-light);
+  color: var(--sap-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: filter 0.12s ease, border-color 0.12s ease;
+}
+
+.story-heatmap__btn:hover {
+  filter: brightness(0.94);
+}
+
+.story-heatmap__btn:focus-visible {
+  outline: none;
+  border-color: var(--sap-blue);
+}
+
+.story-heatmap__btn.is-selected {
+  border-color: var(--sap-blue);
+  box-shadow: inset 0 0 0 1px var(--sap-blue);
+}

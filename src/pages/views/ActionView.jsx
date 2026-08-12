@@ -4,6 +4,8 @@ import ActionWaterfallPanel from '../../components/ActionWaterfallPanel'
 import KpiStrip from '../../components/KpiStrip'
 import DurationDistribution from '../../components/DurationDistribution'
 import AnomalySummaryPanel from '../../components/AnomalySummaryPanel'
+import ActionStoryHeatmap from '../../components/ActionStoryHeatmap'
+import ActionCellDetail from '../../components/ActionCellDetail'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
@@ -11,6 +13,7 @@ import { aggregateByAction } from '../../lib/actionAggregate'
 import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers } from '../../lib/anomalyDetect'
+import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
 import './ActionView.css'
 
 /**
@@ -59,11 +62,35 @@ function ActionView() {
   const bands = anomalies.bands
 
   // Column mapping for the KPI helper — a cache hit on the table's own
-  // aggregateByAction(scopedRows, headers) call.
-  const { mapping } = useMemo(
+  // aggregateByAction(scopedRows, headers) call. We also take `.rows` (the
+  // one-row-per-action-instance set) to feed the Story × Action heatmap.
+  const { mapping, rows: aggRows } = useMemo(
     () => aggregateByAction(scopedRows, headers),
     [scopedRows, headers],
   )
+
+  // The p95 crosstab behind the "Story × Action heatmap" chart tab. Scoped to
+  // the session (like the rail), independent of the table's column filters.
+  const storyActionMatrix = useMemo(
+    () => buildStoryActionMatrix(aggRows),
+    [aggRows],
+  )
+
+  // The heatmap cell whose drill-down detail is open, as { story, action }, or
+  // null when none is selected. Reset if it points at a combo the current matrix
+  // no longer has (e.g. after the scope changes).
+  const [selectedCell, setSelectedCell] = useState(null)
+  const selectedCellKey = selectedCell
+    ? cellKeyOf(selectedCell.story, selectedCell.action)
+    : null
+  const selectedCellData = selectedCellKey
+    ? storyActionMatrix.cells.get(selectedCellKey) ?? null
+    : null
+  useEffect(() => {
+    if (selectedCell && !storyActionMatrix.cells.has(cellKeyOf(selectedCell.story, selectedCell.action))) {
+      setSelectedCell(null)
+    }
+  }, [storyActionMatrix, selectedCell])
 
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
@@ -183,6 +210,9 @@ function ActionView() {
         label: r._action_timestamp
           ? `${r.action_name} — ${r._action_timestamp}`
           : String(r.action_name),
+        story: r.story_name,
+        user: r.user,
+        durationMs: r.action_duration,
       })),
     [bucketedRows],
   )
@@ -300,7 +330,35 @@ function ActionView() {
                   ? 'Offset vs Duration'
                   : 'Story × Action Heatmap'}
               </div>
-              <div className="action-chart-placeholder__empty">Chart coming soon</div>
+              {activeChartTab === 'heatmap' ? (
+                <>
+                  <ActionStoryHeatmap
+                    matrix={storyActionMatrix}
+                    selectedKey={selectedCellKey}
+                    onSelectCell={(story, action) =>
+                      setSelectedCell((prev) =>
+                        prev && prev.story === story && prev.action === action
+                          ? null
+                          : { story, action },
+                      )
+                    }
+                  />
+                  {selectedCell && selectedCellData && (
+                    <ActionCellDetail
+                      story={selectedCell.story}
+                      action={selectedCell.action}
+                      cell={selectedCellData}
+                      rows={scopedRows}
+                      headers={headers}
+                      byActionKey={anomalies.byActionKey}
+                      tierByType={tierByType}
+                      onClose={() => setSelectedCell(null)}
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="action-chart-placeholder__empty">Chart coming soon</div>
+              )}
             </section>
           )}
         </div>
