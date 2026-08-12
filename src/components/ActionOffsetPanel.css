@@ -1,0 +1,17 @@
+.action-offset__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
+}
+
+.action-offset__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16rem;
+  border: 1px dashed var(--sap-border);
+  border-radius: var(--radius-md);
+  background: var(--sap-surface-alt);
+  color: var(--sap-text-muted);
+  font-size: var(--text-sm);
+}

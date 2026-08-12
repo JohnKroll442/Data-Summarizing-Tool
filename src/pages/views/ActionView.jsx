@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import ActionSummaryTable from '../../components/ActionSummaryTable'
-import ActionWaterfallPanel from '../../components/ActionWaterfallPanel'
 import KpiStrip from '../../components/KpiStrip'
-import DurationDistribution from '../../components/DurationDistribution'
-import AnomalySummaryPanel from '../../components/AnomalySummaryPanel'
-import ActionStoryHeatmap from '../../components/ActionStoryHeatmap'
-import ActionCellDetail from '../../components/ActionCellDetail'
+import ActionViewSwitcher from '../../components/ActionViewSwitcher'
+import ActionDataTablePanel from '../../components/ActionDataTablePanel'
+import ActionHeatmapPanel from '../../components/ActionHeatmapPanel'
+import ActionOffsetPanel from '../../components/ActionOffsetPanel'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
@@ -14,6 +12,7 @@ import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers } from '../../lib/anomalyDetect'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
+import { resolveActiveView } from '../../lib/actionViews'
 import './ActionView.css'
 
 /**
@@ -124,11 +123,17 @@ function ActionView() {
   const selectDurationBucket = (key) =>
     setDurationBucket((prev) => (prev === key ? null : key))
 
+  // Which of the three top-level views is active. Seeded from (and persisted
+  // to) viewUi.action.activeView so it survives drilling to Widget view + Back.
+  const [activeView, setActiveView] = useState(
+    () => resolveActiveView(viewUi.action.activeView),
+  )
+
   // Persist the two rail selections into viewUi so the nav snapshot captures
   // them (setViewUi merges, so this leaves the table's own keys untouched).
   useEffect(() => {
-    setViewUi('action', { anomalyTypeFilter, durationBucket })
-  }, [anomalyTypeFilter, durationBucket, setViewUi])
+    setViewUi('action', { anomalyTypeFilter, durationBucket, activeView })
+  }, [anomalyTypeFilter, durationBucket, activeView, setViewUi])
 
   const durationBucketFilter = durationBucket
     ? bands.find((b) => b.key === durationBucket) ?? null
@@ -235,22 +240,11 @@ function ActionView() {
     panelRef.current?.scrollIntoView({ behavior, block: 'start' })
   }, [waterfallOpen, waterfallInitialKey])
 
-  // Chart-shortcut header tabs above the table. Each reveals its chart panel
-  // below the table (charts are placeholders for now) and scrolls down to it —
-  // only ONE shows at a time, and none show until a tab is clicked. Clicking the
-  // active tab again collapses it. The scroll runs in an effect (not the click
-  // handler) because the panel only mounts once `activeChartTab` is set.
-  const [activeChartTab, setActiveChartTab] = useState(null)
-  const chartPanelRef = useRef(null)
-  const toggleChart = (key) =>
-    setActiveChartTab((prev) => (prev === key ? null : key))
-  useEffect(() => {
-    if (!activeChartTab) return
-    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
-      : 'smooth'
-    chartPanelRef.current?.scrollIntoView({ behavior, block: 'start' })
-  }, [activeChartTab])
+  // Toggle the heatmap cell drill-down: clicking the open cell closes it.
+  const handleSelectCell = (story, action) =>
+    setSelectedCell((prev) =>
+      prev && prev.story === story && prev.action === action ? null : { story, action },
+    )
 
   return (
     <>
@@ -258,110 +252,57 @@ function ActionView() {
         <KpiStrip variant="action" kpis={kpis} columns={kpis.length} />
       </HeaderPortal>
 
-      <div className="action-view">
-        <aside className="action-view__rail" aria-label="Action anomaly summary">
-          <DurationDistribution
+      <div className="action-view-shell">
+        <ActionViewSwitcher activeView={activeView} onChange={setActiveView} />
+
+        {activeView === 'table' && (
+          <ActionDataTablePanel
             durations={durations}
             bands={bands}
-            highlightDuration={hoveredDuration}
-            activeBucketKey={durationBucket}
+            hoveredDuration={hoveredDuration}
+            durationBucket={durationBucket}
             onSelectBucket={selectDurationBucket}
-          />
-          <AnomalySummaryPanel
-            counts={filteredSummary.counts}
+            anomalyCounts={filteredSummary.counts}
             totalFlagged={filteredSummary.totalFlagged}
             totalActions={filteredSummary.totalActions}
             hoveredFlags={hoveredFlags}
-            activeType={anomalyTypeFilter}
-            onSelectType={selectAnomalyType}
+            anomalyTypeFilter={anomalyTypeFilter}
+            onSelectAnomalyType={selectAnomalyType}
             tierByType={tierByType}
-          />
-        </aside>
-
-        <div className="action-view__main">
-          <nav className="action-chart-tabs" aria-label="Jump to chart">
-            <button
-              type="button"
-              className={`action-chart-tab${activeChartTab === 'offset' ? ' is-active' : ''}`}
-              onClick={() => toggleChart('offset')}
-            >
-              Offset vs Duration
-            </button>
-            <button
-              type="button"
-              className={`action-chart-tab${activeChartTab === 'heatmap' ? ' is-active' : ''}`}
-              onClick={() => toggleChart('heatmap')}
-            >
-              Story × Action Heatmap
-            </button>
-          </nav>
-
-          <ActionSummaryTable
             rows={rows}
             headers={headers}
             onOpenWaterfall={openWaterfallFor}
             onFilteredActionsChange={setFilteredActionRows}
             byActionKey={anomalies.byActionKey}
-            anomalyTypeFilter={anomalyTypeFilter}
             onHoverAction={setHoveredActionKey}
             onClearAnomalyFilter={() => setAnomalyTypeFilter(null)}
             durationBucketFilter={durationBucketFilter}
             onClearDurationBucket={() => setDurationBucket(null)}
-            bands={bands}
-            tierByType={tierByType}
+            waterfallOpen={waterfallOpen}
+            waterfallActions={waterfallActions}
+            waterfallInitialKey={waterfallInitialKey}
+            scopedRows={scopedRows}
+            onCloseWaterfall={() => setWaterfallOpen(false)}
+            panelRef={panelRef}
           />
+        )}
 
-          {waterfallOpen && (
-            <div ref={panelRef}>
-              <ActionWaterfallPanel
-                open={waterfallOpen}
-                onClose={() => setWaterfallOpen(false)}
-                rows={scopedRows}
-                headers={headers}
-                actions={waterfallActions}
-                initialKey={waterfallInitialKey}
-              />
-            </div>
-          )}
-          {activeChartTab && (
-            <section ref={chartPanelRef} className="action-chart-placeholder">
-              <div className="action-chart-placeholder__title">
-                {activeChartTab === 'offset'
-                  ? 'Offset vs Duration'
-                  : 'Story × Action Heatmap'}
-              </div>
-              {activeChartTab === 'heatmap' ? (
-                <>
-                  <ActionStoryHeatmap
-                    matrix={storyActionMatrix}
-                    selectedKey={selectedCellKey}
-                    onSelectCell={(story, action) =>
-                      setSelectedCell((prev) =>
-                        prev && prev.story === story && prev.action === action
-                          ? null
-                          : { story, action },
-                      )
-                    }
-                  />
-                  {selectedCell && selectedCellData && (
-                    <ActionCellDetail
-                      story={selectedCell.story}
-                      action={selectedCell.action}
-                      cell={selectedCellData}
-                      rows={scopedRows}
-                      headers={headers}
-                      byActionKey={anomalies.byActionKey}
-                      tierByType={tierByType}
-                      onClose={() => setSelectedCell(null)}
-                    />
-                  )}
-                </>
-              ) : (
-                <div className="action-chart-placeholder__empty">Chart coming soon</div>
-              )}
-            </section>
-          )}
-        </div>
+        {activeView === 'heatmap' && (
+          <ActionHeatmapPanel
+            matrix={storyActionMatrix}
+            selectedKey={selectedCellKey}
+            selectedCell={selectedCell}
+            selectedCellData={selectedCellData}
+            onSelectCell={handleSelectCell}
+            scopedRows={scopedRows}
+            headers={headers}
+            byActionKey={anomalies.byActionKey}
+            tierByType={tierByType}
+            onCloseDetail={() => setSelectedCell(null)}
+          />
+        )}
+
+        {activeView === 'offset' && <ActionOffsetPanel />}
       </div>
     </>
   )
