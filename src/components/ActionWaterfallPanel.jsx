@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import { buildActionSequenceOption, detectMapping } from './charts/options/actionSequence'
+import { Title } from '@ui5/webcomponents-react/Title'
+import { Text } from '@ui5/webcomponents-react/Text'
+import { Button } from '@ui5/webcomponents-react/Button'
+import { buildActionSequenceOption, detectMapping, PHASE_LEGEND } from './charts/options/actionSequence'
+import { resolveHeaderMeta } from '../lib/actionWaterfallMeta'
+import { formatCsvTime, formatDurationMs } from '../lib/format'
 import WidgetTimingPanel from './WidgetTimingPanel'
 import { applyActionFilter } from '../lib/drillDown'
 import { useViewportWidth } from '../lib/useViewportWidth'
@@ -29,7 +34,7 @@ import './ActionWaterfallPanel.css'
  *   initialKey: optional "name::timestamp" string identifying which action
  *            should be pre-selected when the panel opens. Falsy → first action.
  */
-function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKey }) {
+function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKey, meta }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   // Which widget (if any) the user drilled into by clicking a bar — an index
   // into `actionWidgets` (the charted widgets in the current action), or null
@@ -209,21 +214,45 @@ function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKe
     (option?.series?.find?.((s) => s?.name === 'duration')?.data?.length) ?? 0
   const chartHeight = Math.max(420, Math.min(1200, 120 + seriesCount * 26))
 
+  const headerMeta = resolveHeaderMeta({
+    actions,
+    selectedIdx,
+    meta,
+    widgetCount: actionWidgets.length,
+  })
+  const crumb = [
+    headerMeta.actionName,
+    headerMeta.story,
+    formatCsvTime(headerMeta.timestamp),
+    headerMeta.user,
+  ]
+    .filter(Boolean)
+    .join('  ·  ')
+  const totalLabel = `Total: ${formatDurationMs(headerMeta.durationMs) || '—'} · ${headerMeta.widgetCount} widget${headerMeta.widgetCount === 1 ? '' : 's'}`
+
   return (
     <section
       className="action-waterfall-panel"
       aria-labelledby="action-waterfall-title"
     >
-      <header className="action-waterfall-header">
-        <h2 id="action-waterfall-title">Action Waterfall Chart</h2>
-        <button
-          type="button"
-          className="action-waterfall-close"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          <X size={16} />
-        </button>
+      <header className="action-waterfall-rich-header">
+        <div className="awf-header__top">
+          <Title level="H5" size="H5" className="awf-header__crumb" id="action-waterfall-title">
+            {crumb || 'Action Waterfall Chart'}
+          </Title>
+          <Button design="Transparent" onClick={onClose}>
+            View
+          </Button>
+        </div>
+        <Text className="awf-header__meta">{totalLabel}</Text>
+        <div className="awf-header__legend" aria-label="Phase legend">
+          {PHASE_LEGEND.map((p) => (
+            <span className="awf-legend__item" key={p.key}>
+              <span className="awf-legend__swatch" style={{ background: p.color }} />
+              <Text className="awf-legend__label">{p.label}</Text>
+            </span>
+          ))}
+        </div>
       </header>
       {actions && actions.length > 1 && (
         <div className="action-waterfall-toolbar">
