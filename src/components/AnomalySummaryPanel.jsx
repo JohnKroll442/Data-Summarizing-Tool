@@ -73,7 +73,7 @@ function AnomalySummaryPanel({
                 <li className="anomaly-panel__ctx-row" key={f.type}>
                   <span className="anomaly-panel__label">
                     <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
-                    {t.label}
+                    <span className="anomaly-panel__label-text">{t.label}</span>
                   </span>
                   <span className="anomaly-panel__detail" title={f.detail}>{f.detail}</span>
                 </li>
@@ -99,7 +99,7 @@ function AnomalySummaryPanel({
           <span className="anomaly-panel__label">
             <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
             <TierBadge tier={tierByType?.get(t.key)} />
-            {t.label}
+            <span className="anomaly-panel__label-text">{t.label}</span>
             {t.provisional && <span className="anomaly-panel__tag">needs validation</span>}
           </span>
           <span className="anomaly-panel__count">{fmtCount(c)}</span>

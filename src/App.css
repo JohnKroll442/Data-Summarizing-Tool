@@ -58,10 +58,9 @@
 }
 
 .app-card {
-  background: var(--sap-surface);
-  border: var(--border-width) solid var(--sap-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  /* No card frame — the page is plain white, so the upload card sits directly
+     on it with no outer border separating content from the background. */
+  background: transparent;
 }
 
 .app-status,

@@ -7,9 +7,9 @@
   justify-content: center;
   /* A fixed square target (no negative margins — those overlapped rows before).
      The WHOLE box is hoverable, not just the glyph, so any point over the icon
-     opens the tip. */
-  width: 1.5rem;
-  height: 1.5rem;
+     opens the tip. Kept compact so it doesn't crowd the narrow rail label. */
+  width: 1.3rem;
+  height: 1.3rem;
   color: var(--sap-blue, #0070f2);
   cursor: help;
   border-radius: 999px;

@@ -2,7 +2,12 @@
   background: var(--sap-surface);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
-  padding: 0.85rem 0.9rem 0.9rem;
+  /* Trim the LEFT padding (last value) so every row's content shifts left and
+     the label track gains real width — the 260px rail is fixed while the font
+     scales up on wide monitors, so the longest single words ("Fragmented")
+     need this room to stay on one line. Right padding is unchanged so the count
+     column holds its place. */
+  padding: 0.85rem 0.9rem 0.9rem 0.35rem;
 }
 
 .anomaly-panel__title {
@@ -63,11 +68,14 @@
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 0.5rem;
+  /* Left inset trimmed (last value) so the ⓘ icon + badge + label sit further
+     left and the label track gets more room; the right inset stays put so the
+     count column doesn't move. */
+  gap: 0.2rem;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--radius-sm, 4px);
-  padding: 0.32rem 0.4rem;
+  padding: 0.32rem 0.4rem 0.32rem 0;
   font: inherit;
   font-size: var(--text-sm);
   color: var(--sap-text);
@@ -103,10 +111,17 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  /* Wrap onto more lines rather than spilling text over the count column to the
-     right (single long words like "Fragmented" would otherwise overlap it). */
-  overflow-wrap: anywhere;
+  gap: 0.15rem;
+}
+
+/* The label text sits in its own flex child so it can SHRINK to the column and
+   wrap, instead of a bare text node (min-width:auto) that refuses to shrink and
+   overflows onto the count. min-width:0 lets it take only the space left after
+   the ⓘ icon + tier badge; break-word wraps BETWEEN words ("Negative" /
+   "phase") and never mid-word ("Nega" / "tive"). */
+.anomaly-panel__label-text {
+  min-width: 0;
+  overflow-wrap: break-word;
   white-space: normal;
 }
 
@@ -143,9 +158,11 @@
 }
 
 /* Keep the rank badge proportional to the enlarged row text in the panel
-   (the table keeps the smaller default set in TierBadge.css). */
+   (the table keeps the smaller default set in TierBadge.css). Tighter side
+   padding here buys the label a little more single-line room in the rail. */
 .anomaly-panel__label .tier-badge {
   font-size: 0.72rem;
+  padding: 0.15rem 0.28rem;
 }
 
 /* Contextual (hovered-action) rows: label · detail. */

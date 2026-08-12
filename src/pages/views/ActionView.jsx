@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ActionSummaryTable from '../../components/ActionSummaryTable'
-import ChartGrid from '../../components/charts/ChartGrid'
 import ActionWaterfallPanel from '../../components/ActionWaterfallPanel'
 import KpiStrip from '../../components/KpiStrip'
 import DurationDistribution from '../../components/DurationDistribution'
@@ -206,6 +205,23 @@ function ActionView() {
     panelRef.current?.scrollIntoView({ behavior, block: 'start' })
   }, [waterfallOpen, waterfallInitialKey])
 
+  // Chart-shortcut header tabs above the table. Each reveals its chart panel
+  // below the table (charts are placeholders for now) and scrolls down to it —
+  // only ONE shows at a time, and none show until a tab is clicked. Clicking the
+  // active tab again collapses it. The scroll runs in an effect (not the click
+  // handler) because the panel only mounts once `activeChartTab` is set.
+  const [activeChartTab, setActiveChartTab] = useState(null)
+  const chartPanelRef = useRef(null)
+  const toggleChart = (key) =>
+    setActiveChartTab((prev) => (prev === key ? null : key))
+  useEffect(() => {
+    if (!activeChartTab) return
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth'
+    chartPanelRef.current?.scrollIntoView({ behavior, block: 'start' })
+  }, [activeChartTab])
+
   return (
     <>
       <HeaderPortal>
@@ -233,6 +249,23 @@ function ActionView() {
         </aside>
 
         <div className="action-view__main">
+          <nav className="action-chart-tabs" aria-label="Jump to chart">
+            <button
+              type="button"
+              className={`action-chart-tab${activeChartTab === 'offset' ? ' is-active' : ''}`}
+              onClick={() => toggleChart('offset')}
+            >
+              Offset vs Duration
+            </button>
+            <button
+              type="button"
+              className={`action-chart-tab${activeChartTab === 'heatmap' ? ' is-active' : ''}`}
+              onClick={() => toggleChart('heatmap')}
+            >
+              Story × Action Heatmap
+            </button>
+          </nav>
+
           <ActionSummaryTable
             rows={rows}
             headers={headers}
@@ -260,8 +293,16 @@ function ActionView() {
               />
             </div>
           )}
-          <h3 className="view-section-heading">Charts</h3>
-          <ChartGrid viewId="action" rows={scopedRows} headers={headers} />
+          {activeChartTab && (
+            <section ref={chartPanelRef} className="action-chart-placeholder">
+              <div className="action-chart-placeholder__title">
+                {activeChartTab === 'offset'
+                  ? 'Offset vs Duration'
+                  : 'Story × Action Heatmap'}
+              </div>
+              <div className="action-chart-placeholder__empty">Chart coming soon</div>
+            </section>
+          )}
         </div>
       </div>
     </>
