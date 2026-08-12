@@ -1,9 +1,26 @@
 import { ANOMALY_TYPES } from '../lib/anomalyDetect'
 import TierBadge from './TierBadge'
+import AnomalyInfo from './AnomalyInfo'
 import './AnomalySummaryPanel.css'
 
 const TOTAL_KEY = '__total__'
 const PERF = ANOMALY_TYPES.filter((t) => t.tier === 'performance')
+
+// Plain-language, one-line explanations shown in the ⓘ hover next to each
+// anomaly. Deliberately short — enough to grasp what the flag means, without the
+// exact thresholds (those live in ANOMALY_TYPES.description, used by the badge).
+const BLURBS = {
+  slow_action: 'This action took two minutes or longer from start to finish.',
+  large_offset: 'A widget spent a long time waiting before it started rendering.',
+  straggler: 'One widget took far longer to render than the others in this action.',
+  frontend_bound: 'Most of the time went into rendering in the browser.',
+  network_bound: 'Most of the time went into waiting on the network.',
+  backend_bound: 'Most of the time went into waiting on the backend.',
+  fragmented: 'The slow time is spread across many widgets, with no single culprit.',
+  offset_overrun: "A widget's pre-render wait exceeds the whole action — the timestamps don't add up.",
+  negative_phase: 'An inner timing phase outran the one containing it — inconsistent timestamps.',
+  component_overrun: "A widget's phases add up to more than the whole action — inconsistent timestamps.",
+}
 
 // Sub-headers for the indented subgroups inside a tier. The phase-attribution
 // flags (frontend/network/backend-bound) are a breakdown of WHERE a slow
@@ -54,7 +71,10 @@ function AnomalySummaryPanel({
               if (!t) return null
               return (
                 <li className="anomaly-panel__ctx-row" key={f.type}>
-                  <span className="anomaly-panel__label">{t.label}</span>
+                  <span className="anomaly-panel__label">
+                    <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
+                    {t.label}
+                  </span>
                   <span className="anomaly-panel__detail" title={f.detail}>{f.detail}</span>
                 </li>
               )
@@ -77,6 +97,7 @@ function AnomalySummaryPanel({
           onClick={() => onSelectType?.(t.key)}
         >
           <span className="anomaly-panel__label">
+            <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
             <TierBadge tier={tierByType?.get(t.key)} />
             {t.label}
             {t.provisional && <span className="anomaly-panel__tag">needs validation</span>}

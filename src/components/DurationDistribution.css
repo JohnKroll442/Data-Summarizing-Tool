@@ -94,14 +94,14 @@ button.duration-dist__row:disabled {
   border-radius: inherit;
 }
 
-/* 5-band traffic-light coloring by duration tier: green < 5s, grey 5–30s,
-   yellow 30s–1m, orange 1–2m, red ≥ 2m. */
+/* 5-band traffic-light coloring by duration tier: green < 5s, orange 5–30s,
+   yellow 30s–1m, deep-orange 1–2m, red ≥ 2m. */
 .duration-dist__row.is-good .duration-dist__bar {
   background: #107e3e;
 }
 
 .duration-dist__row.is-neutral .duration-dist__bar {
-  background: #6a6d70;
+  background: #f57c00;
 }
 
 .duration-dist__row.is-watch .duration-dist__bar {

@@ -5,11 +5,11 @@ import { formatCount, formatDurationMs } from './format'
 
 const MISSING = '—'
 
-// ">30s actions" KPI cutoff — a fixed 30s reference kept independent of the
-// slow_action anomaly threshold (which is 2m). The two answer different
-// questions: "how many actions are noticeably slow" vs "which are anomalously
-// slow", so they must not move together.
-const OVER_ACTION_MS = 30000
+// ">2 min actions" KPI cutoff — a fixed 2-minute reference for "how many
+// actions are genuinely slow", as a count + share. This matches the slow_action
+// anomaly threshold (also 2m) on purpose: both headline the same "clearly too
+// slow" bar so the KPI and the anomaly count tell one consistent story.
+const OVER_ACTION_MS = 120000
 
 /**
  * Compute KPI cards for a given view variant. Returns an array of
@@ -85,7 +85,6 @@ function actionKpis(rows, headers) {
  */
 export function actionKpisFromAgg(agg, mapping) {
   const totalActions = mapping.actionName ? agg.length : ''
-  const uniqueNames = mapping.actionName ? distinct(agg.map((r) => r.action_name)) : ''
 
   const durations = agg.map((r) => r.action_duration)
 
@@ -97,21 +96,20 @@ export function actionKpisFromAgg(agg, mapping) {
   const p90Duration = percentile(durations, 0.9)
   const p95Duration = percentile(durations, 0.95)
 
-  // ">30s actions" — how many actions crossed a fixed 30s "noticeably slow"
-  // cutoff, as a count + share of all actions. Independent of the slow_action
-  // anomaly flag (which fires at 2m); this is a broader health headline.
-  const over30 = durations.reduce((n, v) => {
+  // ">2 min actions" — how many actions crossed the fixed 2-minute "clearly too
+  // slow" cutoff, as a count + share of all actions. Same threshold as the
+  // slow_action anomaly, so this headline count matches the flagged-action total.
+  const over2m = durations.reduce((n, v) => {
     const d = Number(v)
     return Number.isFinite(d) && d >= OVER_ACTION_MS ? n + 1 : n
   }, 0)
-  const over30Value = agg.length
-    ? `${formatCount(over30)} (${Math.round((over30 / agg.length) * 100)}%)`
+  const over2mValue = agg.length
+    ? `${formatCount(over2m)} (${Math.round((over2m / agg.length) * 100)}%)`
     : MISSING
 
   return [
     { key: 'total_actions',   label: 'Total actions',       value: fmt(totalActions, formatCount) },
-    { key: 'unique_names',    label: 'Unique names',         value: fmt(uniqueNames, formatCount) },
-    { key: 'over_30s',        label: '>30s actions',         value: over30Value },
+    { key: 'over_2m',         label: '>2 min actions',      value: over2mValue },
     { key: 'median_duration', label: 'Median duration',      value: fmt(medianDuration, formatDurationMs) },
     { key: 'p90_duration',    label: 'p90 duration',         value: fmt(p90Duration, formatDurationMs) },
     { key: 'p95_duration',    label: 'p95 action duration',  value: fmt(p95Duration, formatDurationMs) },

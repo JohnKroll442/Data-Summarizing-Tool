@@ -1,0 +1,51 @@
+/* The ⓘ marker leading an anomaly row (sits just LEFT of the tier badge): a
+   quiet, SAP-blue circled-i that reveals a plain-language explanation on hover. */
+.anomaly-info {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Real padding gives a solid, reliable hit target around the small glyph (no
+     hunting for pixels). No negative margin — that previously overlapped rows. */
+  padding: 0.25rem;
+  color: var(--sap-blue, #0070f2);
+  cursor: help;
+  border-radius: 999px;
+  opacity: 0.85;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+/* Light-blue disc on hover so the target is visible and easy to find. */
+.anomaly-info:hover {
+  opacity: 1;
+  background-color: var(--sap-blue-bg, rgba(0, 112, 242, 0.14));
+}
+
+.anomaly-info__icon {
+  display: block;
+  /* Route hover to the whole padded span, not just the SVG's thin strokes. */
+  pointer-events: none;
+}
+
+/* Compact explanation inside the UI5 Popover — a title line plus one concise
+   sentence, width-capped so a longer sentence wraps to a couple of tidy lines. */
+.anomaly-info-popover::part(content) {
+  padding: 0.5rem 0.75rem;
+}
+
+.anomaly-info-popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 15rem;
+}
+
+.anomaly-info-popover-title {
+  font-weight: 600;
+}
+
+.anomaly-info-popover-text {
+  color: var(--sapContent_LabelColor, #556b82);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}

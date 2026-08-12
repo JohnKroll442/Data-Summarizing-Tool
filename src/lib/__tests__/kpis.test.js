@@ -55,28 +55,28 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('action', rows, ACTION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
-      'Total actions', 'Unique names', '>30s actions',
+      'Total actions', '>2 min actions',
       'Median duration', 'p90 duration', 'p95 action duration',
     ])
   })
 
-  it('reports median, p90 and the >30s-action count as count + share', () => {
-    // Four actions with END−START durations of 10s / 20s / 35s / 40s. Two cross
-    // the 30s slow_action cutoff → "2 (50%)". Median of the four is 27.5s.
+  it('reports median, p90 and the >2-min-action count as count + share', () => {
+    // Four actions with END−START durations of 1m / 1m30s / 2m30s / 3m30s. Two
+    // cross the 2-minute slow cutoff → "2 (50%)". Median of the four is 2m 0s.
     const headers = ['USER_ACTION', 'ACTION_TIMESTAMP', 'ACTION_TIMESTAMP_END', 'DURATION']
     const mk = (name, start, end) => ({
       USER_ACTION: name, ACTION_TIMESTAMP: start, ACTION_TIMESTAMP_END: end, DURATION: 1,
     })
     const rows = [
-      mk('A', '2026-07-01 10:00:00.000', '2026-07-01 10:00:10.000'),
-      mk('B', '2026-07-01 11:00:00.000', '2026-07-01 11:00:20.000'),
-      mk('C', '2026-07-01 12:00:00.000', '2026-07-01 12:00:35.000'),
-      mk('D', '2026-07-01 13:00:00.000', '2026-07-01 13:00:40.000'),
+      mk('A', '2026-07-01 10:00:00.000', '2026-07-01 10:01:00.000'),
+      mk('B', '2026-07-01 11:00:00.000', '2026-07-01 11:01:30.000'),
+      mk('C', '2026-07-01 12:00:00.000', '2026-07-01 12:02:30.000'),
+      mk('D', '2026-07-01 13:00:00.000', '2026-07-01 13:03:30.000'),
     ]
     const kpis = computeKpis('action', rows, headers)
     const byLabel = Object.fromEntries(kpis.map((k) => [k.label, k.value]))
-    expect(byLabel['>30s actions']).toBe('2 (50%)')
-    expect(byLabel['Median duration']).toBe('27.5 s')
+    expect(byLabel['>2 min actions']).toBe('2 (50%)')
+    expect(byLabel['Median duration']).toBe('2m 0s')
   })
 
   it('produces the expected widget KPI labels (per-phase p95s)', () => {

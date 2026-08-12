@@ -16,9 +16,9 @@
  * detector's `large_offset` threshold — so a bar's height always equals the
  * number of rows filtering to it selects.
  *
- * `tier` stays ABSOLUTE (green<5s / grey / yellow / orange / red≥2m) so band
- * COLOR still means objectively fast/slow even as band WIDTHS adapt: a dataset
- * with no truly-slow actions simply never shows red.
+ * `tier` stays ABSOLUTE (green<5s / orange / yellow / deep-orange / red≥2m) so
+ * band COLOR still means objectively fast/slow even as band WIDTHS adapt: a
+ * dataset with no truly-slow actions simply never shows red.
  */
 
 import { percentile } from './kpis'

@@ -7,8 +7,8 @@ import './DurationDistribution.css'
 /**
  * Horizontal duration-distribution histogram for the Action view's left rail.
  * One bar per semantic bucket, colored on a 5-band green→red scale by its `tier`
- * so the health of the distribution reads at a glance (green < 5s, grey 5–30s,
- * yellow 30s–1m, orange 1–2m, red ≥ 2m — the last bucket ties to the slow_action
+ * so the health of the distribution reads at a glance (green < 5s, orange 5–30s,
+ * yellow 30s–1m, deep-orange 1–2m, red ≥ 2m — the last bucket ties to the slow_action
  * flag). `durations` is the list of per-action `action_duration` values (ms) for
  * the actions in scope.
  *
