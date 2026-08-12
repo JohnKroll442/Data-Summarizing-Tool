@@ -1,0 +1,4 @@
+/* Top-level Action view switcher bar — spacing above whichever panel renders. */
+.action-view-switcher {
+  margin-bottom: 1rem;
+}
