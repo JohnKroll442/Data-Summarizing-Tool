@@ -32,77 +32,18 @@
   }
 }
 
-/* Chart-shortcut header tabs above the action table — a SAP Fiori-style tab
-   strip (text tabs sharing an underline baseline; the active one gets a blue
-   underline). Clicking a tab scrolls down to its chart panel below the table. */
-.action-chart-tabs {
+/* The Action view shell wraps the top switcher bar and whichever panel is
+   active. The switcher owns its own bottom spacing. */
+.action-view-shell {
+  min-width: 0;
+}
+
+/* Full-width canvas for the Story × Action and Offset vs Duration views — no
+   rail, so the chart fills the page for readability. */
+.action-view-fullscreen {
+  width: 100%;
+  min-width: 0;
   display: flex;
-  gap: 1.25rem;
-  align-items: flex-end;
-  border-bottom: 1px solid var(--color-border-subtle);
-  margin-bottom: 1rem;
-}
-
-.action-chart-tab {
-  background: none;
-  border: 0;
-  /* Sit the 2px underline on top of the strip's 1px baseline. */
-  margin-bottom: -1px;
-  padding: 0.5rem 0.15rem;
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-heading);
-  color: var(--sap-text-muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s ease, border-color 0.12s ease;
-}
-
-.action-chart-tab:hover {
-  color: var(--sap-text);
-  border-bottom-color: var(--sap-blue-light);
-}
-
-.action-chart-tab.is-active {
-  color: var(--sap-text);
-  border-bottom-color: var(--sap-blue);
-}
-
-.action-chart-tab:focus-visible {
-  outline: 2px solid var(--sap-blue);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* Placeholder panels the tabs scroll to — the future home of each chart. Match
-   the chart-card recipe (EChartCard) so they slot in cleanly once built. */
-.action-chart-placeholder {
-  background: var(--color-surface);
-  border: var(--border-width) solid var(--sap-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 1rem;
-  margin-bottom: 1rem;
-  /* Keep the panel clear of the top edge when scrolled into view. */
-  scroll-margin-top: 0.5rem;
-}
-
-.action-chart-placeholder__title {
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  color: var(--sap-text);
-  margin-bottom: 0.5rem;
-}
-
-.action-chart-placeholder__empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 8rem;
-  border: 1px dashed var(--sap-border);
-  border-radius: var(--radius-md);
-  background: var(--sap-surface-alt);
-  color: var(--sap-text-muted);
-  font-size: var(--text-sm);
+  flex-direction: column;
+  gap: 1rem;
 }
