@@ -108,19 +108,6 @@
   background: #fff;
 }
 
-.summary-tabs {
-  display: flex;
-  gap: 0.5rem;
-}
-
-/* Each ToggleButton stretches to share the row evenly. The button's own
-   appearance (fill, hover, pressed state) comes from the default UI5
-   ToggleButton styling — those live in its shadow DOM, so we only control
-   layout here. */
-.summary-tab {
-  flex: 1;
-}
-
 /* min-width:0 so a wide table in the active view can't stretch this column
    flex item past the viewport (which would drag the filter toolbar's Export
    button off-screen); the table scrolls within its own width instead. */
@@ -193,7 +180,7 @@
 }
 
 @media (max-width: 600px) {
-  .summary-tabs {
+  .action-view-switcher {
     flex-wrap: wrap;
   }
 }

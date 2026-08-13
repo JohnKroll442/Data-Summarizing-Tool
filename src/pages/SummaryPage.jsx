@@ -1,20 +1,20 @@
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { ToggleButton } from '@ui5/webcomponents-react/ToggleButton'
 import { useCsvData } from '../context/useCsvData'
 import { HeaderSlotProvider } from '../context/HeaderSlot'
 import ActivityTimeline from '../components/ActivityTimeline'
+import ActionViewSwitcher from '../components/ActionViewSwitcher'
 import './SummaryPage.css'
 
-// The four CSV views plus the roll-up Summary, in tab order. `path` matches
+// The four CSV views plus the roll-up Summary, in tab order. `key` matches
 // the nested route segment under /summary (see App.jsx).
 const VIEW_TABS = [
-  { path: 'raw', label: 'Raw Data View' },
-  { path: 'session', label: 'Session View' },
-  { path: 'action', label: 'Action View' },
-  { path: 'widget', label: 'Widget View' },
-  { path: 'summary', label: 'Summary' },
+  { key: 'raw', label: 'Raw Data View' },
+  { key: 'session', label: 'Session View' },
+  { key: 'action', label: 'Action View' },
+  { key: 'widget', label: 'Widget View' },
+  { key: 'summary', label: 'Summary' },
 ]
 
 /**
@@ -69,26 +69,13 @@ function SummaryPage() {
         )}
       </div>
 
-      <nav className="summary-tabs" aria-label="Summary views">
-        {VIEW_TABS.map((tab) => (
-          <ToggleButton
-            key={tab.path}
-            className="summary-tab"
-            pressed={activeSegment === tab.path}
-            onClick={(e) => {
-              navigate(tab.path)
-              // For mouse clicks, drop focus so UI5's focus ring doesn't linger
-              // (matches the clean look you get after clicking elsewhere). Keep
-              // it for keyboard activation so those users retain a focus cue.
-              if (e.detail?.originalEvent instanceof MouseEvent) {
-                e.currentTarget.blur()
-              }
-            }}
-          >
-            {tab.label}
-          </ToggleButton>
-        ))}
-      </nav>
+      <ActionViewSwitcher
+        views={VIEW_TABS}
+        activeView={activeSegment}
+        onChange={(seg) => navigate(seg)}
+        ariaLabel="Summary views"
+        stretch
+      />
 
       <div className="summary-content">
         {/* Heading + KPIs portal in here, so they sit above the timeline. */}

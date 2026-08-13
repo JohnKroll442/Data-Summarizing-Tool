@@ -40,3 +40,14 @@
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+/* Stretch variant — tabs divide the full width evenly with centered labels,
+   so the strip spans the whole top (used for the top-level view bar). */
+.action-view-switcher--stretch {
+  gap: 0;
+}
+
+.action-view-switcher--stretch .action-view-switcher__tab {
+  flex: 1;
+  text-align: center;
+}
