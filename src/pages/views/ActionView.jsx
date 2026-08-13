@@ -246,6 +246,19 @@ function ActionView() {
       prev && prev.story === story && prev.action === action ? null : { story, action },
     )
 
+  // Scroll the heatmap's inline Action detail into view when a cell is picked
+  // (or when clicking a different cell retargets it), mirroring the waterfall
+  // panel above so the drill-down is never off-screen. Keyed on the cell key so
+  // it fires on open and on retarget, but not on closing. Respects reduced-motion.
+  const detailRef = useRef(null)
+  useEffect(() => {
+    if (!selectedCellKey) return
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth'
+    detailRef.current?.scrollIntoView({ behavior, block: 'start' })
+  }, [selectedCellKey])
+
   return (
     <>
       <HeaderPortal>
@@ -299,6 +312,7 @@ function ActionView() {
             byActionKey={anomalies.byActionKey}
             tierByType={tierByType}
             onCloseDetail={() => setSelectedCell(null)}
+            detailRef={detailRef}
           />
         )}
 

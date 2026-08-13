@@ -92,9 +92,8 @@
   flex: 1 1 auto;
 }
 
-.cell-detail__row .cell-detail__badges {
+.cell-detail__row .cell-detail__tier {
   flex: none;
-  margin-top: 0;
 }
 
 .cell-detail__meta {
@@ -117,11 +116,57 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cell-detail__badges {
+/* The most-severe tier badge, matching the data table, plus its hover popover
+   that reveals the instance's action + concrete anomalies. */
+.cell-detail__tier {
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+.cell-detail__tier-popover::part(content) {
+  padding: 0.5rem 0.75rem;
+  max-width: 20rem;
+}
+
+.cell-detail__tier-pop {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-top: 0.1rem;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cell-detail__tier-pop-action {
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-detail__tier-pop-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cell-detail__tier-pop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.cell-detail__tier-pop-label {
+  font-weight: var(--weight-medium);
+  color: var(--sap-text);
+  font-size: var(--text-sm);
+}
+
+.cell-detail__tier-pop-detail {
+  color: var(--sap-text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Right pane hosts ActionWaterfallPanel; strip the wrapper padding so the panel

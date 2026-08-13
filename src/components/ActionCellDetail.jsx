@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { List } from '@ui5/webcomponents-react/List'
 import { ListItemCustom } from '@ui5/webcomponents-react/ListItemCustom'
 import { ObjectStatus } from '@ui5/webcomponents-react/ObjectStatus'
-import { Tag } from '@ui5/webcomponents-react/Tag'
+import { Popover } from '@ui5/webcomponents-react/Popover'
+import { Text } from '@ui5/webcomponents-react/Text'
 import ActionWaterfallPanel from './ActionWaterfallPanel'
+import TierBadge from './TierBadge'
+import { ANOMALY_TYPES } from '../lib/anomalyDetect'
 import { durationTier } from '../lib/durationBands'
 import { formatCsvTime, formatDurationMs } from '../lib/format'
-import { objectStatusStateForDurationTier, tagDesignForAnomalyTier } from '../lib/sapStatus'
+import { objectStatusStateForDurationTier } from '../lib/sapStatus'
 import './ActionCellDetail.css'
+
+// Anomaly metadata by key, for turning an instance's flags into readable
+// label + description in the tier badge's hover popover.
+const TYPE_BY_KEY = new Map(ANOMALY_TYPES.map((t) => [t.key, t]))
 
 /**
  * ActionCellDetail — the drill-down beneath the Story × Action heatmap. Opens
@@ -26,7 +33,7 @@ import './ActionCellDetail.css'
  *   tierByType     Map<typeKey, 1|2|3> from rankAnomalyTiers
  *   onClose()      collapse the panel (deselect the cell)
  */
-function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tierByType, onClose }) {
+function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tierByType, onClose, detailRef }) {
   // Instances slowest-first — mirrors the reference layout (biggest durations
   // at the top of the list).
   const instances = useMemo(() => {
@@ -67,7 +74,7 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
   const flagsFor = (inst) => byActionKey?.get(`${action}::${inst?._action_timestamp ?? ''}`) ?? []
 
   return (
-    <section className="cell-detail" aria-label="Action detail">
+    <section className="cell-detail" aria-label="Action detail" ref={detailRef}>
       <header className="cell-detail__header">
         <div className="cell-detail__title">
           <span className="cell-detail__title-label">Action detail</span>
@@ -94,7 +101,7 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
           accessibleName="Action instances"
         >
           {instances.map((inst, i) => {
-            const tiers = distinctTiers(flagsFor(inst), tierByType)
+            const flags = flagsFor(inst)
             const tier = durationTier(inst.action_duration)
             return (
               <ListItemCustom
@@ -111,13 +118,7 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
                     <span className="cell-detail__user">{inst.user || '—'}</span>
                     <span className="cell-detail__ts">{formatCsvTime(inst._action_timestamp)}</span>
                   </div>
-                  {tiers.length > 0 && (
-                    <div className="cell-detail__badges">
-                      {tiers.map((t) => (
-                        <Tag key={t} design={tagDesignForAnomalyTier(t)}>{`T${t}`}</Tag>
-                      ))}
-                    </div>
-                  )}
+                  <InstanceTierBadge action={action} flags={flags} tierByType={tierByType} />
                 </div>
               </ListItemCustom>
             )
@@ -157,15 +158,73 @@ function num(v) {
   return Number.isFinite(n) ? n : -Infinity
 }
 
-// The distinct anomaly tiers (1|2|3) present among an instance's flags, sorted,
-// so a badge run reads T1 · T2 without repeating a tier several flags share.
-function distinctTiers(flags, tierByType) {
-  const set = new Set()
+/* ——— tier badge with hover detail ——— */
+
+// The most-severe anomaly tier (1|2|3) among an instance's flags — the lowest
+// (loudest) rank, mirroring the data table's rowTier. null → no ranked flag,
+// so no badge shows (exactly like a table row with no ranked anomaly).
+function mostSevereTier(flags, tierByType) {
+  if (!tierByType || tierByType.size === 0 || !flags?.length) return null
+  let best = null
   for (const f of flags) {
-    const t = tierByType?.get(f.type)
-    if (t === 1 || t === 2 || t === 3) set.add(t)
+    const t = tierByType.get(f.type)
+    if (t === 1 || t === 2 || t === 3) best = best == null ? t : Math.min(best, t)
   }
-  return Array.from(set).sort((a, b) => a - b)
+  return best
+}
+
+// A single TierBadge — the exact muted pill the data table uses — with a hover
+// Popover that names the action and lists THIS instance's anomalies (type +
+// detail). The T1/T2/T3 rank re-ranks per view, so the badge alone is
+// ambiguous; the popover shows the concrete errors behind it. The Popover
+// mounts only while hovering (like AnomalyBadge / PhaseHoverCell) so a long
+// instance list doesn't carry a popup per row. `title={null}` suppresses
+// TierBadge's own native tooltip so it doesn't collide with the popover.
+function InstanceTierBadge({ action, flags, tierByType }) {
+  const ref = useRef(null)
+  const [open, setOpen] = useState(false)
+  const tier = mostSevereTier(flags, tierByType)
+  if (tier == null) return null
+  const anomalies = (flags ?? [])
+    .map((f) => ({ flag: f, type: TYPE_BY_KEY.get(f.type) }))
+    .filter((a) => a.type)
+  return (
+    <span
+      ref={ref}
+      className="cell-detail__tier"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <TierBadge tier={tier} title={null} />
+      {open && ref.current && (
+        <Popover
+          open
+          opener={ref.current}
+          placement="Top"
+          className="cell-detail__tier-popover"
+          onClose={() => setOpen(false)}
+          preventInitialFocus
+          preventFocusRestore
+        >
+          <div className="cell-detail__tier-pop">
+            <Text className="cell-detail__tier-pop-action" title={action}>
+              {action}
+            </Text>
+            <ul className="cell-detail__tier-pop-list">
+              {anomalies.map(({ flag, type }) => (
+                <li key={flag.type} className="cell-detail__tier-pop-item">
+                  <span className="cell-detail__tier-pop-label">{type.label}</span>
+                  <span className="cell-detail__tier-pop-detail">
+                    {flag.detail || type.description}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Popover>
+      )}
+    </span>
+  )
 }
 
 export default ActionCellDetail

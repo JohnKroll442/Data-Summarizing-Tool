@@ -19,13 +19,23 @@ import './ActionStoryHeatmap.css'
  *   onSelectCell (story, action) => void
  */
 function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
-  const { stories, actions, cells, maxP95 } = matrix ?? {}
+  const { stories, actions, cells } = matrix ?? {}
 
   // Pre-parse the two palette endpoints once so each cell's tint is a cheap lerp.
   const [lo, hi] = useMemo(
     () => [parseHex(SAP_BLUE_LIGHT), parseHex(SAP_BLUE_DARKER)],
     [],
   )
+
+  // p95 durations span several orders of magnitude — from milliseconds to the
+  // 112-minute outlier. A linear tint (p95 / maxP95) therefore crushes almost
+  // everything to the palest blue: a 3-minute cell and a 10-second cell both
+  // land at ~2% of the max and read as the same color. A LOG scale spreads that
+  // range across the whole ramp — equal color steps mean equal *ratios* of
+  // duration, which is how latency is actually reasoned about. `norm(p95)`
+  // returns the 0..1 tint position, mapping the smallest positive p95 to the
+  // light end and the largest to the dark end.
+  const norm = useMemo(() => makeLogNorm(cells), [cells])
 
   if (!stories?.length || !actions?.length) {
     return (
@@ -68,7 +78,7 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
                     )
                   }
                   const hasValue = cell.p95 != null
-                  const t = hasValue && maxP95 > 0 ? cell.p95 / maxP95 : 0
+                  const t = hasValue ? norm(cell.p95) : 0
                   const style = hasValue
                     ? { backgroundColor: lerpColor(lo, hi, t), color: t > 0.6 ? '#fff' : undefined }
                     : undefined
@@ -97,6 +107,35 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
 }
 
 /* ——— color helpers ——— */
+
+// Build a log-scale normalizer over the populated cells' p95 values: the
+// smallest positive p95 maps to 0 (lightest) and the largest to 1 (darkest),
+// interpolated on a natural-log axis so a wide ms→minutes spread stays visually
+// separable. Returns a flat mapping when there's no spread (0 or 1 distinct
+// value) so a degenerate matrix can't divide by zero.
+function makeLogNorm(cells) {
+  let min = Infinity
+  let max = 0
+  if (cells) {
+    for (const cell of cells.values()) {
+      const v = cell?.p95
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        if (v < min) min = v
+        if (v > max) max = v
+      }
+    }
+  }
+  if (!(max > 0) || max === min) {
+    // No data, or every cell shares one value — paint them uniformly.
+    return () => (max > 0 ? 1 : 0)
+  }
+  const loLog = Math.log(min)
+  const span = Math.log(max) - loLog
+  return (v) => {
+    if (!(typeof v === 'number' && Number.isFinite(v) && v > 0)) return 0
+    return Math.max(0, Math.min(1, (Math.log(v) - loLog) / span))
+  }
+}
 
 // "#rrggbb" → [r, g, b]. Falls back to mid-grey on an unparseable value so a
 // missing CSS variable never throws mid-render.

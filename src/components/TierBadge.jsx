@@ -14,12 +14,15 @@ const TIER_TITLE = {
  * A mini oval rank badge reading "T1" / "T2" / "T3". Sits to the LEFT of an
  * anomaly in the summary panel and to the left of an action name in the table.
  * `tier` is 1 | 2 | 3; anything else renders nothing so callers can drop it in
- * unconditionally.
+ * unconditionally. `title` overrides the native tooltip — omit it for the
+ * default tier description, or pass null to suppress it (e.g. when a richer
+ * hover popover wraps the badge).
  */
-function TierBadge({ tier }) {
+function TierBadge({ tier, title }) {
   if (tier !== 1 && tier !== 2 && tier !== 3) return null
+  const resolved = title === undefined ? TIER_TITLE[tier] : title
   return (
-    <span className={`tier-badge tier-badge--t${tier}`} title={TIER_TITLE[tier]}>
+    <span className={`tier-badge tier-badge--t${tier}`} title={resolved ?? undefined}>
       {`T${tier}`}
     </span>
   )

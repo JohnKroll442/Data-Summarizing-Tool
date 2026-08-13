@@ -17,6 +17,7 @@ function ActionHeatmapPanel({
   byActionKey,
   tierByType,
   onCloseDetail,
+  detailRef,
 }) {
   return (
     <section className="action-view-fullscreen" aria-label="Story by action heatmap">
@@ -31,6 +32,7 @@ function ActionHeatmapPanel({
           byActionKey={byActionKey}
           tierByType={tierByType}
           onClose={onCloseDetail}
+          detailRef={detailRef}
         />
       )}
     </section>
