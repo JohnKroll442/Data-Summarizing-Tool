@@ -7,6 +7,7 @@ import { Popover } from '@ui5/webcomponents-react/Popover'
 import { Text } from '@ui5/webcomponents-react/Text'
 import ActionWaterfallPanel from './ActionWaterfallPanel'
 import TierBadge from './TierBadge'
+import { initialInstanceIndex } from './selectInstance'
 import { ANOMALY_TYPES } from '../lib/anomalyDetect'
 import { durationTier } from '../lib/durationBands'
 import { formatCsvTime, formatDurationMs } from '../lib/format'
@@ -31,9 +32,11 @@ const TYPE_BY_KEY = new Map(ANOMALY_TYPES.map((t) => [t.key, t]))
  *   rows, headers   session-scoped raw CSV rows + headers (for the waterfall)
  *   byActionKey    Map<"name::ts", flags[]> from detectAnomalies
  *   tierByType     Map<typeKey, 1|2|3> from rankAnomalyTiers
+ *   initialInstanceTs  optional _action_timestamp to preselect in the list (the
+ *                  scatter passes the hovered dot's run; heatmap omits it → slowest)
  *   onClose()      collapse the panel (deselect the cell)
  */
-function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tierByType, onClose, detailRef }) {
+function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tierByType, initialInstanceTs, onClose, detailRef }) {
   // Instances slowest-first — mirrors the reference layout (biggest durations
   // at the top of the list).
   const instances = useMemo(() => {
@@ -42,11 +45,13 @@ function ActionCellDetail({ story, action, cell, rows, headers, byActionKey, tie
     return list
   }, [cell])
 
-  // The picked instance. Reset to the slowest whenever the cell changes.
-  const [selectedIdx, setSelectedIdx] = useState(0)
+  // The picked instance. Reset whenever the cell (or the requested initial
+  // instance) changes: to the run matching initialInstanceTs when given, else
+  // the slowest (index 0).
+  const [selectedIdx, setSelectedIdx] = useState(() => initialInstanceIndex(instances, initialInstanceTs))
   useEffect(() => {
-    setSelectedIdx(0)
-  }, [story, action])
+    setSelectedIdx(initialInstanceIndex(instances, initialInstanceTs))
+  }, [story, action, initialInstanceTs, instances])
 
   const selected = instances[selectedIdx] ?? instances[0] ?? null
   const selectedTs = selected?._action_timestamp ?? ''

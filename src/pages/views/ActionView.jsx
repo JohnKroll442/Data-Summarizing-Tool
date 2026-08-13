@@ -10,7 +10,7 @@ import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown
 import { aggregateByAction } from '../../lib/actionAggregate'
 import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
-import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers } from '../../lib/anomalyDetect'
+import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDurationPoints } from '../../lib/anomalyDetect'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
 import { resolveActiveView } from '../../lib/actionViews'
 import './ActionView.css'
@@ -73,6 +73,14 @@ function ActionView() {
   const storyActionMatrix = useMemo(
     () => buildStoryActionMatrix(aggRows),
     [aggRows],
+  )
+
+  // One (duration, max widget offset) point per action instance for the Offset
+  // vs Duration scatter — reuses the detector's exact offset/duration math (same
+  // scope as the rail; a cache hit shares detectAnomalies' grouping).
+  const offsetDuration = useMemo(
+    () => buildOffsetDurationPoints(scopedRows, headers),
+    [scopedRows, headers],
   )
 
   // The heatmap cell whose drill-down detail is open, as { story, action }, or
@@ -316,7 +324,16 @@ function ActionView() {
           />
         )}
 
-        {activeView === 'offset' && <ActionOffsetPanel />}
+        {activeView === 'offset' && (
+          <ActionOffsetPanel
+            data={offsetDuration}
+            matrix={storyActionMatrix}
+            rows={scopedRows}
+            headers={headers}
+            byActionKey={anomalies.byActionKey}
+            tierByType={tierByType}
+          />
+        )}
       </div>
     </>
   )

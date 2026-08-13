@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offset vs Duration — chart options</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root{
+    --ink:#1d2d3e; --muted:#556b82; --bg:#f7f9fb; --surface:#ffffff;
+    --blue:#0070f2; --blue-soft:rgba(0,112,242,.55);
+    --danger:#bb0000; --gold:#c07f00; --border:#e5eaf0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,"Segoe UI",Roboto,system-ui,sans-serif;}
+  header{padding:28px 32px 8px;}
+  h1{font-size:24px;margin:0 0 4px}
+  .sub{color:var(--muted);max-width:70ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));
+    gap:20px;padding:20px 32px 48px;}
+  .card{background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:16px 18px 18px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .card h2{font-size:16px;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+  .pill{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+    padding:2px 8px;border-radius:999px}
+  .pill.rec{background:#e3f0ff;color:#0040b0}
+  .pill.alt{background:#eef2f6;color:#556b82}
+  .chart{width:100%;height:340px;margin-top:6px}
+  .why{font-size:13px;color:var(--muted);margin:8px 0 0}
+  .why b{color:var(--ink)}
+  .pros{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:10px;font-size:12.5px}
+  .pros .h{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+  .pros .up .h{color:#107e3e}.pros .down .h{color:var(--danger)}
+  ul{margin:4px 0 0;padding-left:16px}li{margin:1px 0}
+  .full{grid-column:1/-1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Offset vs Duration — which chart?</h1>
+  <p class="sub">Same sample dataset in every panel: ~30 actions. <b style="color:var(--blue)">Blue</b> = healthy,
+  <b style="color:var(--gold)">amber</b> = large offset (waited nearly as long as the action),
+  <b style="color:var(--danger)">red ▲</b> = <b>offset &gt; duration</b> (impossible timing → data-integrity anomaly).
+  The winning form makes those reds jump out with zero reading effort.</p>
+</header>
+
+<div class="grid">
+  <div class="card full">
+    <h2>1 · Scatter, log–log, with an <em>offset = duration</em> reference line <span class="pill rec">Recommended</span></h2>
+    <div id="c1" class="chart" style="height:420px"></div>
+    <p class="why"><b>Why this wins:</b> the anomaly rule <i>is</i> a line (offset = duration). Anything <b>above the diagonal</b>
+    is an overrun — you spot it instantly without reading a single number. Log axes spread values that span
+    milliseconds→minutes (same reason the heatmap needed a log scale) so points don't pile up near the origin.</p>
+    <div class="pros">
+      <div class="up"><div class="h">Benefits</div><ul>
+        <li>Anomalies are <b>geometric</b>: above the line = broken. Instant.</li>
+        <li>Shows the whole relationship + outliers in one view.</li>
+        <li>Log–log handles the huge dynamic range gracefully.</li>
+        <li>Scales to hundreds of points.</li>
+      </ul></div>
+      <div class="down"><div class="h">Downsides</div><ul>
+        <li>Overplotting if thousands of points (→ add opacity / hexbin).</li>
+        <li>Log axis needs a short "why log?" explanation for some users.</li>
+        <li>Two axes to read — slightly more than a bar chart.</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Scatter, <em>linear</em> axes <span class="pill alt">Illustration</span></h2>
+    <div id="c2" class="chart"></div>
+    <p class="why"><b>Shown to contrast #1.</b> Same data, linear scale: the big-duration actions stretch the axes
+    and everything small collapses into the bottom-left corner — exactly the "everything looks the same" problem
+    you hit on the heatmap. Fine only if your durations are all within ~1 order of magnitude.</p>
+    <div class="pros">
+      <div class="up"><div class="h">Benefits</div><ul>
+        <li>No log-scale explanation needed.</li>
+        <li>Absolute distances read literally.</li>
+      </ul></div>
+      <div class="down"><div class="h">Downsides</div><ul>
+        <li>Small/medium actions crush into a corner.</li>
+        <li>A few slow actions dominate the frame.</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Diverging bars: (offset − duration), sorted <span class="pill alt">Strong alt</span></h2>
+    <div id="c3" class="chart"></div>
+    <p class="why"><b>Best when the anomaly is the headline.</b> One bar per action = offset minus duration.
+    Bars crossing <b>zero to the right (red)</b> are overruns. Ranked, so the worst offenders sit together.
+    Great for a "worst 20" list; weaker at showing the overall relationship.</p>
+    <div class="pros">
+      <div class="up"><div class="h">Benefits</div><ul>
+        <li>Overruns are unmissable (past the zero line).</li>
+        <li>Naturally ranked — triage worst-first.</li>
+        <li>One axis; trivial to read.</li>
+      </ul></div>
+      <div class="down"><div class="h">Downsides</div><ul>
+        <li>Loses the offset-vs-duration <i>relationship</i>.</li>
+        <li>One row per action → doesn't scale past ~40.</li>
+        <li>Absolute Δ hides ratio (5s over on a 5s vs 5h action).</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4 · Histogram of the ratio offset ÷ duration <span class="pill alt">Distribution</span></h2>
+    <div id="c4" class="chart"></div>
+    <p class="why"><b>Best for "is this dataset weird overall?"</b> Bins every action by offset/duration.
+    A healthy dataset clusters well under 1.0; the bars <b>past the red 1.0 line</b> are the impossible ones.
+    Shows shape and tail at a glance, but you lose the identity of individual actions.</p>
+    <div class="pros">
+      <div class="up"><div class="h">Benefits</div><ul>
+        <li>Reveals the <i>shape</i> of the whole dataset fast.</li>
+        <li>Tail past 1.0 = the anomaly population.</li>
+        <li>Scales to any number of actions.</li>
+      </ul></div>
+      <div class="down"><div class="h">Downsides</div><ul>
+        <li>Can't see which action a bar belongs to.</li>
+        <li>Bin width changes the story — needs care.</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Also considered (not rendered)</h2>
+    <p class="why">
+      <b>Bubble chart</b> — scatter #1 + a 3rd measure as dot size (e.g. widget count or session count). Adds a
+      dimension for free, but size is hard to compare precisely and worsens overplotting. Good <i>extension</i> of #1, not a replacement.<br>
+      <b>Dumbbell / connected dots</b> — per action, two dots (offset + duration) joined by a line. Elegant for a
+      short, curated list (worst 15), but collapses at scale and, again, hides the relationship.<br>
+      <b>Hexbin / 2-D density</b> — the answer if you have <i>thousands</i> of points and scatter #1 turns into a blob:
+      bin the plane and shade by count. Same geometry (diagonal still means overrun) but aggregated.<br>
+      <b>Table + sparkline</b> — the honest fallback when people need exact numbers to act on; pairs well beneath any chart.
+    </p>
+  </div>
+</div>
+
+<script>
+/* One shared dataset: [durationMs, offsetMs]. Most healthy; a few planted anomalies. */
+const DATA = [
+  [220,40],[350,60],[500,120],[800,150],[1200,300],[1500,250],[2200,600],
+  [3000,500],[4200,900],[5000,1200],[6500,1500],[8000,2000],[9500,1800],
+  [12000,3000],[15000,3500],[18000,4200],[22000,5000],[28000,6000],
+  [35000,9000],[42000,8000],[55000,12000],[70000,15000],[90000,20000],
+  [120000,25000],[180000,30000],[240000,40000],
+  /* large offset (amber): offset ≥ 80% of duration but ≤ duration */
+  [9000,8200],[16000,15000],[30000,28000],
+  /* overrun (red ▲): offset > duration */
+  [6000,9000],[12000,20000],[2500,5200],
+  /* weird outlier: huge duration, tiny offset */
+  [150000,300],
+];
+const INK='#1d2d3e',MUTED='#556b82',BLUE='#0070f2',DANGER='#bb0000',GOLD='#c07f00',GRID='#e5eaf0';
+const cls = ([d,o]) => o>d ? 'overrun' : (o>=0.8*d ? 'large' : 'ok');
+const ok      = DATA.filter(p=>cls(p)==='ok');
+const large   = DATA.filter(p=>cls(p)==='large');
+const overrun = DATA.filter(p=>cls(p)==='overrun');
+const fmt = ms => ms>=60000 ? (ms/60000).toFixed(1)+'m' : ms>=1000 ? (ms/1000).toFixed(1)+'s' : ms+'ms';
+const base = {textStyle:{fontFamily:'inherit',color:INK}};
+
+/* 1 — log-log scatter + y=x line */
+echarts.init(document.getElementById('c1')).setOption({
+  ...base,
+  grid:{left:70,right:24,top:40,bottom:56},
+  legend:{top:6,data:['Healthy','Large offset','Overrun (offset > duration)','offset = duration']},
+  tooltip:{trigger:'item',formatter:p=>Array.isArray(p.value)?`duration ${fmt(p.value[0])}<br>offset ${fmt(p.value[1])}`:''},
+  xAxis:{type:'log',name:'Action duration',nameLocation:'middle',nameGap:34,min:100,max:400000,
+    axisLabel:{formatter:fmt,color:MUTED},splitLine:{lineStyle:{color:GRID}},axisLine:{lineStyle:{color:GRID}}},
+  yAxis:{type:'log',name:'Max widget offset',nameLocation:'middle',nameGap:48,min:100,max:400000,
+    axisLabel:{formatter:fmt,color:MUTED},splitLine:{lineStyle:{color:GRID}},axisLine:{lineStyle:{color:GRID}}},
+  series:[
+    {name:'offset = duration',type:'line',data:[[100,100],[400000,400000]],showSymbol:false,
+      lineStyle:{type:'dashed',color:'#9aa8b6',width:1.5},tooltip:{show:false},z:1,silent:true},
+    {name:'Healthy',type:'scatter',data:ok,symbolSize:10,itemStyle:{color:BLUE,opacity:.8},z:2},
+    {name:'Large offset',type:'scatter',data:large,symbolSize:12,itemStyle:{color:GOLD,opacity:.95},z:3},
+    {name:'Overrun (offset > duration)',type:'scatter',symbol:'triangle',data:overrun,symbolSize:15,
+      itemStyle:{color:DANGER},z:4,label:{show:true,position:'right',formatter:'!',color:DANGER,fontWeight:700}},
+  ],
+});
+
+/* 2 — linear scatter (contrast) */
+echarts.init(document.getElementById('c2')).setOption({
+  ...base,
+  grid:{left:66,right:20,top:16,bottom:48},
+  tooltip:{trigger:'item',formatter:p=>`duration ${fmt(p.value[0])}<br>offset ${fmt(p.value[1])}`},
+  xAxis:{type:'value',name:'duration',nameLocation:'middle',nameGap:30,axisLabel:{formatter:fmt,color:MUTED},splitLine:{lineStyle:{color:GRID}}},
+  yAxis:{type:'value',name:'offset',nameLocation:'middle',nameGap:46,axisLabel:{formatter:fmt,color:MUTED},splitLine:{lineStyle:{color:GRID}}},
+  series:[
+    {type:'line',data:[[0,0],[400000,400000]],showSymbol:false,lineStyle:{type:'dashed',color:'#9aa8b6',width:1.5},silent:true},
+    {type:'scatter',data:ok,symbolSize:8,itemStyle:{color:BLUE,opacity:.75}},
+    {type:'scatter',data:large,symbolSize:9,itemStyle:{color:GOLD}},
+    {type:'scatter',symbol:'triangle',data:overrun,symbolSize:12,itemStyle:{color:DANGER}},
+  ],
+});
+
+/* 3 — diverging bars: offset - duration, sorted */
+const diff = DATA.map(([d,o])=>({v:o-d,c:cls([d,o])})).sort((a,b)=>a.v-b.v);
+echarts.init(document.getElementById('c3')).setOption({
+  ...base,
+  grid:{left:16,right:40,top:14,bottom:40},
+  tooltip:{trigger:'item',formatter:p=>`${p.value>0?'over by ':'under by '}${fmt(Math.abs(p.value))}`},
+  xAxis:{type:'value',name:'offset − duration',nameLocation:'middle',nameGap:26,axisLabel:{formatter:fmt,color:MUTED},splitLine:{lineStyle:{color:GRID}}},
+  yAxis:{type:'category',show:false,data:diff.map((_,i)=>i)},
+  series:[{type:'bar',data:diff.map(d=>({value:d.v,itemStyle:{color:d.v>0?DANGER:(d.c==='large'?GOLD:BLUE),
+    borderRadius:d.v>0?[0,3,3,0]:[3,0,0,3]}})),markLine:{silent:true,symbol:'none',
+    lineStyle:{color:MUTED},data:[{xAxis:0}],label:{show:false}}}],
+});
+
+/* 4 — histogram of offset/duration ratio */
+const ratios = DATA.map(([d,o])=>o/d);
+const BINS=14, MAXR=2.2, w=MAXR/BINS, counts=Array(BINS).fill(0);
+ratios.forEach(r=>{const i=Math.min(BINS-1,Math.floor(r/w));counts[i]++;});
+echarts.init(document.getElementById('c4')).setOption({
+  ...base,
+  grid:{left:40,right:18,top:16,bottom:44},
+  tooltip:{trigger:'axis',formatter:p=>`ratio ${(p[0].dataIndex*w).toFixed(2)}–${((p[0].dataIndex+1)*w).toFixed(2)}<br>${p[0].value} actions`},
+  xAxis:{type:'category',name:'offset ÷ duration',nameLocation:'middle',nameGap:28,
+    data:counts.map((_,i)=>(i*w).toFixed(1)),axisLabel:{color:MUTED,interval:1},axisLine:{lineStyle:{color:GRID}}},
+  yAxis:{type:'value',name:'actions',axisLabel:{color:MUTED},splitLine:{lineStyle:{color:GRID}}},
+  series:[{type:'bar',data:counts.map((c,i)=>({value:c,itemStyle:{color:(i*w)>=1?DANGER:BLUE}})),
+    barCategoryGap:'12%',
+    markLine:{silent:true,symbol:'none',lineStyle:{color:DANGER,type:'dashed'},
+      data:[{xAxis:Math.round(1/w)}],label:{show:true,formatter:'1.0',color:DANGER,position:'end'}}}],
+});
+</script>
+</body>
+</html>

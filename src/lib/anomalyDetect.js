@@ -295,15 +295,7 @@ function detectAnomaliesImpl(rows, headers) {
   }
 
   // Group rows by action (name + timestamp) — same key Action View uses.
-  const groups = new Map()
-  for (const row of rows) {
-    const name = row?.[mapping.actionName]
-    if (name === undefined || name === null || name === '') continue
-    const ts = mapping.actionTimestamp ? (row?.[mapping.actionTimestamp] ?? '') : ''
-    const key = `${name}::${ts}`
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key).push(row)
-  }
+  const groups = groupByAction(rows, mapping)
 
   const totalActions = groups.size
 
@@ -372,6 +364,94 @@ function detectAnomaliesImpl(rows, headers) {
     totalActions,
     bands,
   }
+}
+
+/* ——— offset vs duration scatter data ——— */
+
+// Group rows into action instances by the composite USER_ACTION + ACTION_TIMESTAMP
+// key — the same key Action View, the table, and the detector all group on.
+function groupByAction(rows, mapping) {
+  const groups = new Map()
+  if (!mapping.actionName || !rows?.length) return groups
+  for (const row of rows) {
+    const name = row?.[mapping.actionName]
+    if (name === undefined || name === null || name === '') continue
+    const ts = mapping.actionTimestamp ? (row?.[mapping.actionTimestamp] ?? '') : ''
+    const key = `${name}::${ts}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+  return groups
+}
+
+/**
+ * Bucket one action's (maxOffset, duration) into the scatter's three classes,
+ * mirroring the detector's offset flags exactly:
+ *   overrun  offset > duration        (offset_overrun — impossible timing)
+ *   large    offset ≥ largeOffsetMs    (large_offset — waited as long as the slowest actions)
+ *   ok       otherwise
+ * overrun outranks large when both apply.
+ */
+export function classifyOffsetPoint(maxOffset, duration, largeOffsetMs) {
+  if (Number.isFinite(duration) && maxOffset > duration) return 'overrun'
+  if (maxOffset >= largeOffsetMs) return 'large'
+  return 'ok'
+}
+
+/**
+ * One (duration, max-widget-offset) point per action instance, for the Offset
+ * vs Duration scatter. Reuses the SAME primitives as detectAnomalies — the
+ * grouping key, computeActionDuration, widgetStats, and the terminal duration
+ * band — so the scatter's classes match the table's offset flags exactly.
+ *
+ * Only actions with a finite duration > 0 AND at least one finite widget offset
+ * are emitted (a scatter point needs both coordinates). offset === 0 is kept —
+ * a legit "no pre-render wait"; the chart handles the log-axis floor.
+ *
+ * Returns { points, largeOffsetMs, counts: { ok, large, overrun } } where each
+ * point is { actionKey, action, story, user, timestamp, duration, maxOffset, klass }.
+ */
+export const buildOffsetDurationPoints = memoizeAggregate(buildOffsetDurationPointsImpl)
+
+function buildOffsetDurationPointsImpl(rows, headers) {
+  const mapping = detectMapping(headers, rows)
+  const empty = { points: [], largeOffsetMs: Infinity, counts: { ok: 0, large: 0, overrun: 0 } }
+  if (!mapping.actionName || !rows?.length) return empty
+
+  const groups = groupByAction(rows, mapping)
+  if (!groups.size) return empty
+
+  // Terminal duration band edge — the SAME large_offset threshold the detector
+  // uses (see detectAnomaliesImpl), computed over the full scope's durations.
+  const durationByKey = new Map()
+  for (const [key, groupRows] of groups) {
+    durationByKey.set(key, computeActionDuration(groupRows, mapping))
+  }
+  const bands = computeDurationBands([...durationByKey.values()])
+  const largeOffsetMs = bands[bands.length - 1].min
+
+  const points = []
+  const counts = { ok: 0, large: 0, overrun: 0 }
+  for (const [key, groupRows] of groups) {
+    const duration = durationByKey.get(key)
+    if (!(Number.isFinite(duration) && duration > 0)) continue
+    const offsets = widgetStats(groupRows, mapping).map((w) => w.offset).filter(Number.isFinite)
+    if (!offsets.length) continue
+    const maxOffset = Math.max(...offsets)
+    const klass = classifyOffsetPoint(maxOffset, duration, largeOffsetMs)
+    counts[klass]++
+    points.push({
+      actionKey: key,
+      action: firstNonEmpty(groupRows, mapping.actionName),
+      story: firstNonEmpty(groupRows, mapping.storyName),
+      user: stripUserPrefix(firstNonEmpty(groupRows, mapping.user)),
+      timestamp: mapping.actionTimestamp ? firstNonEmpty(groupRows, mapping.actionTimestamp) : '',
+      duration,
+      maxOffset,
+      klass,
+    })
+  }
+  return { points, largeOffsetMs, counts }
 }
 
 /* ——— per-action detection ——— */

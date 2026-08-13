@@ -85,6 +85,15 @@ body {
   color: var(--sap-text);
 }
 
+html {
+  /* Always reserve the vertical scrollbar's width so the viewport width never
+     changes when content grows past one screen (e.g. the Offset view's detail
+     panel opening on hover). Without this, the scrollbar appearing/disappearing
+     re-widths any responsive chart, which can shift hover targets and cause a
+     hover→reflow→un-hover feedback loop. */
+  scrollbar-gutter: stable;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }

@@ -11,10 +11,12 @@ import './EChartCard.css'
  *   option:    ECharts option object (built by one of options/*.js)
  *   height?:   number (default 280)
  *   onRemove?: () => void  — if provided, shows an × button in the header
+ *   onEvents?: object      — ECharts event map forwarded to ReactECharts
+ *                            (e.g. { click, mouseover, mouseout })
  *
  * Renders an empty-state hint if the option has no data series.
  */
-function EChartCard({ title, subtitle, option, height = 280, onRemove }) {
+function EChartCard({ title, subtitle, option, height = 280, onRemove, onEvents }) {
   const hasData = optionHasData(option)
 
   return (
@@ -42,6 +44,7 @@ function EChartCard({ title, subtitle, option, height = 280, onRemove }) {
           style={{ height, width: '100%' }}
           notMerge
           lazyUpdate
+          onEvents={onEvents}
         />
       ) : (
         <div className="echart-card-empty" style={{ height }}>

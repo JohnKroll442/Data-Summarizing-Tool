@@ -1,17 +1,11 @@
-.action-offset__title {
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  color: var(--sap-text);
-}
+/* Offset vs Duration view. The chart itself is an EChartCard (see
+   charts/EChartCard.css); the full-screen frame is the shared
+   .action-view-fullscreen used by the other Action views.
 
-.action-offset__empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 16rem;
-  border: 1px dashed var(--sap-border);
-  border-radius: var(--radius-md);
-  background: var(--sap-surface-alt);
-  color: var(--sap-text-muted);
-  font-size: var(--text-sm);
+   The chart card's plot height is measured in JS (ActionOffsetPanel) so it
+   fills the viewport down to a small bottom gap instead of a fixed height. This
+   wrapper just lets it span the full width and shrink with the grid. */
+.offset-panel__chart {
+  width: 100%;
+  min-width: 0;
 }
