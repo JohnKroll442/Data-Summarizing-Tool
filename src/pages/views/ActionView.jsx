@@ -274,7 +274,7 @@ function ActionView() {
       </HeaderPortal>
 
       <div className="action-view-shell">
-        <ActionViewSwitcher activeView={activeView} onChange={setActiveView} />
+        <ActionViewSwitcher activeView={activeView} onChange={setActiveView} stretch />
 
         {activeView === 'table' && (
           <ActionDataTablePanel

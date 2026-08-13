@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ui5-wcr__get_component_api",
+      "mcp__ui5-wcr__get_documentation"
+    ]
+  }
+}

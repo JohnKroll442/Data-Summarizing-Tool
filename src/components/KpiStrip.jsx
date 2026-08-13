@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
+import { Text } from '@ui5/webcomponents-react/Text'
 import { computeKpis } from '../lib/kpis'
 import './KpiStrip.css'
 
@@ -43,9 +44,9 @@ function KpiValue({ value }) {
   }, [value])
 
   return (
-    <div className="kpi-value" ref={ref} title={String(value)}>
+    <Text className="kpi-value" ref={ref} title={String(value)}>
       {value}
-    </div>
+    </Text>
   )
 }
 
@@ -84,7 +85,7 @@ function KpiStrip({ variant, rows, headers, kpis: kpisProp, columns }) {
         const clickable = typeof k.onClick === 'function'
         const inner = (
           <>
-            <div className="kpi-label">{k.label}</div>
+            <Text className="kpi-label">{k.label}</Text>
             <KpiValue value={k.value} />
           </>
         )
