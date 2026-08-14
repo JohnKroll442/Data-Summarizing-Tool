@@ -1,0 +1,19 @@
+/* Time-Of-Day-Trend view. The chart is an EChartCard (see charts/EChartCard.css);
+   the full-screen frame is the shared .action-view-fullscreen used by the other
+   Action views.
+
+   The main trend card's plot height is measured in JS (ActionTimeOfDayPanel) so
+   it fills the viewport down to a small bottom gap. This wrapper just lets it
+   span the full width and shrink with the grid — mirror .offset-panel__chart. */
+.time-of-day-panel__chart {
+  width: 100%;
+  min-width: 0;
+}
+
+/* The click-to-drill hour scatter sits BELOW the trend chart (fixed height), so
+   opening it never shrinks the plot above — it extends the scroll instead. */
+.time-of-day-panel__drill {
+  width: 100%;
+  min-width: 0;
+  margin-top: 16px;
+}

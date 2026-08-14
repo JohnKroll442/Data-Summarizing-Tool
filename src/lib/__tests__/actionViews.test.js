@@ -7,12 +7,13 @@ import {
 } from '../actionViews'
 
 describe('actionViews', () => {
-  it('lists the three views in switcher order with exact labels', () => {
-    expect(ACTION_VIEWS.map((v) => v.key)).toEqual(['table', 'heatmap', 'offset'])
+  it('lists the four views in switcher order with exact labels', () => {
+    expect(ACTION_VIEWS.map((v) => v.key)).toEqual(['table', 'heatmap', 'offset', 'timeOfDay'])
     expect(ACTION_VIEWS.map((v) => v.label)).toEqual([
       'Data Table',
       'Story × Action',
       'Offset vs Duration',
+      'Time-Of-Day-Trend',
     ])
   })
 
@@ -24,6 +25,7 @@ describe('actionViews', () => {
     expect(isActionViewKey('table')).toBe(true)
     expect(isActionViewKey('heatmap')).toBe(true)
     expect(isActionViewKey('offset')).toBe(true)
+    expect(isActionViewKey('timeOfDay')).toBe(true)
     expect(isActionViewKey('bogus')).toBe(false)
     expect(isActionViewKey(undefined)).toBe(false)
   })
@@ -31,6 +33,7 @@ describe('actionViews', () => {
   it('resolveActiveView returns valid keys and falls back to the default', () => {
     expect(resolveActiveView('heatmap')).toBe('heatmap')
     expect(resolveActiveView('offset')).toBe('offset')
+    expect(resolveActiveView('timeOfDay')).toBe('timeOfDay')
     expect(resolveActiveView(undefined)).toBe('table')
     expect(resolveActiveView(null)).toBe('table')
     expect(resolveActiveView('bogus')).toBe('table')

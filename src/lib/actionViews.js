@@ -1,5 +1,5 @@
 /**
- * The three top-level Action views, in switcher order. `key` is persisted in
+ * The top-level Action views, in switcher order. `key` is persisted in
  * viewUi.action.activeView and drives which panel ActionView renders; `label`
  * is the SegmentedButton item text. The `×` in "Story × Action" is U+00D7.
  */
@@ -7,6 +7,7 @@ export const ACTION_VIEWS = [
   { key: 'table', label: 'Data Table' },
   { key: 'heatmap', label: 'Story × Action' },
   { key: 'offset', label: 'Offset vs Duration' },
+  { key: 'timeOfDay', label: 'Time-Of-Day-Trend' },
 ]
 
 /** The view shown when nothing is persisted. */
