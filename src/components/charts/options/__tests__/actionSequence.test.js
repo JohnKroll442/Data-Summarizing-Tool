@@ -144,4 +144,17 @@ describe('buildActionSequenceOption — action end marker', () => {
     )
     expect(endLine.xAxis).toBe(600)
   })
+
+  it('treats an empty-string actionDurationMs as absent (not 0ms) and falls back', () => {
+    // action_duration is emitted as '' when it can't be computed. Number('')
+    // is 0 (and finite), which would otherwise pin the end marker to x=0 on top
+    // of the start marker. '' must fall back to the reconstructed end (600).
+    const opt = buildActionSequenceOption(twoWidgetRows, { actionDurationMs: '' })
+    const duration = opt.series.find((s) => s.name === 'duration')
+    const endLine = duration.markLine.data.find(
+      (d) => d.label?.formatter === 'Action End Timestamp'
+    )
+    expect(endLine.xAxis).toBe(600)
+    expect(opt.xAxis.max).toBeCloseTo(600 * 1.15, 5)
+  })
 })

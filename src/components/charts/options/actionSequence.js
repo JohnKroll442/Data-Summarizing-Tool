@@ -173,9 +173,13 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
 
   // Real end of the reconstructed timeline (largest phase end across widgets),
   // and the authoritative action duration (source of truth for the end marker).
-  const actionDurationMs = Number.isFinite(Number(opts.actionDurationMs))
-    ? Number(opts.actionDurationMs)
-    : null
+  // action_duration is emitted as '' when it can't be computed; Number('') is a
+  // finite 0, so treat '' (and null/undefined) as absent to avoid collapsing the
+  // end marker onto x=0 — fall back to the reconstructed end instead.
+  const rawDuration = opts.actionDurationMs
+  const parsedDuration =
+    rawDuration == null || rawDuration === '' ? NaN : Number(rawDuration)
+  const actionDurationMs = Number.isFinite(parsedDuration) ? parsedDuration : null
   const endMarker = actionDurationMs != null ? actionDurationMs : reconstructedEnd
   const axisMax = Math.max(actionDurationMs ?? 0, reconstructedEnd)
 
