@@ -16,7 +16,7 @@ describe('buildStoryActionMatrix', () => {
       expect(m.stories).toEqual([])
       expect(m.actions).toEqual([])
       expect(m.cells.size).toBe(0)
-      expect(m.maxP95).toBe(0)
+      expect(m.maxDuration).toBe(0)
     }
   })
 
@@ -34,17 +34,16 @@ describe('buildStoryActionMatrix', () => {
     expect(m.cells.get(cellKeyOf('Story A', 'Open')).count).toBe(1)
   })
 
-  it('computes the p95 of each cell via the shared percentile (interpolated)', () => {
-    // 10 values 1000..10000 → p95 = interpolate at rank 0.95*(9) = 8.55
-    // between the 9th (9000) and 10th (10000): 9000 + 0.55*1000 = 9550.
+  it('uses the max action_duration of each cell (longest run)', () => {
+    // 10 values 1000..10000 → the cell shows the longest run, 10000.
     const rows = Array.from({ length: 10 }, (_, i) =>
       row('S', 'A', (i + 1) * 1000),
     )
     const m = buildStoryActionMatrix(rows)
     const cell = m.cells.get(cellKeyOf('S', 'A'))
     expect(cell.count).toBe(10)
-    expect(cell.p95).toBeCloseTo(9550, 5)
-    expect(m.maxP95).toBeCloseTo(9550, 5)
+    expect(cell.duration).toBe(10000)
+    expect(m.maxDuration).toBe(10000)
   })
 
   it('keeps the instance rows on each cell for drill-down', () => {
@@ -66,7 +65,7 @@ describe('buildStoryActionMatrix', () => {
     expect(m.actions).toEqual(['A'])
     const cell = m.cells.get(cellKeyOf('S', 'A'))
     expect(cell.count).toBe(1)
-    expect(cell.p95).toBeNull()
-    expect(m.maxP95).toBe(0)
+    expect(cell.duration).toBeNull()
+    expect(m.maxDuration).toBe(0)
   })
 })

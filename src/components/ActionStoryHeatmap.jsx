@@ -8,13 +8,14 @@ import './ActionStoryHeatmap.css'
  * ActionStoryHeatmap — the "Story × Action heatmap" grid for the Action view.
  *
  * A scrollable HTML table: STORY down the rows (sticky first column), ACTION
- * across the top (sticky header row), each cell showing that combination's p95
- * action duration, tinted across the SAP blue scale by magnitude. Combos with
- * no actions show an em dash and aren't clickable; clicking a populated cell
- * calls onSelectCell(story, action) so the parent can open the detail panel.
+ * across the top (sticky header row), each cell showing that combination's
+ * longest (max) action duration, tinted across the SAP blue scale by magnitude.
+ * Combos with no actions show an em dash and aren't clickable; clicking a
+ * populated cell calls onSelectCell(story, action) so the parent can open the
+ * detail panel.
  *
  * Props:
- *   matrix       { stories, actions, cells, maxP95 } from buildStoryActionMatrix
+ *   matrix       { stories, actions, cells, maxDuration } from buildStoryActionMatrix
  *   selectedKey  cellKeyOf(story, action) of the open cell, or null
  *   onSelectCell (story, action) => void
  */
@@ -27,14 +28,14 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
     [],
   )
 
-  // p95 durations span several orders of magnitude — from milliseconds to the
-  // 112-minute outlier. A linear tint (p95 / maxP95) therefore crushes almost
-  // everything to the palest blue: a 3-minute cell and a 10-second cell both
-  // land at ~2% of the max and read as the same color. A LOG scale spreads that
-  // range across the whole ramp — equal color steps mean equal *ratios* of
-  // duration, which is how latency is actually reasoned about. `norm(p95)`
-  // returns the 0..1 tint position, mapping the smallest positive p95 to the
-  // light end and the largest to the dark end.
+  // Durations span several orders of magnitude — from milliseconds to the
+  // 112-minute outlier. A linear tint (duration / maxDuration) therefore
+  // crushes almost everything to the palest blue: a 3-minute cell and a
+  // 10-second cell both land at ~2% of the max and read as the same color. A
+  // LOG scale spreads that range across the whole ramp — equal color steps
+  // mean equal *ratios* of duration, which is how latency is actually reasoned
+  // about. `norm(duration)` returns the 0..1 tint position, mapping the
+  // smallest positive duration to the light end and the largest to the dark end.
   const norm = useMemo(() => makeLogNorm(cells), [cells])
 
   if (!stories?.length || !actions?.length) {
@@ -77,8 +78,8 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
                       </td>
                     )
                   }
-                  const hasValue = cell.p95 != null
-                  const t = hasValue ? norm(cell.p95) : 0
+                  const hasValue = cell.duration != null
+                  const t = hasValue ? norm(cell.duration) : 0
                   const style = hasValue
                     ? { backgroundColor: lerpColor(lo, hi, t), color: t > 0.6 ? '#fff' : undefined }
                     : undefined
@@ -90,9 +91,9 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
                         className={`story-heatmap__btn${selected ? ' is-selected' : ''}`}
                         style={style}
                         onClick={() => onSelectCell?.(s, a)}
-                        title={`${s} · ${a} — p95 ${hasValue ? formatDurationMs(cell.p95) : 'n/a'} · ${cell.count} action${cell.count === 1 ? '' : 's'}`}
+                        title={`${s} · ${a} — ${hasValue ? formatDurationMs(cell.duration) : 'n/a'} · ${cell.count} action${cell.count === 1 ? '' : 's'}`}
                       >
-                        {hasValue ? formatDurationMs(cell.p95) : '—'}
+                        {hasValue ? formatDurationMs(cell.duration) : '—'}
                       </button>
                     </td>
                   )
@@ -108,17 +109,17 @@ function ActionStoryHeatmap({ matrix, selectedKey, onSelectCell }) {
 
 /* ——— color helpers ——— */
 
-// Build a log-scale normalizer over the populated cells' p95 values: the
-// smallest positive p95 maps to 0 (lightest) and the largest to 1 (darkest),
-// interpolated on a natural-log axis so a wide ms→minutes spread stays visually
-// separable. Returns a flat mapping when there's no spread (0 or 1 distinct
-// value) so a degenerate matrix can't divide by zero.
+// Build a log-scale normalizer over the populated cells' durations: the
+// smallest positive duration maps to 0 (lightest) and the largest to 1
+// (darkest), interpolated on a natural-log axis so a wide ms→minutes spread
+// stays visually separable. Returns a flat mapping when there's no spread (0 or
+// 1 distinct value) so a degenerate matrix can't divide by zero.
 function makeLogNorm(cells) {
   let min = Infinity
   let max = 0
   if (cells) {
     for (const cell of cells.values()) {
-      const v = cell?.p95
+      const v = cell?.duration
       if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
         if (v < min) min = v
         if (v > max) max = v

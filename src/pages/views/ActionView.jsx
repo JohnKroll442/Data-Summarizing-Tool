@@ -68,7 +68,7 @@ function ActionView() {
     [scopedRows, headers],
   )
 
-  // The p95 crosstab behind the "Story × Action heatmap" chart tab. Scoped to
+  // The max-duration crosstab behind the "Story × Action heatmap" chart tab. Scoped to
   // the session (like the rail), independent of the table's column filters.
   const storyActionMatrix = useMemo(
     () => buildStoryActionMatrix(aggRows),

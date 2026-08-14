@@ -2,7 +2,7 @@ import ActionStoryHeatmap from './ActionStoryHeatmap'
 import ActionCellDetail from './ActionCellDetail'
 
 /**
- * Story × Action view — a full-width p95 heatmap with an in-place cell
+ * Story × Action view — a full-width max-duration heatmap with an in-place cell
  * drill-down beneath it. Presentational; ActionView owns the matrix, the
  * selection, and the cell-toggle logic (passed as onSelectCell).
  */

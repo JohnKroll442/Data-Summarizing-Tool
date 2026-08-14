@@ -28,7 +28,7 @@ const TYPE_BY_KEY = new Map(ANOMALY_TYPES.map((t) => [t.key, t]))
  *
  * Props:
  *   story, action  the selected cell's labels
- *   cell           { p95, count, instances } from the matrix
+ *   cell           { duration, count, instances } from the matrix
  *   rows, headers   session-scoped raw CSV rows + headers (for the waterfall)
  *   byActionKey    Map<"name::ts", flags[]> from detectAnomalies
  *   tierByType     Map<typeKey, 1|2|3> from rankAnomalyTiers
