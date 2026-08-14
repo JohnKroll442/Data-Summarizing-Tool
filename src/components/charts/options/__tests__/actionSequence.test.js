@@ -130,10 +130,11 @@ describe('buildActionSequenceOption — action end marker', () => {
     expect(labels).not.toContain('Total Phase Timestamp')
   })
 
-  it('sets the x-axis max to max(actionDurationMs, reconstructedEnd) * 1.15', () => {
-    // reconstructedEnd for twoWidgetRows = 600 (B: 100 offset + 500 backend).
+  it('sets the x-axis max to the end marker * 1.15 (bars are clamped to it)', () => {
+    // Bars now never overshoot the Action End marker, so the axis is sized to
+    // the marker (450), not the summed reconstructed end (600), plus a pad.
     const opt = buildActionSequenceOption(twoWidgetRows, { actionDurationMs: 450 })
-    expect(opt.xAxis.max).toBeCloseTo(600 * 1.15, 5)
+    expect(opt.xAxis.max).toBeCloseTo(450 * 1.15, 5)
   })
 
   it('falls back to the reconstructed end when no actionDurationMs is given', () => {
@@ -156,5 +157,72 @@ describe('buildActionSequenceOption — action end marker', () => {
     )
     expect(endLine.xAxis).toBe(600)
     expect(opt.xAxis.max).toBeCloseTo(600 * 1.15, 5)
+  })
+})
+
+// One heavy single-widget action mirroring the screenshot: offset 160, backend
+// 3050, network Full 3840 (with waiting 791 + content download 22 nested), and
+// a render (4000) nearly as long as the whole action (4160). A naive
+// end-to-end cascade would run to ~11.9s — far past the real 4.16s end.
+const heavyWidgetRows = [
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'offset',  WIDGET_SUBMEASURE: '',                DURATION: 160 },
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'backend', WIDGET_SUBMEASURE: '',                DURATION: 3050 },
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'ttfb',            DURATION: 3840 },
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'waiting',         DURATION: 791 },
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'network', WIDGET_SUBMEASURE: 'contentdownload', DURATION: 22 },
+  { WIDGET_ID: 'w1', WIDGET_NAME: 'X', WIDGET_MEASURE: 'render',  WIDGET_SUBMEASURE: '',                DURATION: 4000 },
+]
+const HEAVY_END = 4160
+
+describe('buildActionSequenceOption — nested + overlapping intra-widget layout', () => {
+  const opt = buildActionSequenceOption(heavyWidgetRows, { actionDurationMs: HEAVY_END })
+  const duration = opt.series.find((s) => s.name === 'duration')
+  const byLabel = Object.fromEntries(duration.data.map((d) => [d.phaseLabel, d]))
+
+  it('never lets a bar extend past the Action End marker', () => {
+    for (const d of duration.data) {
+      expect(d.endMs).toBeLessThanOrEqual(HEAVY_END + 1e-6)
+    }
+  })
+
+  it('overlaps backend and Network (Full) — both start at the widget offset', () => {
+    expect(byLabel['Query data of X'].startMs).toBe(160)
+    expect(byLabel['X — Network (Full)'].startMs).toBe(160)
+  })
+
+  it('nests the network sub-phases inside the Network (Full) window', () => {
+    const full = byLabel['X — Network (Full)']
+    const waiting = byLabel['X — Network (waiting)']
+    const contentDl = byLabel['X — Network (Content Download)']
+    // Waiting sits at the head of Full; content download at its tail.
+    expect(waiting.startMs).toBe(full.startMs)
+    expect(waiting.endMs).toBeLessThanOrEqual(full.endMs)
+    expect(contentDl.endMs).toBe(full.endMs)
+    expect(contentDl.startMs).toBeGreaterThanOrEqual(full.startMs)
+  })
+
+  it('shifts an over-long render LEFT so it ends at the marker, keeping its true width', () => {
+    const render = byLabel['Render X']
+    // Natural render would run 4000→8000; clamped to end at 4160.
+    expect(render.endMs).toBe(HEAVY_END)
+    expect(render.startMs).toBe(160)
+    // Real width is preserved (drawn value == true duration).
+    expect(render.value).toBe(4000)
+    expect(render.durationMs).toBe(4000)
+  })
+
+  it('reports TRUE phase durations regardless of clamping', () => {
+    expect(byLabel['Query data of X'].durationMs).toBe(3050)
+    expect(byLabel['X — Network (Full)'].durationMs).toBe(3840)
+    expect(byLabel['X — Network (waiting)'].durationMs).toBe(791)
+    expect(byLabel['X — Network (Content Download)'].durationMs).toBe(22)
+  })
+
+  it('does not stack the network sub-phases after Full (no double-counting)', () => {
+    // The three network rows all live within [160, 4000]; their spans do not
+    // sum past Full's end the way the old end-to-end cascade did.
+    const full = byLabel['X — Network (Full)']
+    expect(byLabel['X — Network (waiting)'].endMs).toBeLessThanOrEqual(full.endMs)
+    expect(byLabel['X — Network (Content Download)'].endMs).toBeLessThanOrEqual(full.endMs)
   })
 })

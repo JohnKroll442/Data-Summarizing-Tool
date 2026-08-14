@@ -105,35 +105,115 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
     return emptyOption('No widgets found in this action.')
   }
 
-  // Walk widgets in order, and for each widget walk its phases in
-  // PHASE_ORDER. Each present phase becomes one y-axis row. Cursor advances
-  // by that phase's DURATION so the next bar starts where this one ended.
-  const yLabels = []
-  const spacerData = []
-  const durationData = []
-
+  // First pass — reconstruct each widget's OVERLAPPING timeline in natural
+  // (pre-clamp) coordinates. Widgets load concurrently within an action (each
+  // anchored at its own offset). WITHIN a widget the phases do NOT run
+  // end-to-end: backend and network run concurrently from the widget's start,
+  // the network sub-phases (waiting/TTFB, content download) nest INSIDE the
+  // Network (Full) window rather than stacking after it (they're components of
+  // Full, not extra time), and render begins once the data phases finish. Bars
+  // keep their true durations — this reconstructs the parallel work, so the
+  // picture collapses toward the real action duration instead of a stacked sum.
+  const widgetBars = []
   let reconstructedEnd = 0
+
   for (const widgetKey of widgetOrder) {
     const rows = widgetRows.get(widgetKey)
     const displayName = pickDisplayName(rows, m) || widgetKey
 
-    // Each widget's timeline is anchored at its own offset — the client-side
-    // idle before this widget's turn to load, measured from action start.
-    // Widgets that wait the same offset therefore overlap in x, which is what
-    // makes the chart read as concurrent work instead of one long sum.
     const offsetPick = pickPhase(rows, m, ['offset'], null)
     const widgetStart = offsetPick && offsetPick.durationMs > 0 ? offsetPick.durationMs : 0
 
-    let cursor = widgetStart
+    // Max DURATION per phase row (0 = phase absent for this widget).
+    const dur = {}
     for (const phase of PHASE_ORDER) {
       const pick = pickPhase(rows, m, [phase.measure], phase.sub)
-      if (!pick || !(pick.durationMs > 0)) continue
+      dur[phase.key] = pick && pick.durationMs > 0 ? pick.durationMs : 0
+    }
 
+    const natural = {}
+    if (dur.offset) natural.offset = { start: 0, dur: widgetStart }
+    // Backend query and the network request overlap — both start at the
+    // widget's turn to load.
+    if (dur.backend) natural.backend = { start: widgetStart, dur: dur.backend }
+
+    if (dur['network-full']) {
+      // Network (Full) is the umbrella; waiting sits at its head, content
+      // download at its tail, both drawn INSIDE the Full window.
+      const fullStart = widgetStart
+      const fullEnd = fullStart + dur['network-full']
+      natural['network-full'] = { start: fullStart, dur: dur['network-full'] }
+      if (dur['network-wait'])
+        natural['network-wait'] = { start: fullStart, dur: dur['network-wait'] }
+      if (dur['network-cdn'])
+        natural['network-cdn'] = {
+          start: Math.max(fullStart, fullEnd - dur['network-cdn']),
+          dur: dur['network-cdn'],
+        }
+    } else {
+      // No Full container to nest under — lay the present sub-phases
+      // end-to-end from the widget start.
+      let c = widgetStart
+      if (dur['network-wait']) {
+        natural['network-wait'] = { start: c, dur: dur['network-wait'] }
+        c += dur['network-wait']
+      }
+      if (dur['network-cdn']) {
+        natural['network-cdn'] = { start: c, dur: dur['network-cdn'] }
+        c += dur['network-cdn']
+      }
+    }
+
+    // Render starts once the data is ready — the latest end of the backend +
+    // network phases (falling back to the widget start if none are present).
+    let dataEnd = widgetStart
+    for (const k of ['backend', 'network-full', 'network-wait', 'network-cdn']) {
+      if (natural[k]) dataEnd = Math.max(dataEnd, natural[k].start + natural[k].dur)
+    }
+    if (dur.render) natural.render = { start: dataEnd, dur: dur.render }
+
+    for (const k of Object.keys(natural)) {
+      const e = natural[k].start + natural[k].dur
+      if (e > reconstructedEnd) reconstructedEnd = e
+    }
+
+    widgetBars.push({ widgetKey, displayName, natural })
+  }
+
+  // The authoritative action duration is the source of truth for the end
+  // marker. action_duration is emitted as '' when it can't be computed;
+  // Number('') is a finite 0, so treat '' (and null/undefined) as absent to
+  // avoid collapsing the end marker onto x=0 — fall back to the reconstructed
+  // end instead.
+  const rawDuration = opts.actionDurationMs
+  const parsedDuration =
+    rawDuration == null || rawDuration === '' ? NaN : Number(rawDuration)
+  const actionDurationMs = Number.isFinite(parsedDuration) ? parsedDuration : null
+  const endMarker = actionDurationMs != null ? actionDurationMs : reconstructedEnd
+  const axisMax = endMarker
+
+  // Second pass — emit one y-axis row per present phase (in PHASE_ORDER),
+  // clamping each bar so it never extends past the Action End marker. A bar
+  // whose natural end overshoots is shifted LEFT so it ends exactly at the
+  // marker (its true width is preserved); a lone phase longer than the whole
+  // action is truncated at the marker. The bar label + tooltip always report
+  // the TRUE durationMs, so real durations stay visible even when a bar is
+  // shifted or truncated to fit.
+  const yLabels = []
+  const spacerData = []
+  const durationData = []
+
+  for (const wb of widgetBars) {
+    for (const phase of PHASE_ORDER) {
+      const nat = wb.natural[phase.key]
+      if (!nat) continue
+
+      const { start, end } = clampToEnd(nat.start, nat.dur, endMarker)
       const label = phase.key === 'backend'
-        ? `Query data of ${displayName}`
+        ? `Query data of ${wb.displayName}`
         : phase.key === 'render'
-          ? `Render ${displayName}`
-          : `${displayName} — ${phase.label}`
+          ? `Render ${wb.displayName}`
+          : `${wb.displayName} — ${phase.label}`
 
       const group = phaseGroupOf(phase.key)
       const color = PHASE_COLORS[group]
@@ -141,47 +221,26 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
         ? 'Network wait'
         : phase.label
 
-      // The offset bar spans [0, widgetStart]; every work phase cascades from
-      // the per-widget cursor. Offset uses widgetStart as its width so it draws
-      // the pre-load wait without advancing past it twice.
-      const start = phase.key === 'offset' ? 0 : cursor
-      const end = start + pick.durationMs
-
       yLabels.push(label)
       spacerData.push(start)
       durationData.push({
-        value: pick.durationMs,
+        value: end - start, // drawn width (kept inside the axis)
         itemStyle: { color, borderRadius: [2, 2, 2, 2] },
         phaseLabel: label,
         phaseGroup: group,
         legendLabel,
         startMs: start,
         endMs: end,
-        durationMs: pick.durationMs,
-        widgetId: widgetKey,
-        widgetName: displayName,
+        durationMs: nat.dur, // TRUE duration — survives clamping
+        widgetId: wb.widgetKey,
+        widgetName: wb.displayName,
       })
-
-      if (phase.key !== 'offset') cursor = end
-      if (end > reconstructedEnd) reconstructedEnd = end
     }
   }
 
   if (durationData.length === 0) {
     return emptyOption('No phase rows with duration found for this action.')
   }
-
-  // Real end of the reconstructed timeline (largest phase end across widgets),
-  // and the authoritative action duration (source of truth for the end marker).
-  // action_duration is emitted as '' when it can't be computed; Number('') is a
-  // finite 0, so treat '' (and null/undefined) as absent to avoid collapsing the
-  // end marker onto x=0 — fall back to the reconstructed end instead.
-  const rawDuration = opts.actionDurationMs
-  const parsedDuration =
-    rawDuration == null || rawDuration === '' ? NaN : Number(rawDuration)
-  const actionDurationMs = Number.isFinite(parsedDuration) ? parsedDuration : null
-  const endMarker = actionDurationMs != null ? actionDurationMs : reconstructedEnd
-  const axisMax = Math.max(actionDurationMs ?? 0, reconstructedEnd)
 
   // Responsive type sizes, derived from the current root font-size.
   const f = chartFontSizes()
@@ -332,6 +391,22 @@ function escape(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+/**
+ * Keep a bar inside [0, endMarker] on the elapsed-time axis. A bar whose
+ * natural end overshoots the marker is shifted LEFT so it ends exactly at the
+ * marker, preserving its true width (this is how a long phase reads as
+ * overlapping the ones before it). A bar longer than the whole window is
+ * truncated at the marker. With no valid endMarker, positions pass through
+ * unchanged. Returns the DRAWN {start, end}; the caller keeps the true
+ * duration separately.
+ */
+function clampToEnd(start, dur, endMarker) {
+  if (!(endMarker > 0)) return { start, end: start + dur }
+  let s = start
+  if (s + dur > endMarker) s = Math.max(0, endMarker - dur)
+  return { start: s, end: Math.min(s + dur, endMarker) }
 }
 
 function fmtMs(n) {
