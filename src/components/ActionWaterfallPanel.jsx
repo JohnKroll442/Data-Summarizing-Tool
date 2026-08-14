@@ -110,13 +110,19 @@ function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKe
   // when the window is resized while the panel is open.
   const viewportWidth = useViewportWidth()
 
+  // Authoritative action duration for the selected action — the same value the
+  // header shows (sel.durationMs, falling back to meta.durationMs). Passed to
+  // the builder so the waterfall's Action End marker matches the cell duration.
+  const actionDurationMs =
+    selected?.durationMs != null ? selected.durationMs : meta?.durationMs
+
   const option = useMemo(
-    () => buildActionSequenceOption(actionRows),
+    () => buildActionSequenceOption(actionRows, { actionDurationMs }),
     // viewportWidth is an intentional dependency: the option builder reads the
     // fluid root font-size at build time, so we rebuild on resize to rescale
     // the chart text. The linter can't see that use inside the builder.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [actionRows, viewportWidth]
+    [actionRows, viewportWidth, actionDurationMs]
   )
 
   // Column keys for this CSV shape. Used to slice the action's rows down to a

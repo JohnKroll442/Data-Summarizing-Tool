@@ -76,7 +76,7 @@ const PHASE_ORDER = [
  *   opts.widgetIdKey / opts.widgetNameKey — optional overrides; auto-detected
  *                otherwise
  */
-export function buildActionSequenceOption(actionRows) {
+export function buildActionSequenceOption(actionRows, opts = {}) {
   if (!actionRows?.length) return emptyOption('No data for this action.')
 
   const headers = Object.keys(actionRows[0] ?? {})
@@ -112,11 +112,19 @@ export function buildActionSequenceOption(actionRows) {
   const spacerData = []
   const durationData = []
 
-  let cursor = 0
+  let reconstructedEnd = 0
   for (const widgetKey of widgetOrder) {
     const rows = widgetRows.get(widgetKey)
     const displayName = pickDisplayName(rows, m) || widgetKey
 
+    // Each widget's timeline is anchored at its own offset — the client-side
+    // idle before this widget's turn to load, measured from action start.
+    // Widgets that wait the same offset therefore overlap in x, which is what
+    // makes the chart read as concurrent work instead of one long sum.
+    const offsetPick = pickPhase(rows, m, ['offset'], null)
+    const widgetStart = offsetPick && offsetPick.durationMs > 0 ? offsetPick.durationMs : 0
+
+    let cursor = widgetStart
     for (const phase of PHASE_ORDER) {
       const pick = pickPhase(rows, m, [phase.measure], phase.sub)
       if (!pick || !(pick.durationMs > 0)) continue
@@ -133,24 +141,29 @@ export function buildActionSequenceOption(actionRows) {
         ? 'Network wait'
         : phase.label
 
+      // The offset bar spans [0, widgetStart]; every work phase cascades from
+      // the per-widget cursor. Offset uses widgetStart as its width so it draws
+      // the pre-load wait without advancing past it twice.
+      const start = phase.key === 'offset' ? 0 : cursor
+      const end = start + pick.durationMs
+
       yLabels.push(label)
-      spacerData.push(cursor)
+      spacerData.push(start)
       durationData.push({
         value: pick.durationMs,
         itemStyle: { color, borderRadius: [2, 2, 2, 2] },
         phaseLabel: label,
         phaseGroup: group,
         legendLabel,
-        startMs: cursor,
-        endMs: cursor + pick.durationMs,
+        startMs: start,
+        endMs: end,
         durationMs: pick.durationMs,
-        // Widget identity so a chart click can drill into that widget's
-        // detailed timing (all phase bars for a widget carry the same id).
         widgetId: widgetKey,
         widgetName: displayName,
       })
 
-      cursor += pick.durationMs
+      if (phase.key !== 'offset') cursor = end
+      if (end > reconstructedEnd) reconstructedEnd = end
     }
   }
 
@@ -158,19 +171,23 @@ export function buildActionSequenceOption(actionRows) {
     return emptyOption('No phase rows with duration found for this action.')
   }
 
-  const totalDuration = cursor
+  // Real end of the reconstructed timeline (largest phase end across widgets),
+  // and the authoritative action duration (source of truth for the end marker).
+  const actionDurationMs = Number.isFinite(Number(opts.actionDurationMs))
+    ? Number(opts.actionDurationMs)
+    : null
+  const endMarker = actionDurationMs != null ? actionDurationMs : reconstructedEnd
+  const axisMax = Math.max(actionDurationMs ?? 0, reconstructedEnd)
 
   // Responsive type sizes, derived from the current root font-size.
   const f = chartFontSizes()
 
   // Two vertical markLines anchor the sequence to the action's start (x=0) and
-  // the summed-phase total (x=totalDuration). The end marker is the sum of every
-  // phase bar stacked end-to-end — NOT the action's real end. Because phases
-  // overlap (widget offsets run concurrently; render ⊇ network ⊇ backend nest),
-  // this total overcounts wall-clock and won't match the action duration, so it's
-  // labeled "Total Phase Timestamp" rather than "Action End" to avoid implying
-  // it's the true end. (Elapsed, not a wall-clock time — the layout is
-  // duration-based, same as the widget chart the user likes.)
+  // its real end. The end marker is pinned to the authoritative action_duration
+  // passed in as opts.actionDurationMs (falling back to the reconstructed end of
+  // the offset-anchored timeline when that isn't provided) — NOT the sum of every
+  // phase bar, which overcounts because widgets load concurrently. Elapsed time,
+  // not wall-clock: the layout is offset-anchored and duration-based.
   const markLineData = [
     {
       xAxis: 0,
@@ -191,18 +208,21 @@ export function buildActionSequenceOption(actionRows) {
       lineStyle: { color: 'transparent', width: 0 },
     },
     {
-      xAxis: totalDuration,
+      // Pinned to the authoritative action duration (or the reconstructed end
+      // when that's unavailable) — this is the action's real end, not the sum
+      // of every phase stacked end-to-end.
+      xAxis: endMarker,
       label: {
-        formatter: 'Total Phase Timestamp',
+        formatter: 'Action End Timestamp',
         position: 'end', distance: [0, 6], color: '#1d2d3e',
         fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },
       lineStyle: { color: '#1d2d3e', type: 'solid', width: 1 },
     },
     {
-      xAxis: totalDuration,
+      xAxis: endMarker,
       label: {
-        formatter: fmtMs(totalDuration),
+        formatter: fmtMs(endMarker),
         position: 'end', distance: [0, f.markLine + 10], color: '#1d2d3e',
         fontSize: f.markLine, fontWeight: 600, align: 'center', verticalAlign: 'bottom',
       },
@@ -232,14 +252,14 @@ export function buildActionSequenceOption(actionRows) {
     xAxis: {
       type: 'value',
       min: 0,
-      max: totalDuration * 1.15,
+      max: axisMax * 1.15,
       name: 'Elapsed time',
       nameLocation: 'middle',
       nameGap: 36,
       nameTextStyle: { fontSize: f.axisName, color: '#1d2d3e' },
       axisLabel: {
         fontSize: f.axis,
-        formatter: (v) => (v > totalDuration + 1e-6 ? '' : fmtMs(v)),
+        formatter: (v) => (v > axisMax + 1e-6 ? '' : fmtMs(v)),
       },
       splitLine: { show: true, lineStyle: { color: '#e6ecf2' } },
     },
