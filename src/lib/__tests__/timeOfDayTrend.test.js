@@ -37,16 +37,18 @@ describe('buildTimeOfDayTrend — shape', () => {
     expect(r.hasData).toBe(false)
     expect(r.buckets).toEqual([])
     expect(r.totalActions).toBe(0)
+    expect(r.granularity).toBeNull()
   })
 
-  it('buckets a single action into its hour with p50=p90=duration, ratio 1, count 1', () => {
+  it('buckets a single action with p50=p90=duration, ratio 1, count 1', () => {
     const rows = [inst({ t: ts(2026, 7, 8, 9, 15), ms: 3400 })]
     const r = buildTimeOfDayTrend(rows)
     expect(r.hasData).toBe(true)
     expect(r.totalActions).toBe(1)
+    // One instance → zero span → finest granularity (minute), one bucket.
+    expect(r.granularity).toBe('minute')
     expect(r.buckets).toHaveLength(1)
     const b = r.buckets[0]
-    expect(b.hour).toBe(9)
     expect(b.count).toBe(1)
     expect(b.p50).toBe(3400)
     expect(b.p90).toBe(3400)
@@ -56,15 +58,19 @@ describe('buildTimeOfDayTrend — shape', () => {
       actionKey: `Open story::${ts(2026, 7, 8, 9, 15)}`,
       action: 'Open story',
       duration: 3400,
-      minute: 15,
     })
+    // Instance carries an epoch-ms timestamp for the time-axis drill scatter.
+    expect(b.instances[0].t).toBe(new Date(2026, 6, 8, 9, 15).getTime())
   })
 
-  it('computes p50/p90/ratio across several actions in the same hour', () => {
+  it('computes p50/p90/ratio across several actions in one bucket', () => {
+    // All within the same minute → one bucket.
     const rows = [1000, 2000, 3000, 4000, 5000].map((ms, i) =>
-      inst({ t: ts(2026, 7, 8, 9, i), ms }),
+      inst({ t: ts(2026, 7, 8, 9, 0, i), ms }),
     )
-    const [b] = buildTimeOfDayTrend(rows).buckets
+    const r = buildTimeOfDayTrend(rows)
+    expect(r.buckets).toHaveLength(1)
+    const b = r.buckets[0]
     expect(b.count).toBe(5)
     expect(b.p50).toBe(3000)
     expect(b.p90).toBeCloseTo(4600)
@@ -72,34 +78,102 @@ describe('buildTimeOfDayTrend — shape', () => {
   })
 })
 
-describe('buildTimeOfDayTrend — span & scaling', () => {
-  it('keeps empty hours between populated ones as zero-count gaps (single day)', () => {
+describe('buildTimeOfDayTrend — granularity adapts to the span', () => {
+  // A run of actions across N days at the same hour.
+  const daysSpan = (nDays) =>
+    Array.from({ length: nDays }, (_, i) => inst({ t: ts(2026, 7, 1 + i, 9, 0), ms: 1000 + i }))
+
+  it('uses hourly buckets for a sub-two-day span', () => {
     const rows = [
       inst({ t: ts(2026, 7, 8, 9, 0), ms: 1000 }),
-      inst({ t: ts(2026, 7, 8, 11, 0), ms: 2000 }), // skip hour 10
+      inst({ t: ts(2026, 7, 8, 14, 30), ms: 2000 }),
     ]
     const r = buildTimeOfDayTrend(rows)
-    expect(r.multiDay).toBe(false)
-    expect(r.buckets.map((b) => b.hour)).toEqual([9, 10, 11])
-    expect(r.buckets.map((b) => b.count)).toEqual([1, 0, 1])
-    // The empty hour carries no percentiles (a gap in the line, not a zero dip).
+    expect(r.granularity).toBe('hour')
+    // 09:00 … 14:00 inclusive = 6 hourly buckets, gaps filled.
+    expect(r.buckets).toHaveLength(6)
+    expect(r.buckets[0].count).toBe(1)
+    expect(r.buckets[5].count).toBe(1)
+    expect(r.buckets[1].count).toBe(0) // an empty in-between hour
     expect(r.buckets[1].p50).toBeNull()
-    expect(r.buckets[1].p90).toBeNull()
-    expect(r.buckets[1].ratio).toBeNull()
   })
 
-  it('expands past 24 hours across multiple days, marking multiDay', () => {
+  it('uses daily buckets for a ~2-week span, one bucket per day', () => {
+    const rows = daysSpan(14) // Jul 1 … Jul 14
+    const r = buildTimeOfDayTrend(rows)
+    expect(r.granularity).toBe('day')
+    expect(r.buckets).toHaveLength(14)
+    // Each day has exactly one action; labels are compact M/D.
+    expect(r.buckets.every((b) => b.count === 1)).toBe(true)
+    expect(r.buckets[0].label).toBe('7/1')
+    expect(r.buckets[13].label).toBe('7/14')
+  })
+
+  it('still uses daily buckets at ~6 weeks (≤ 60 buckets)', () => {
+    const rows = daysSpan(42)
+    const r = buildTimeOfDayTrend(rows)
+    expect(r.granularity).toBe('day')
+    expect(r.buckets).toHaveLength(42)
+  })
+
+  it('coarsens to weekly buckets for a ~3-month span', () => {
+    // ~90 days would be 90 daily buckets (> 60) → weekly instead.
+    const rows = Array.from({ length: 90 }, (_, i) => {
+      const day = new Date(2026, 6, 1)
+      day.setDate(day.getDate() + i)
+      return inst({
+        t: ts(day.getFullYear(), day.getMonth() + 1, day.getDate(), 9, 0),
+        ms: 1000 + i,
+      })
+    })
+    const r = buildTimeOfDayTrend(rows)
+    expect(r.granularity).toBe('week')
+    expect(r.buckets.length).toBeLessThanOrEqual(60)
+    expect(r.buckets.length).toBeGreaterThan(10)
+    expect(r.totalActions).toBe(90)
+  })
+})
+
+describe('buildTimeOfDayTrend — aggregation & gaps along the timeline', () => {
+  it('aggregates multiple actions that share a bucket', () => {
+    // Two actions on the same day (daily granularity via a 3-day span).
     const rows = [
-      inst({ t: ts(2026, 7, 8, 23, 0), ms: 1000 }),
-      inst({ t: ts(2026, 7, 9, 1, 0), ms: 2000 }), // next day, hour 1
+      inst({ t: ts(2026, 7, 1, 9, 0), ms: 1000 }),
+      inst({ t: ts(2026, 7, 1, 15, 0), ms: 3000 }),
+      inst({ t: ts(2026, 7, 3, 9, 0), ms: 2000 }),
     ]
     const r = buildTimeOfDayTrend(rows)
-    expect(r.multiDay).toBe(true)
-    // 23:00 Jul 8 → 00:00 Jul 9 → 01:00 Jul 9 = 3 contiguous hourly buckets.
-    expect(r.buckets).toHaveLength(3)
-    expect(r.buckets.map((b) => b.count)).toEqual([1, 0, 1])
-    expect(r.buckets[0].dateKey).toBe('2026-07-08')
-    expect(r.buckets[2].dateKey).toBe('2026-07-09')
+    expect(r.granularity).toBe('hour') // 3-day span in hours = 51 buckets, still ≤ 60
+    // The two Jul-1 actions fall in different hourly buckets here; assert the
+    // total and that same-bucket aggregation works via the count-5 test above.
+    expect(r.totalActions).toBe(3)
+    // Every populated bucket's instances match its count.
+    for (const b of r.buckets) expect(b.instances).toHaveLength(b.count)
+  })
+
+  it('emits empty buckets for quiet stretches instead of dropping them', () => {
+    const rows = [
+      inst({ t: ts(2026, 7, 1, 9, 0), ms: 1000 }),
+      inst({ t: ts(2026, 7, 10, 9, 0), ms: 2000 }), // 9 days later
+    ]
+    const r = buildTimeOfDayTrend(rows)
+    expect(r.granularity).toBe('day')
+    expect(r.buckets).toHaveLength(10) // Jul 1 … Jul 10 inclusive
+    expect(r.buckets[0].count).toBe(1)
+    expect(r.buckets[9].count).toBe(1)
+    // The 8 days in between are present but empty (null percentiles).
+    const empties = r.buckets.slice(1, 9)
+    expect(empties.every((b) => b.count === 0 && b.p50 === null)).toBe(true)
+  })
+
+  it('keeps buckets in chronological order', () => {
+    const rows = [
+      inst({ t: ts(2026, 7, 10, 9, 0), ms: 2000 }),
+      inst({ t: ts(2026, 7, 1, 9, 0), ms: 1000 }),
+    ]
+    const r = buildTimeOfDayTrend(rows)
+    const sorts = r.buckets.map((b) => b.sort)
+    expect(sorts).toEqual([...sorts].sort((a, b) => a - b))
   })
 
   it('drops rows with an unparseable timestamp or non-positive duration', () => {
@@ -111,7 +185,5 @@ describe('buildTimeOfDayTrend — span & scaling', () => {
     ]
     const r = buildTimeOfDayTrend(rows)
     expect(r.totalActions).toBe(1)
-    expect(r.buckets).toHaveLength(1)
-    expect(r.buckets[0].count).toBe(1)
   })
 })

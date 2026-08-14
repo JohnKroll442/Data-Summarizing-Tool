@@ -11,41 +11,44 @@ import {
 import { formatDurationMs } from '../../../lib/format'
 
 /**
- * Time-Of-Day hour drill-down — the click-to-drill companion to the trend line
- * chart. Given one hourly bucket's individual action instances, it scatters them
- * by minute-within-the-hour (X, 0–60) against duration (Y, log — the same wide
+ * Time-Of-Day bucket drill-down — the click-to-drill companion to the trend line
+ * chart. Given one bucket's individual action instances, it scatters them by
+ * their real TIMESTAMP (X, time axis) against duration (Y, log — the same wide
  * ms→minutes range the offset scatter faces). This turns a single p50/p90 dot on
- * the trend line into the actual distribution behind it, so a tail-heavy hour
- * (a few slow runs pulling p90 up) is distinguishable from a uniformly-slow one.
+ * the trend line into the actual distribution behind it, so a tail-heavy bucket
+ * (a few slow runs pulling p90 up) is distinguishable from a uniformly-slow one,
+ * and clusters within the bucket's window are visible in time order.
  *
  * Non-flagged instances are colored BY ACTION TYPE — one series (and legend
  * entry) per distinct action name, cycling SAP_PALETTE — so a glance shows which
- * kind of action dominates the hour. Flagged instances (any anomaly flag,
+ * kind of action dominates the bucket. Flagged instances (any anomaly flag,
  * resolved upstream from byActionKey) override that: they collapse into a single
  * red-triangle "Flagged" series so the outliers driving p90 stand out, and the
  * "Flagged" legend entry only appears when something is actually flagged. The
  * per-dot tooltip names the action, story, user, timestamp and duration.
  *
- * Input: { instances, hourLabel } where each instance is
- *   { actionKey, action, story, user, timestamp, duration, minute, flagged }.
+ * Input: { instances, bucketLabel } where each instance is
+ *   { actionKey, action, story, user, timestamp, duration, t, flagged }
+ * and `t` is the epoch-ms timestamp used for the X position.
  */
 
+const pad = (n) => String(n).padStart(2, '0')
 const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '—')
 
-export function buildTimeOfDayHourScatterOption({ instances, hourLabel } = {}) {
+export function buildTimeOfDayHourScatterOption({ instances, bucketLabel } = {}) {
   if (!instances?.length) {
-    return emptyOption(`No actions in ${hourLabel ?? 'this hour'}.`)
+    return emptyOption(`No actions in ${bucketLabel ?? 'this bucket'}.`)
   }
 
   const f = chartFontSizes()
   const toDatum = (i) => ({
-    value: [i.minute, Math.max(Number(i.duration) || 0, 1)],
+    value: [i.t, Math.max(Number(i.duration) || 0, 1)],
     action: i.action,
     story: i.story,
     user: i.user,
     timestamp: i.timestamp,
     duration: i.duration,
-    minute: i.minute,
+    t: i.t,
   })
 
   // Non-flagged points, one colored series per action type (sorted for a stable
@@ -110,15 +113,20 @@ export function buildTimeOfDayHourScatterOption({ instances, hourLabel } = {}) {
     },
     grid: { ...BASE_GRID, top: 44, left: 92, right: 32, bottom: 56 },
     xAxis: {
-      type: 'value',
-      name: 'Minute of hour',
+      type: 'time',
+      name: 'Time',
       nameLocation: 'middle',
       nameGap: 34,
-      min: 0,
-      max: 60,
-      interval: 10,
       nameTextStyle: { fontSize: f.axisName, color: SAP_TEXT },
-      axisLabel: { color: SAP_TEXT_MUTED, fontSize: f.axis },
+      axisLabel: {
+        color: SAP_TEXT_MUTED,
+        fontSize: f.axis,
+        hideOverlap: true,
+        formatter: (val) => {
+          const d = new Date(val)
+          return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+        },
+      },
       splitLine: { lineStyle: { color: '#cdd6e0' } },
     },
     yAxis: {

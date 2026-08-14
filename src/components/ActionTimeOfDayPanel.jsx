@@ -8,21 +8,24 @@ import './ActionTimeOfDayPanel.css'
 
 /**
  * Time-Of-Day-Trend view — a full-screen line chart of p50 / p90 action
- * duration per hourly bucket (with faint action-count bars behind, so activity
- * spikes stand out), built upstream in ActionView via buildTimeOfDayTrend.
+ * duration per time bucket along the real timeline, with the bucket granularity
+ * scaled to the span (minute / hour / day / week / month) so it stays readable
+ * whether the data is a few hours or a few months; faint action-count bars sit
+ * behind so busy periods stand out. Built upstream in ActionView via
+ * buildTimeOfDayTrend.
  *
  * Two levels of click-to-drill, stacked below the trend so nothing above ever
  * shrinks (mirrors the other Action panels for consistency):
- *   1. Click an hour on the trend line → a scatter of that hour's individual
- *      action instances (minute-of-hour × duration, log Y), colored by action
+ *   1. Click a bucket on the trend line → a scatter of that bucket's individual
+ *      action instances (real timestamp × duration, log Y), colored by action
  *      type with anomaly-flagged runs as red triangles.
  *   2. Click a dot in that scatter → the shared ActionCellDetail (instance list
  *      + waterfall) for that story×action, with the clicked run preselected.
- * Clicking the same hour / dot again (or its ×) closes that level. State is
+ * Clicking the same bucket / dot again (or its ×) closes that level. State is
  * local, so drilling repaints only this panel.
  *
  * Props:
- *   data         { buckets, totalActions, multiDay, hasData } trend result
+ *   data         { buckets, totalActions, granularity, hasData } trend result
  *   matrix       storyActionMatrix — its cells Map resolves a dot → the group
  *   rows         session-scoped raw CSV rows (for the waterfall)
  *   headers      CSV headers
@@ -30,10 +33,10 @@ import './ActionTimeOfDayPanel.css'
  *   tierByType   Map<typeKey, 1|2|3> from rankAnomalyTiers
  */
 function ActionTimeOfDayPanel({ data, matrix, rows, headers, byActionKey, tierByType }) {
-  const { buckets = [], totalActions = 0, multiDay = false } = data ?? {}
+  const { buckets = [], totalActions = 0, granularity = null } = data ?? {}
   const option = useMemo(
-    () => buildTimeOfDayTrendOption({ buckets, multiDay }),
-    [buckets, multiDay],
+    () => buildTimeOfDayTrendOption({ buckets }),
+    [buckets],
   )
 
   // Mirror ActionOffsetPanel: measure the card's document-absolute top so the
@@ -116,7 +119,7 @@ function ActionTimeOfDayPanel({ data, matrix, rows, headers, byActionKey, tierBy
       ...i,
       flagged: (byActionKey?.get(i.actionKey)?.length ?? 0) > 0,
     }))
-    return buildTimeOfDayHourScatterOption({ instances, hourLabel: selected.label })
+    return buildTimeOfDayHourScatterOption({ instances, bucketLabel: selected.label })
   }, [selected, byActionKey])
 
   const onScatterEvents = useMemo(() => {
@@ -148,9 +151,12 @@ function ActionTimeOfDayPanel({ data, matrix, rows, headers, byActionKey, tierBy
     smoothScroll(detailRef.current)
   }, [pinned])
 
+  const perLabel =
+    { minute: 'minute', hour: 'hour', day: 'day', week: 'week', month: 'month' }[granularity] ??
+    'bucket'
   const subtitle =
     `${totalActions} action${totalActions === 1 ? '' : 's'} · ` +
-    'p50 / p90 duration by hour · click an hour to drill in'
+    `p50 / p90 per ${perLabel} · click a ${perLabel} to drill in`
 
   return (
     <section className="action-view-fullscreen" aria-label="Time of day trend">
@@ -167,8 +173,8 @@ function ActionTimeOfDayPanel({ data, matrix, rows, headers, byActionKey, tierBy
       {selected && scatter && (
         <div ref={scatterRef} className="time-of-day-panel__drill">
           <EChartCard
-            title={`Actions in ${selected.label}`}
-            subtitle={`${selected.count} action${selected.count === 1 ? '' : 's'} · minute of hour × duration · log axis · click a dot for detail`}
+            title={`Actions in ${selected.fullLabel ?? selected.label}`}
+            subtitle={`${selected.count} action${selected.count === 1 ? '' : 's'} · over time × duration · log axis · click a dot for detail`}
             option={scatter}
             height={360}
             onRemove={() => {

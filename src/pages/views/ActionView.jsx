@@ -85,9 +85,10 @@ function ActionView() {
     [scopedRows, headers],
   )
 
-  // p50 / p90 action duration per hourly bucket across the data's span, plus the
-  // per-hour instances for the click-to-drill scatter — feeds the Time-Of-Day
-  // trend panel. Scoped like the rail; a cache hit on the memoized aggRows.
+  // p50 / p90 action duration per time bucket along the data's timeline (bucket
+  // granularity scales to the span), plus each bucket's instances for the
+  // click-to-drill scatter — feeds the Time-Of-Day trend panel. Scoped like the
+  // rail; a cache hit on the memoized aggRows.
   const timeOfDayTrend = useMemo(
     () => buildTimeOfDayTrend(aggRows),
     [aggRows],

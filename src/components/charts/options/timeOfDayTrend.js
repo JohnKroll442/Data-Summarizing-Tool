@@ -12,43 +12,42 @@ import {
 import { formatDurationMs } from '../../../lib/format'
 
 /**
- * Time-Of-Day-Trend line chart — p50 / p90 of action duration per hourly bucket
- * across the data's actual span (see buildTimeOfDayTrend). Reading, back to
+ * Time-Of-Day-Trend line chart — p50 / p90 of action duration per time bucket
+ * along the data's REAL timeline (see buildTimeOfDayTrend). Reading, back to
  * front:
  *   - faint action-count bars on a secondary (right) axis, so a spike in the
- *     NUMBER of actions is visible behind the latency lines (the panel's stated
- *     purpose);
+ *     NUMBER of actions — the "busy times" signal — is visible behind the
+ *     latency lines (the panel's stated purpose);
  *   - a shaded spread band between p50 and p90 (drawn as a transparent p50 base
  *     with a light-tinted p90−p50 area stacked on top), so the gap between the
  *     median and the tail reads as an area, not two disconnected lines;
  *   - p50 (blue) and p90 (gold) lines with dots on the duration (left) axis.
- * Empty hours carry null percentiles, so the lines gap there instead of dipping
- * to zero. The axis-trigger tooltip reports p50, p90, the p90/p50 ratio and the
- * action count for the hovered hour.
+ * Empty buckets carry null percentiles, so the lines gap there instead of
+ * dipping to zero. The axis-trigger tooltip reports p50, p90, the p90/p50 ratio
+ * and the action count for the hovered bucket.
  *
- * Input is a Time-Of-Day-Trend result: { buckets, multiDay }. X-axis labels are
- * compact HH:00 within a single day and gain a M/D date prefix once the span
- * crosses calendar days, so the same builder scales from 24 hours to multi-day.
+ * Input is a Time-Of-Day-Trend result: { buckets }. The bucket granularity is
+ * chosen upstream to fit the span (minute / hour / day / week / month), so each
+ * X-axis label is a compact chronological marker (bucket.label, e.g. "7/8" or
+ * "7/8 09:00"); tooltips use the verbose bucket.fullLabel.
  */
 
-const pad = (n) => String(n).padStart(2, '0')
 const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '—')
 
-// Compact axis / tooltip label for a bucket. Single-day: "09:00". Multi-day:
-// "7/8 09:00" (month/day unpadded, hour padded) so a run across days stays
-// readable without repeating the year on every tick.
-function labelOf(bucket, multiDay) {
-  const hh = `${pad(bucket.hour)}:00`
-  if (!multiDay) return hh
-  const [, mo, d] = String(bucket.dateKey ?? '').split('-')
-  return `${Number(mo)}/${Number(d)} ${hh}`
+// Compact axis label for a bucket (chronological, granularity-dependent).
+function labelOf(bucket) {
+  return bucket.label ?? ''
+}
+// Verbose label for the tooltip header, falling back to the compact one.
+function fullLabelOf(bucket) {
+  return bucket.fullLabel ?? bucket.label ?? ''
 }
 
-export function buildTimeOfDayTrendOption({ buckets, multiDay = false } = {}) {
+export function buildTimeOfDayTrendOption({ buckets } = {}) {
   if (!buckets?.length) return emptyOption('No actions with a duration to plot.')
 
   const f = chartFontSizes()
-  const labels = buckets.map((b) => labelOf(b, multiDay))
+  const labels = buckets.map((b) => labelOf(b))
 
   // Empty hours → null so the lines break there (a gap, not a 0 dip). Counts
   // stay 0 so a missing hour reads as "no actions", not "no data".
@@ -93,7 +92,7 @@ export function buildTimeOfDayTrendOption({ buckets, multiDay = false } = {}) {
         const idx = Array.isArray(params) ? params[0]?.dataIndex : params?.dataIndex
         const b = buckets[idx]
         if (!b) return ''
-        const header = `<strong>${labelOf(b, multiDay)} UTC</strong>`
+        const header = `<strong>${fullLabelOf(b)}</strong>`
         if (b.count === 0 || b.p50 == null) {
           return [header, 'No actions'].join('<br/>')
         }
