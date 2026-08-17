@@ -179,8 +179,4 @@
   color: var(--sap-text);
 }
 
-@media (max-width: 600px) {
-  .action-view-switcher {
-    flex-wrap: wrap;
-  }
-}
+/* IconTabBar handles responsive wrapping internally */

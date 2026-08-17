@@ -1,53 +1,43 @@
-/* Top-level Action view switcher — a SAP Fiori-style tab strip (text tabs
-   sharing an underline baseline; the active one gets a blue underline),
-   matching the pre-switcher chart-tab design. */
+/* ActionViewSwitcher — Fiori-style underline tabs that span the full width.
+   A flex row of equal-width buttons; the active one gets a colored bottom
+   border. Uses UI5's selection token (--sapSelectedColor) so the underline
+   matches the rest of the theme, falling back to the app blue. */
 .action-view-switcher {
   display: flex;
-  gap: 1.25rem;
-  align-items: flex-end;
-  border-bottom: 1px solid var(--color-border-subtle);
+  width: 100%;
   margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .action-view-switcher__tab {
-  background: none;
-  border: 0;
-  /* Sit the 2px underline on top of the strip's 1px baseline. */
+  flex: 1 1 0;
+  appearance: none;
+  background: transparent;
+  border: none;
+  /* 2px underline overlaps the strip's 1px baseline so it reads as one line */
+  border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  padding: 0.5rem 0.15rem;
+  padding: 0.625rem 0.5rem;
   font: inherit;
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-heading);
-  color: var(--sap-text-muted);
+  color: var(--sap-text);
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .action-view-switcher__tab:hover {
-  color: var(--sap-text);
-  border-bottom-color: var(--sap-blue-light);
+  color: var(--sapSelectedColor, var(--sap-blue));
 }
 
 .action-view-switcher__tab.is-active {
-  color: var(--sap-text);
-  border-bottom-color: var(--sap-blue);
+  color: var(--sapSelectedColor, var(--sap-blue));
+  border-bottom-color: var(--sapSelectedColor, var(--sap-blue));
 }
 
 .action-view-switcher__tab:focus-visible {
-  outline: 2px solid var(--sap-blue);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* Stretch variant — tabs divide the full width evenly with centered labels,
-   so the strip spans the whole top (used for the top-level view bar). */
-.action-view-switcher--stretch {
-  gap: 0;
-}
-
-.action-view-switcher--stretch .action-view-switcher__tab {
-  flex: 1;
-  text-align: center;
+  outline: 2px solid var(--sapSelectedColor, var(--sap-blue));
+  outline-offset: -2px;
 }

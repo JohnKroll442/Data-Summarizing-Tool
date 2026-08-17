@@ -1,7 +1,9 @@
-import { Link, Navigate, NavLink, Outlet } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import ActionViewSwitcher from '../components/ActionViewSwitcher'
 import { useCsvData } from '../context/useCsvData'
 import './SummaryPage.css'
+
 import './ComparePage.css'
 
 /**
@@ -11,8 +13,17 @@ import './ComparePage.css'
  * both files, a Home link, and a tab bar. If either selection is missing,
  * bounces back to the upload page so the user can pick.
  */
+const COMPARE_TABS = [
+  { key: 'session', label: 'Session' },
+  { key: 'action', label: 'Action' },
+  { key: 'widget', label: 'Widget' },
+]
+
 function ComparePage() {
   const { baselineId, currentId, baselinePayload, currentPayload } = useCsvData()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const activeSegment = location.pathname.split('/').pop()
 
   if (!baselineId || !currentId || !baselinePayload || !currentPayload) {
     return <Navigate to="/" replace />
@@ -32,11 +43,12 @@ function ComparePage() {
         </span>
       </div>
 
-      <nav className="summary-tabs" aria-label="Compare views">
-        <NavLink to="session" className="summary-tab">Session</NavLink>
-        <NavLink to="action" className="summary-tab">Action</NavLink>
-        <NavLink to="widget" className="summary-tab">Widget</NavLink>
-      </nav>
+      <ActionViewSwitcher
+        views={COMPARE_TABS}
+        activeView={activeSegment}
+        onChange={(key) => navigate(key)}
+        ariaLabel="Compare views"
+      />
 
       <div className="summary-content">
         <Outlet />

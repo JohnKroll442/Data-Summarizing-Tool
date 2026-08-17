@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, ArrowRight } from 'lucide-react'
+import { MessageStrip, BusyIndicator, Title } from '@ui5/webcomponents-react'
 import FileUpload from '../components/FileUpload'
 import CsvValidationDialog from '../components/CsvValidationDialog'
 import { parseCsvFile, validateSchema } from '../lib/parseCsv'
@@ -118,6 +119,7 @@ function UploadPage() {
       <header className="app-header">
         <img src={sapLogo} alt="SAP" className="app-header-logo" />
         <div className="app-header-text">
+          <Title level="H1" wrappingType="Normal">CSV Summarizer</Title>
           <p>Upload file to summarize</p>
         </div>
       </header>
@@ -125,12 +127,20 @@ function UploadPage() {
       <main className="app-main">
         <FileUpload onFilesAdded={handleFilesAdded} accept=".csv" />
         {isParsing && (
-          <p className="app-status" role="status">
-            Parsing CSV… {Math.round(parseProgress * 100)}%
-          </p>
+          <BusyIndicator
+            active
+            size="M"
+            text={`Parsing CSV… ${Math.round(parseProgress * 100)}%`}
+            style={{ display: 'flex', justifyContent: 'center', padding: '0.6rem 0' }}
+          />
         )}
         {parseError && (
-          <p className="app-error" role="alert">{parseError}</p>
+          <MessageStrip
+            design="Negative"
+            onClose={() => setParseError('')}
+          >
+            {parseError}
+          </MessageStrip>
         )}
         <section className="recent-files" aria-label="Recently uploaded files">
           <div className="recent-files-header">

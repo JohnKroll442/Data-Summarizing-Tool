@@ -1,9 +1,9 @@
 import ReactECharts from 'echarts-for-react'
-import { X } from 'lucide-react'
+import { Card, CardHeader, Button } from '@ui5/webcomponents-react'
 import './EChartCard.css'
 
 /**
- * EChartCard — glassmorphism wrapper around a single ECharts instance.
+ * EChartCard — UI5 Card wrapper around a single ECharts instance.
  *
  * Props:
  *   title:     string
@@ -20,24 +20,26 @@ function EChartCard({ title, subtitle, option, height = 280, onRemove, onEvents 
   const hasData = optionHasData(option)
 
   return (
-    <section className="echart-card">
-      <header className="echart-card-header">
-        <div className="echart-card-header-text">
-          <h3 className="echart-card-title">{title}</h3>
-          {subtitle && <p className="echart-card-subtitle">{subtitle}</p>}
-        </div>
-        {onRemove && (
-          <button
-            type="button"
-            className="echart-card-remove"
-            onClick={onRemove}
-            aria-label="Remove chart"
-            title="Remove chart"
-          >
-            <X size={16} />
-          </button>
-        )}
-      </header>
+    <Card
+      className="echart-card"
+      header={
+        <CardHeader
+          titleText={title}
+          subtitleText={subtitle || ''}
+          action={
+            onRemove ? (
+              <Button
+                design="Transparent"
+                icon="decline"
+                onClick={onRemove}
+                aria-label="Remove chart"
+                tooltip="Remove chart"
+              />
+            ) : undefined
+          }
+        />
+      }
+    >
       {hasData ? (
         <ReactECharts
           option={option}
@@ -51,7 +53,7 @@ function EChartCard({ title, subtitle, option, height = 280, onRemove, onEvents 
           Not enough data to render this chart.
         </div>
       )}
-    </section>
+    </Card>
   )
 }
 

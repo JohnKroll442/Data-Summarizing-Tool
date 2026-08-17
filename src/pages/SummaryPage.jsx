@@ -74,7 +74,6 @@ function SummaryPage() {
         activeView={activeSegment}
         onChange={(seg) => navigate(seg)}
         ariaLabel="Summary views"
-        stretch
       />
 
       <div className="summary-content">

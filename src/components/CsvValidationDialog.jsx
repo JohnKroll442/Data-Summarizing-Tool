@@ -1,6 +1,10 @@
-import { useEffect } from 'react'
+import { Dialog, Bar, Button, Title, MessageStrip } from '@ui5/webcomponents-react'
 import './CsvValidationDialog.css'
 
+/**
+ * CsvValidationDialog — uses the UI5 Dialog component for a Fiori-compliant
+ * modal with built-in focus-trap, Escape-to-close, and footer slot.
+ */
 function CsvValidationDialog({
   open,
   fileName,
@@ -11,117 +15,92 @@ function CsvValidationDialog({
   onContinue,
   onCancel,
 }) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onCancel])
-
-  if (!open) return null
-
-  const titleId = 'csv-validation-title'
   const heading = canProceed
     ? 'Some expected columns are missing'
     : 'This file can’t be summarized'
 
+  const handleAfterClose = () => {
+    onCancel()
+  }
+
   return (
-    <div className="csv-validation-backdrop" onClick={onCancel}>
-      <div
-        className="csv-validation-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="csv-validation-header">
-          <h2 id={titleId}>{heading}</h2>
-          <button
-            type="button"
-            className="csv-validation-close"
-            onClick={onCancel}
-            aria-label="Close"
-          >
-            &times;
-          </button>
-        </header>
-        <div className="csv-validation-body">
-          {fileName && (
-            <p className="csv-validation-file">
-              <span className="csv-validation-file-label">File:</span>{' '}
-              <span className="csv-validation-file-name">{fileName}</span>
-            </p>
-          )}
+    <Dialog
+      open={open}
+      headerText={heading}
+      state={canProceed ? 'Warning' : 'Error'}
+      onClose={handleAfterClose}
+      footer={
+        <Bar
+          endContent={
+            <>
+              <Button design="Transparent" onClick={onCancel}>
+                Upload a different file
+              </Button>
+              {canProceed && (
+                <Button design="Emphasized" onClick={onContinue}>
+                  Continue anyway
+                </Button>
+              )}
+            </>
+          }
+        />
+      }
+    >
+      <div className="csv-validation-body">
+        {fileName && (
+          <p className="csv-validation-file">
+            <span className="csv-validation-file-label">File:</span>{' '}
+            <span className="csv-validation-file-name">{fileName}</span>
+          </p>
+        )}
 
-          {!canProceed && (
-            <p className="csv-validation-fatal" role="alert">
-              None of the expected columns were found in this CSV. There is
-              nothing to summarize — please pick a different file.
-            </p>
-          )}
+        {!canProceed && (
+          <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>
+            None of the expected columns were found in this CSV. There is
+            nothing to summarize — please pick a different file.
+          </MessageStrip>
+        )}
 
-          {affectedViews.length > 0 && (
-            <section className="csv-validation-section">
-              <h3>Views that will be limited</h3>
-              <ul className="csv-validation-affected">
-                {affectedViews.map((v) => (
-                  <li key={v}>{v}</li>
+        {affectedViews.length > 0 && (
+          <section className="csv-validation-section">
+            <Title level="H5" style={{ marginBottom: '0.25rem' }}>Views that will be limited</Title>
+            <ul className="csv-validation-affected">
+              {affectedViews.map((v) => (
+                <li key={v}>{v}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <div className="csv-validation-columns">
+          <section className="csv-validation-section">
+            <Title level="H5" style={{ marginBottom: '0.25rem' }}>Missing columns ({missing.length})</Title>
+            {missing.length === 0 ? (
+              <p className="csv-validation-empty">None.</p>
+            ) : (
+              <ul className="csv-validation-list csv-validation-list-missing">
+                {missing.map((c) => (
+                  <li key={c}>{c}</li>
                 ))}
               </ul>
-            </section>
-          )}
+            )}
+          </section>
 
-          <div className="csv-validation-columns">
-            <section className="csv-validation-section">
-              <h3>Missing columns ({missing.length})</h3>
-              {missing.length === 0 ? (
-                <p className="csv-validation-empty">None.</p>
-              ) : (
-                <ul className="csv-validation-list csv-validation-list-missing">
-                  {missing.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="csv-validation-section">
-              <h3>Found columns ({available.length})</h3>
-              {available.length === 0 ? (
-                <p className="csv-validation-empty">None.</p>
-              ) : (
-                <ul className="csv-validation-list csv-validation-list-available">
-                  {available.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
+          <section className="csv-validation-section">
+            <Title level="H5" style={{ marginBottom: '0.25rem' }}>Found columns ({available.length})</Title>
+            {available.length === 0 ? (
+              <p className="csv-validation-empty">None.</p>
+            ) : (
+              <ul className="csv-validation-list csv-validation-list-available">
+                {available.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
-        <footer className="csv-validation-footer">
-          <button
-            type="button"
-            className="csv-validation-btn csv-validation-btn-secondary"
-            onClick={onCancel}
-          >
-            Upload a different file
-          </button>
-          {canProceed && (
-            <button
-              type="button"
-              className="csv-validation-btn csv-validation-btn-primary"
-              onClick={onContinue}
-              autoFocus
-            >
-              Continue anyway
-            </button>
-          )}
-        </footer>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
