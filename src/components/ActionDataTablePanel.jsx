@@ -41,6 +41,9 @@ function ActionDataTablePanel({
   scopedRows,
   onCloseWaterfall,
   panelRef,
+  // anomaly panel visibility
+  showAnomalies = true,
+  setShowAnomalies,
 }) {
   return (
     <div className="action-view">
@@ -52,15 +55,17 @@ function ActionDataTablePanel({
           activeBucketKey={durationBucket}
           onSelectBucket={onSelectBucket}
         />
-        <AnomalySummaryPanel
-          counts={anomalyCounts}
-          totalFlagged={totalFlagged}
-          totalActions={totalActions}
-          hoveredFlags={hoveredFlags}
-          activeType={anomalyTypeFilter}
-          onSelectType={onSelectAnomalyType}
-          tierByType={tierByType}
-        />
+        {showAnomalies && (
+          <AnomalySummaryPanel
+            counts={anomalyCounts}
+            totalFlagged={totalFlagged}
+            totalActions={totalActions}
+            hoveredFlags={hoveredFlags}
+            activeType={anomalyTypeFilter}
+            onSelectType={onSelectAnomalyType}
+            tierByType={tierByType}
+          />
+        )}
       </aside>
 
       <div className="action-view__main">
@@ -77,6 +82,8 @@ function ActionDataTablePanel({
           onClearDurationBucket={onClearDurationBucket}
           bands={bands}
           tierByType={tierByType}
+          showAnomalies={showAnomalies}
+          setShowAnomalies={setShowAnomalies}
         />
 
         {waterfallOpen && (

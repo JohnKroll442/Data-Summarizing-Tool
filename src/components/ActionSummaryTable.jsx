@@ -54,6 +54,8 @@ function ActionSummaryTable({
   onClearDurationBucket,
   bands = null,
   tierByType = null,
+  showAnomalies = true,
+  setShowAnomalies,
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -130,11 +132,7 @@ function ActionSummaryTable({
   // Which columns are hidden (display-only preference). The first column is
   // always shown and isn't offered as a toggle (see visibleColumns / toolbar).
   const [hiddenColumns, setHiddenColumns] = useState(() => viewUi.action.hiddenColumns ?? [])
-  // Show/Hide anomalies toggle — a plain boolean filter (default: show). When
-  // OFF, every flagged action is dropped from the table (and therefore from the
-  // rail's KPIs / histogram / panel counts, which recompute off the published
-  // rows), leaving only clean actions. Persisted like the other filters.
-  const [showAnomalies, setShowAnomalies] = useState(() => viewUi.action.showAnomalies ?? true)
+
 
   // Action name is always shown and never offered as a toggle (see
   // ACTION_LOCKED_COLUMNS). `chooserColumns` is the toggleable set the dropdown
@@ -160,8 +158,8 @@ function ActionSummaryTable({
   // matching effect in SessionSummaryTable). Can't loop: setViewUi is stable
   // and writing back doesn't change these local values.
   useEffect(() => {
-    setViewUi('action', { search, filters, sort, durationFilter, showAnomalies, hiddenColumns })
-  }, [search, filters, sort, durationFilter, showAnomalies, hiddenColumns, setViewUi])
+    setViewUi('action', { search, filters, sort, durationFilter, hiddenColumns })
+  }, [search, filters, sort, durationFilter, hiddenColumns, setViewUi])
 
   // Faceted options: each dropdown lists only values that still apply given the
   // OTHER active column filters, the time filter, the timeline range, and any

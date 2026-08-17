@@ -131,6 +131,13 @@ function ActionView() {
   const selectAnomalyType = (type) =>
     setAnomalyTypeFilter((prev) => (prev === type ? null : type))
 
+  // Show/Hide anomalies toggle — controls both the table filter (drops flagged
+  // rows when OFF) and the visibility of the AnomalySummaryPanel in the rail.
+  // Seeded from and persisted to viewUi.action so it survives Back navigation.
+  const [showAnomalies, setShowAnomalies] = useState(
+    () => viewUi.action.showAnomalies ?? true,
+  )
+
   // The active duration-histogram bucket selection (a DURATION_BUCKETS key, or
   // null). Toggling the same bucket clears it. Clicking a bar reshapes the whole
   // rail + table to that duration range; only the histogram itself stays on the
@@ -151,8 +158,8 @@ function ActionView() {
   // Persist the two rail selections into viewUi so the nav snapshot captures
   // them (setViewUi merges, so this leaves the table's own keys untouched).
   useEffect(() => {
-    setViewUi('action', { anomalyTypeFilter, durationBucket, activeView })
-  }, [anomalyTypeFilter, durationBucket, activeView, setViewUi])
+    setViewUi('action', { anomalyTypeFilter, durationBucket, activeView, showAnomalies })
+  }, [anomalyTypeFilter, durationBucket, activeView, showAnomalies, setViewUi])
 
   const durationBucketFilter = durationBucket
     ? bands.find((b) => b.key === durationBucket) ?? null
@@ -316,6 +323,8 @@ function ActionView() {
             scopedRows={scopedRows}
             onCloseWaterfall={() => setWaterfallOpen(false)}
             panelRef={panelRef}
+            showAnomalies={showAnomalies}
+            setShowAnomalies={setShowAnomalies}
           />
         )}
 
