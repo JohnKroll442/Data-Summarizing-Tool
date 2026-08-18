@@ -95,6 +95,15 @@ export function buildTimeOfDayHourScatterOption({ instances, bucketLabel } = {})
       type: 'scroll',
       textStyle: { color: SAP_TEXT, fontSize: f.legend },
       data: series.map((s) => s.name),
+      // Default to flagged-only on first open.
+      // Every per-action-type series starts hidden; clicking its legend item
+      // reveals those dots. "Flagged" starts visible (and only appears in the
+      // legend when the bucket actually contains flagged instances).
+      // All names come from live data — nothing is hard-coded here.
+      selected: {
+        ...Object.fromEntries(actionNames.map((name) => [name, false])),
+        ...(flagged.length ? { Flagged: true } : {}),
+      },
     },
     tooltip: {
       ...BASE_TOOLTIP,

@@ -249,6 +249,93 @@
   box-shadow: 0 0 0 3px rgba(0, 112, 242, 0.15);
 }
 
+/* ── Action-type legend strip ──────────────────────────────────────────────
+   Sits between the status banners and the filter toolbar. Chips wrap onto
+   multiple lines on narrow screens so no action type is ever clipped.
+   Each chip reads its colour from the --chip-color CSS variable set inline
+   by the React component, so no colour is hard-coded in this stylesheet.   */
+.action-type-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--sap-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-type-legend__label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--sap-text-muted);
+  white-space: nowrap;
+  margin-right: 0.15rem;
+}
+
+/* Individual action-type chip — colour dot + label text */
+.action-type-legend__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--sap-text);
+  background: #fff;
+  border: 1.5px solid var(--chip-color, var(--sap-border));
+  border-radius: var(--radius-full, 999px);
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.action-type-legend__chip:hover {
+  background: color-mix(in srgb, var(--chip-color, var(--sap-blue)) 12%, #fff);
+}
+
+/* Muted = not in the active filter set — visually de-emphasised */
+.action-type-legend__chip.is-muted {
+  opacity: 0.38;
+  border-style: dashed;
+}
+
+.action-type-legend__chip.is-muted:hover {
+  opacity: 0.75;
+}
+
+/* Colour dot inside each chip */
+.action-type-legend__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--chip-color, var(--sap-border));
+}
+
+/* "Show all" reset button — pill style, neutral colour */
+.action-type-legend__reset {
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--sap-blue-darker);
+  background: var(--sap-blue-bg, #e8f2ff);
+  border: var(--border-width) solid var(--sap-blue-light);
+  border-radius: var(--radius-full, 999px);
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+  margin-left: 0.2rem;
+}
+
+.action-type-legend__reset:hover {
+  background: var(--sap-blue-light);
+}
+
 /* Pager below the Raw Data table. */
 .raw-pager {
   display: flex;
