@@ -23,7 +23,6 @@ import { matchesTimeFilter, matchesTimeRange, hasTimeSelection, emptyTimeSelecti
 import { matchesDurationFilter } from '../lib/durationFilter'
 import { filterAggRows, ACTION_TS } from '../lib/viewFilters'
 import { useCsvData } from '../context/useCsvData'
-import { SAP_PALETTE } from '../lib/chartColors'
 import './SessionSummaryTable.css'
 
 /**
@@ -84,21 +83,7 @@ function ActionSummaryTable({
     markViewed,
   } = useCsvData()
 
-  // ---- Action-type legend: dynamic colours + togglable filter ---------------
-  // `visibleActionTypes` is the set of action names currently shown in the
-  // table. Empty array means "show all" (the default / cleared state).
-  // Nothing here is hard-coded — names and colours are both derived from the
-  // live dataset, so the legend adapts automatically to any CSV.
-  const [visibleActionTypes, setVisibleActionTypes] = useState([])
 
-  const toggleActionType = (name) => {
-    setVisibleActionTypes((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return Array.from(next)
-    })
-  }
 
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
   // when active, takes over the row scope (letting the user pick any set of
@@ -130,20 +115,7 @@ function ActionSummaryTable({
     [scopedRows, headers]
   )
 
-  // Derive one colour per distinct action name, sorted alphabetically for a
-  // stable colour assignment across re-renders and across datasets.
-  // SAP_PALETTE cycles through the app's design-system tokens so chips stay
-  // visually consistent with every other chart that uses the same palette.
-  const typeToColor = useMemo(() => {
-    const names = [...new Set(summaryRows.map((r) => r.action_name).filter(Boolean))].sort()
-    return new Map(names.map((name, i) => [name, SAP_PALETTE[i % SAP_PALETTE.length]]))
-  }, [summaryRows])
 
-  // Legend items for the strip rendered below the pill bar.
-  const leg = useMemo(
-    () => Array.from(typeToColor, ([id, color]) => ({ id, label: id, color })),
-    [typeToColor],
-  )
 
   const [search, setSearch] = useState(() => viewUi.action.search)
   // Seed the local UI filters from the persisted per-view state so they stay
@@ -249,17 +221,11 @@ function ActionSummaryTable({
     })
   }, [visibleRows, anomalyTypeFilter, byActionKey, showAnomalies])
 
-  // Honour the action-type legend filter. Empty = show all (default).
-  const typeFilteredRows = useMemo(() => {
-    if (visibleActionTypes.length === 0) return anomalyFilteredRows
-    return anomalyFilteredRows.filter((r) => visibleActionTypes.includes(r.action_name))
-  }, [anomalyFilteredRows, visibleActionTypes])
-
   const sortedRows = useMemo(() => {
-    if (!sort) return typeFilteredRows
+    if (!sort) return anomalyFilteredRows
     const col = columns.find((c) => c.key === sort.key)
-    return sortRows(typeFilteredRows, sort.key, sort.dir, col?.sortType)
-  }, [typeFilteredRows, sort, columns])
+    return sortRows(anomalyFilteredRows, sort.key, sort.dir, col?.sortType)
+  }, [anomalyFilteredRows, sort, columns])
 
   // Overlay the duration-histogram bucket selection (from the left-rail
   // DurationDistribution) as the LAST layer, shown in the table body / pager /
@@ -521,42 +487,6 @@ function ActionSummaryTable({
           >
             Clear
           </button>
-        </div>
-      )}
-
-      {/* ── Action-type legend ─────────────────────────────────────────────
-           Chips are built entirely from live data — one per distinct action
-           name in the current dataset. Clicking a chip toggles that action
-           type on/off in the table. All chips active (empty set) = show all.
-           "Show all" button resets to that default state.              ── */}
-      {leg.length > 0 && (
-        <div className="action-type-legend" role="group" aria-label="Filter by action type">
-          <span className="action-type-legend__label">Action types:</span>
-          {leg.map((l) => {
-            const active = visibleActionTypes.length === 0 || visibleActionTypes.includes(l.id)
-            return (
-              <button
-                key={l.id}
-                type="button"
-                className={`action-type-legend__chip${active ? '' : ' is-muted'}`}
-                style={{ '--chip-color': l.color }}
-                onClick={() => toggleActionType(l.id)}
-                title={active ? `Hide "${l.label}" rows` : `Show "${l.label}" rows`}
-              >
-                <span className="action-type-legend__dot" aria-hidden="true" />
-                {l.label}
-              </button>
-            )
-          })}
-          {visibleActionTypes.length > 0 && (
-            <button
-              type="button"
-              className="action-type-legend__reset"
-              onClick={() => setVisibleActionTypes([])}
-            >
-              Show all
-            </button>
-          )}
         </div>
       )}
 
