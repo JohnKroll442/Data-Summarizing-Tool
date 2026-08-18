@@ -222,7 +222,7 @@ function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKe
   // squash their bars unreadably. Roughly 26px per row with sensible bounds.
   const seriesCount =
     (option?.series?.find?.((s) => s?.name === 'duration')?.data?.length) ?? 0
-  const chartHeight = Math.max(420, Math.min(1200, 120 + seriesCount * 26))
+  const chartHeight = Math.max(420, Math.min(2400, 120 + seriesCount * 32))
 
   const headerMeta = resolveHeaderMeta({
     actions,
@@ -256,7 +256,7 @@ function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKe
         </div>
         <Text className="awf-header__meta">{totalLabel}</Text>
         <div className="awf-header__legend" aria-label="Phase legend">
-          {PHASE_LEGEND.map((p) => (
+          {PHASE_LEGEND.filter((p) => p.key !== 'offset').map((p) => (
             <span className="awf-legend__item" key={p.key}>
               <span className="awf-legend__swatch" style={{ background: p.color }} />
               <Text className="awf-legend__label">{p.label}</Text>

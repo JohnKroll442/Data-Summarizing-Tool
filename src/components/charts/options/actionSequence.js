@@ -205,6 +205,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
 
   for (const wb of widgetBars) {
     for (const phase of PHASE_ORDER) {
+      if (phase.key === 'offset') continue // offset is implicit from bar position; not drawn
       const nat = wb.natural[phase.key]
       if (!nat) continue
 
@@ -244,6 +245,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
 
   // Responsive type sizes, derived from the current root font-size.
   const f = chartFontSizes()
+
 
   // Two vertical markLines anchor the sequence to the action's start (x=0) and
   // its real end. The end marker is pinned to the authoritative action_duration
@@ -353,7 +355,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
         type: 'bar',
         stack: 'seq',
         data: durationData.slice().reverse(),
-        barCategoryGap: '30%',
+        barCategoryGap: '47%',
         markLine: {
           symbol: 'none',
           silent: true,
@@ -368,6 +370,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
         },
       },
     ],
+
   }
 }
 
