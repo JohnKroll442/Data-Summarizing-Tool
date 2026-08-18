@@ -100,21 +100,6 @@ function ActionSummaryTable({
     })
   }
 
-  // Derive one colour per distinct action name, sorted alphabetically for a
-  // stable colour assignment across re-renders and across datasets.
-  // SAP_PALETTE cycles through the app's design-system tokens so chips stay
-  // visually consistent with every other chart that uses the same palette.
-  const typeToColor = useMemo(() => {
-    const names = [...new Set(summaryRows.map((r) => r.action_name).filter(Boolean))].sort()
-    return new Map(names.map((name, i) => [name, SAP_PALETTE[i % SAP_PALETTE.length]]))
-  }, [summaryRows])
-
-  // Legend items for the strip rendered below the pill bar.
-  const leg = useMemo(
-    () => Array.from(typeToColor, ([id, color]) => ({ id, label: id, color })),
-    [typeToColor],
-  )
-
   // Scope the input rows BEFORE aggregating. The multiselect Sessions filter,
   // when active, takes over the row scope (letting the user pick any set of
   // sessions from the whole file); otherwise the single-session drill-down
@@ -143,6 +128,21 @@ function ActionSummaryTable({
   const { rows: summaryRows, columns, mapping } = useMemo(
     () => aggregateByAction(scopedRows, headers),
     [scopedRows, headers]
+  )
+
+  // Derive one colour per distinct action name, sorted alphabetically for a
+  // stable colour assignment across re-renders and across datasets.
+  // SAP_PALETTE cycles through the app's design-system tokens so chips stay
+  // visually consistent with every other chart that uses the same palette.
+  const typeToColor = useMemo(() => {
+    const names = [...new Set(summaryRows.map((r) => r.action_name).filter(Boolean))].sort()
+    return new Map(names.map((name, i) => [name, SAP_PALETTE[i % SAP_PALETTE.length]]))
+  }, [summaryRows])
+
+  // Legend items for the strip rendered below the pill bar.
+  const leg = useMemo(
+    () => Array.from(typeToColor, ([id, color]) => ({ id, label: id, color })),
+    [typeToColor],
   )
 
   const [search, setSearch] = useState(() => viewUi.action.search)
