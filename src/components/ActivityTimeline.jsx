@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import { ColumnChart } from '@ui5/webcomponents-react-charts/ColumnChart'
 import { ObjectStatus } from '@ui5/webcomponents-react/ObjectStatus'
 import {
   buildActivityTimeline,
@@ -12,10 +11,12 @@ import {
   widgetIdsInWindow,
   actionKeysInWindow,
 } from '../lib/activityTimeline'
-// Only the overview navigator still uses ECharts (its slider option lives here);
-// the detail bars below are a UI5 ColumnChart. Leave this import intact.
 import { buildOverviewOption } from './charts/options/activityBars'
-import { SAP_BLUE, SAP_GOLD, SAP_SUCCESS } from '../lib/chartColors'
+import { buildActivityTimelineOption } from './charts/options/activityTimeline'
+import { buildTimeOfDayHourScatterOption } from './charts/options/timeOfDayHourScatter'
+import EChartCard from './charts/EChartCard'
+import ActionCellDetail from './ActionCellDetail'
+import { cellKeyOf } from '../lib/storyActionMatrix'
 import { formatTimeRangeLabel } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import './ActivityTimeline.css'
@@ -62,39 +63,6 @@ function getPlotRect(container) {
   return rect.width > 0 ? rect : null
 }
 
-// Detail column-chart measures — one vertical column per activity metric.
-// `accessor` matches BOTH the dataset key and the `hidden` state field, so
-// filtering this list by `hidden` drops a series' columns and re-centers the
-// rest (same effect the old ECharts legend toggle had). Colors mirror the
-// header color key. `hideDataLabel` keeps the count numbers off the columns.
-const DETAIL_MEASURES = [
-  { accessor: 'sessions', label: 'Sessions', color: SAP_BLUE, hideDataLabel: true },
-  { accessor: 'actions', label: 'Actions', color: SAP_GOLD, hideDataLabel: true },
-  { accessor: 'widgets', label: 'Widgets active', color: SAP_SUCCESS, hideDataLabel: true },
-]
-
-// Header color key ⇄ detail series. `key` doubles as the swatch modifier class
-// (swatch-<key>) and the `hidden` state field; toggling it filters DETAIL_MEASURES
-// so the series' columns drop out (and the rest re-center).
-const LEGEND_ITEMS = [
-  { key: 'sessions', label: 'Sessions' },
-  { key: 'actions', label: 'Actions' },
-  { key: 'widgets', label: 'Widgets active' },
-]
-
-// Which series the detail bars show by default when you land on each view. The
-// active view's own series is on; the others start hidden but the header key
-// buttons can toggle them back in. Keyed by the last path segment of
-// /summary/<view>. The panel itself starts collapsed on every view (see the
-// `collapsed` state); opening it reveals these series.
-const VIEW_SERIES_DEFAULTS = {
-  session: { sessions: false, actions: true, widgets: true },
-  action: { sessions: true, actions: false, widgets: true },
-  widget: { sessions: true, actions: true, widgets: false },
-  summary: { sessions: true, actions: true, widgets: true },
-  raw: { sessions: true, actions: true, widgets: true },
-}
-
 /**
  * ActivityTimeline — a shared, collapsible panel mounted in the /summary shell
  * so it appears above every view. Grouped bars show how many sessions /
@@ -112,8 +80,25 @@ const VIEW_SERIES_DEFAULTS = {
  *
  * State is local: the shell doesn't unmount on tab switch, so selections
  * persist across views; they reset on file swap.
+ *
+ * `embedded` mode (used by the Action View's "Time-Of-Day-Trend" tab): the
+ * panel renders expanded inline as a chart tab rather than a collapsible shell
+ * strip — it starts open, hides the collapse toggle, and skips the
+ * collapse-on-navigation reset so switching Action View tabs keeps it visible.
+ * In this mode clicking the Actions bar (or a bucket's hit-area) drills IN PLACE
+ * to a scatter of that bucket's individual action instances (time × duration,
+ * log Y) instead of navigating away — and clicking a scatter dot opens the
+ * shared ActionCellDetail, mirroring the old Time-Of-Day-Trend panel. The drill
+ * props (`matrix`, `byActionKey`, `tierByType`, `scopedRows`) are only used in
+ * embedded mode; the shell mounts the timeline without them.
  */
-function ActivityTimeline() {
+function ActivityTimeline({
+  embedded = false,
+  matrix = null,
+  byActionKey = null,
+  tierByType = null,
+  scopedRows = null,
+}) {
   const {
     rows,
     headers,
@@ -138,33 +123,56 @@ function ActivityTimeline() {
   const location = useLocation()
   const rootRef = useRef(null)
 
-  // The timeline starts collapsed on every view; the user opens it manually
-  // (or it auto-expands when a "busiest period" card focuses it).
-  const [collapsed, setCollapsed] = useState(true)
-  // Which /summary/<view> we're on drives the detail bars' default series.
+  // The timeline starts collapsed on every shell view; the user opens it
+  // manually (or it auto-expands when a "busiest period" card focuses it). In
+  // embedded (tab) mode it starts expanded — it IS the tab's content.
+  const [collapsed, setCollapsed] = useState(!embedded)
+  // Which /summary/<view> we're on drives the collapse-on-navigation reset.
   const view = location.pathname.split('/').pop()
-  // Series toggled off via the header color key — hidden ones drop out of the
-  // detail bars (the remaining bars re-center) just like the old legend clicks.
-  // Seeded from the current view's default so the first paint already matches.
-  const [hidden, setHidden] = useState(
-    () => VIEW_SERIES_DEFAULTS[location.pathname.split('/').pop()]
-      ?? { sessions: false, actions: false, widgets: false },
-  )
-  // When you move to another summary view, reset the bars to that view's
-  // default (its own series on, the others off) and re-collapse the panel — the
-  // timeline defaults to closed on every view. Manual toggles then persist until
-  // the next navigation.
+  // When you move to another summary view, re-collapse the panel — the timeline
+  // defaults to closed on every view; manual opens then persist until the next
+  // navigation. In embedded (tab) mode we keep it expanded and don't reset on
+  // navigation — the Action View tab owns its visibility.
   useEffect(() => {
-    const def = VIEW_SERIES_DEFAULTS[view]
-    if (def) {
-      setHidden(def)
-      setCollapsed(true)
+    if (embedded) return
+    setCollapsed(true)
+  }, [view, embedded])
+
+  // Default legend visibility per view. Determines which series are shown on
+  // first render. User can toggle others on via the legend; selections persist
+  // through zoom/pan because we track them in state and inject them back into
+  // every option rebuild (preventing notMerge from wiping ECharts' internal state).
+  const defaultLegendSelected = useMemo(() => {
+    // embedded = Time-Of-Day Trend tab in Action View → show Actions + p50/p90/Spread only
+    if (embedded) {
+      return { Sessions: false, Actions: true, Widgets: false, p50: true, p90: true, Spread: true }
     }
-  }, [view])
-  const toggleSeries = useCallback(
-    (key) => setHidden((h) => ({ ...h, [key]: !h[key] })),
-    [],
-  )
+    if (view === 'session') {
+      return { Sessions: true, Actions: false, Widgets: false, p50: false, p90: false, Spread: false }
+    }
+    if (view === 'widget') {
+      return { Sessions: false, Actions: false, Widgets: true, p50: false, p90: false, Spread: false }
+    }
+    // raw / summary / fallback → show all
+    return { Sessions: true, Actions: true, Widgets: true, p50: true, p90: true, Spread: true }
+  }, [embedded, view])
+
+  // Tracks user legend toggles so they survive option rebuilds (zoom/pan).
+  // Seeded from defaultLegendSelected; resets to defaults when the view changes.
+  const [legendSelected, setLegendSelected] = useState(defaultLegendSelected)
+  useEffect(() => {
+    setLegendSelected(defaultLegendSelected)
+  }, [defaultLegendSelected])
+
+  // Embedded drill-down (Time-Of-Day-Trend tab only). Level 1: the bucket key
+  // whose action scatter is open below the chart (null = none). Level 2: the
+  // action instance pinned from a scatter dot → its ActionCellDetail. Keyed by
+  // bucket KEY (not index) so a wheel-zoom re-bucket that drops the bucket
+  // closes the drill rather than pointing at the wrong window.
+  const [scatterKey, setScatterKey] = useState(null)
+  const [pinned, setPinned] = useState(null)
+  const scatterRef = useRef(null)
+  const cellDetailRef = useRef(null)
   // Focused window (what the detail shows) in epoch ms; null = full data span.
   const [range, setRange] = useState(null)
   // Navigator's visible context range in epoch ms; null = full data span. The
@@ -293,28 +301,92 @@ function ActivityTimeline() {
     return buildOverviewOption(effView.min, effView.max, effRange)
   }, [effView, effRange])
 
-  // Detail bars as a UI5 ColumnChart: one row per bucket, one numeric column
-  // per metric. `sort`/`index` ride along in each row so a column click can
-  // recover the bucket's time window for drill-down.
-  const detailDataset = useMemo(() => {
-    if (!detail || detail.empty) return []
-    const { buckets, series } = detail
-    return buckets.map((b, i) => ({
-      label: b.label,
-      sessions: series.sessions[i] ?? 0,
-      actions: series.actions[i] ?? 0,
-      widgets: series.widgets[i] ?? 0,
-      sort: b.sort,
-      index: i,
-    }))
-  }, [detail])
+  // Detail chart built from the bucketed data with all axes and percentile lines.
+  // legendSelected is injected on every rebuild so zoom/pan (which triggers a
+  // full notMerge option replacement) never wipes the user's series choices.
+  const detailOption = useMemo(() => {
+    if (!detail || detail.empty) return { series: [] }
+    return buildActivityTimelineOption({
+      buckets: detail.buckets,
+      series: detail.series,
+      actionDurations: detail.actionDurations,
+      legendSelected,
+    })
+  }, [detail, legendSelected])
 
-  // Hidden series drop out of the columns (the rest re-center) — same effect as
-  // the old legend toggle, driven by the header color key.
-  const detailMeasures = useMemo(
-    () => DETAIL_MEASURES.filter((m) => !hidden[m.accessor]),
-    [hidden],
-  )
+  // ——— Embedded drill-down: bucket → action scatter → instance detail ———
+  // Resolve the drilled bucket by KEY against the current buckets (a re-bucket
+  // from wheel-zoom may have dropped it → index -1 → scatter closes).
+  const scatterIdx = useMemo(() => {
+    if (!scatterKey || !detail || detail.empty) return -1
+    return detail.buckets.findIndex((b) => b.key === scatterKey)
+  }, [scatterKey, detail])
+  const scatterBucket = scatterIdx >= 0 ? detail.buckets[scatterIdx] : null
+
+  // The drilled bucket's individual action instances, tagged flagged=true when
+  // the anomaly detector flagged that run — the scatter pulls those into its own
+  // red-triangle series. byActionKey is only supplied in embedded mode.
+  const scatterInstances = useMemo(() => {
+    if (!scatterBucket) return []
+    const raw = detail.actionDurations?.[scatterIdx]?.instances ?? []
+    return raw.map((i) => ({
+      ...i,
+      flagged: (byActionKey?.get(i.actionKey)?.length ?? 0) > 0,
+    }))
+  }, [scatterBucket, scatterIdx, detail, byActionKey])
+
+  const scatterOption = useMemo(() => {
+    if (!scatterBucket) return null
+    return buildTimeOfDayHourScatterOption({
+      instances: scatterInstances,
+      bucketLabel: scatterBucket.label,
+    })
+  }, [scatterBucket, scatterInstances])
+
+  // Close the scatter if its bucket leaves the set (scope/zoom change), and drop
+  // the pinned instance if the matrix no longer holds its story×action.
+  useEffect(() => {
+    if (scatterKey && detail && !detail.empty && !detail.buckets.some((b) => b.key === scatterKey)) {
+      setScatterKey(null)
+      setPinned(null)
+    }
+  }, [detail, scatterKey])
+  useEffect(() => {
+    if (pinned && !matrix?.cells?.has(cellKeyOf(pinned.story, pinned.action))) setPinned(null)
+  }, [matrix, pinned])
+
+  // Click a scatter dot → toggle its ActionCellDetail (clicking the same dot
+  // closes it). Only scatter points carry the action/story/timestamp payload.
+  const onScatterEvents = useMemo(() => {
+    const pointOf = (p) => {
+      const d = p?.data
+      if (p?.seriesType !== 'scatter' || !d || d.action == null) return null
+      return { story: d.story ?? '', action: d.action, timestamp: d.timestamp ?? '' }
+    }
+    return {
+      click: (p) => {
+        const sel = pointOf(p)
+        if (!sel) return
+        setPinned((prev) => (samePoint(prev, sel) ? null : sel))
+      },
+    }
+  }, [])
+
+  const pinnedCell = pinned
+    ? matrix?.cells?.get(cellKeyOf(pinned.story, pinned.action)) ?? null
+    : null
+
+  // Scroll each drill level into view when it opens / retargets (respects
+  // reduced-motion). Keyed so it fires on open + retarget but not on close.
+  useEffect(() => {
+    if (!scatterBucket || !scatterRef.current) return
+    smoothScroll(scatterRef.current)
+  }, [scatterKey, scatterBucket])
+  useEffect(() => {
+    if (!pinned || !cellDetailRef.current) return
+    smoothScroll(cellDetailRef.current)
+  }, [pinned])
+
 
   // ECharts reports the slider window in epoch ms (fall back to mapping the
   // start/end percentages against the current navigator context range).
@@ -478,33 +550,36 @@ function ActivityTimeline() {
   }, [collapsed, overview, onDetailWheel, onDetailPointerDown])
 
 
-  // Click a column → drill into that series' view, scoped to exactly the
-  // entities the clicked bucket counted (over its [start, end) window), so the
-  // count you land on matches the bar. All three series are actionable: Sessions
-  // → sessions active in the window, Widgets → widgets active, Actions → actions
-  // that fired in it. We resetTimeline() so the still-active zoom doesn't
-  // re-filter the drilled set by a different rule. The shared context filters
-  // both seed a fresh table mount and sync an already-mounted one.
-  //
-  // `hit` is the UI5 ColumnChart onDataPointClick detail:
-  // { value, dataKey, payload, dataIndex } — dataKey is the measure accessor
-  // ('sessions' | 'actions' | 'widgets'), dataIndex the bucket.
-  const onDetailClick = useCallback((hit) => {
-    // Ignore the click that fires at the end of a drag-pan.
-    if (didPanRef.current) { didPanRef.current = false; return }
+  // ECharts click handler for drill-down by bucket
+  const onDetailClick = useCallback((params) => {
     if (!detail || detail.empty) return
-    const dataKey = hit?.dataKey
-    const dataIndex = hit?.dataIndex
-    if (dataKey == null || dataIndex == null) return
-    const b = detail.buckets[dataIndex]
+
+    let bucketIdx = null
+    if (params.componentType === 'markArea') {
+      bucketIdx = Number(params?.name)
+    } else if (typeof params?.dataIndex === 'number') {
+      bucketIdx = params.dataIndex
+    }
+
+    if (bucketIdx == null) return
+    const b = detail.buckets[bucketIdx]
     if (!b) return
+
+    // Embedded (Time-Of-Day-Trend tab): an Actions click — a direct Actions bar
+    // click or the bucket-wide hit-area markArea — drills to the in-place
+    // scatter below rather than navigating to the Action view. Sessions/Widgets
+    // bars still cross-navigate (handled below).
+    if (embedded && (params.componentType === 'markArea' || params?.seriesName === 'Actions')) {
+      setScatterKey((prev) => (prev === b.key ? null : b.key))
+      setPinned(null)
+      return
+    }
+
     const start = b.sort
-    const end = detail.buckets[dataIndex + 1]?.sort
+    const end = detail.buckets[bucketIdx + 1]?.sort
       ?? b.sort + bucketSpanMs(detail.granularity)
     const windowLabel = fmtRange({ min: start, max: end })
 
-    // Clear every drill scope so the target view shows exactly this bucket, and
-    // drop the timeline zoom so it can't further narrow the drilled set.
     const clearDrills = () => {
       setSessionFilter(null)
       setActionFilter(null)
@@ -516,15 +591,11 @@ function ActivityTimeline() {
       setWidgetFilterWindow(null)
       setActionFilterWindow(null)
     }
+
     const finish = (view) => {
-      // Record the view we're leaving (route + pre-drill filters) so Back can
-      // restore it. The clearDrills()/setters above are queued but not yet
-      // applied, so the snapshot still reflects the pre-drill state.
       pushNavSnapshot(location.pathname)
       resetTimeline()
       navigate(`/summary/${view}`)
-      // Minimize the timeline and jump to the freshly-filtered table. rAF runs
-      // after React commits the collapse + navigation.
       setCollapsed(true)
       requestAnimationFrame(() => {
         document
@@ -533,21 +604,22 @@ function ActivityTimeline() {
       })
     }
 
-    if (dataKey === 'sessions') {
+    const seriesName = params?.seriesName
+    if (seriesName === 'Sessions') {
       const ids = sessionIdsInWindow(rows, headers, start, end)
       if (ids.length === 0) return
       clearDrills()
       setSessionMultiFilter(ids)
       setSessionFilterWindow(windowLabel)
       finish('session')
-    } else if (dataKey === 'widgets') {
+    } else if (seriesName === 'Widgets') {
       const ids = widgetIdsInWindow(rows, headers, start, end)
       if (ids.length === 0) return
       clearDrills()
       setWidgetMultiFilter(ids)
       setWidgetFilterWindow(windowLabel)
       finish('widget')
-    } else if (dataKey === 'actions') {
+    } else if (seriesName === 'Actions') {
       const keys = actionKeysInWindow(rows, headers, start, end)
       if (keys.length === 0) return
       clearDrills()
@@ -556,12 +628,19 @@ function ActivityTimeline() {
       finish('action')
     }
   }, [
-    detail, rows, headers, navigate, resetTimeline,
+    detail, rows, headers, navigate, resetTimeline, embedded,
     setSessionFilter, setActionFilter, setActionMultiFilter, setSessionMultiFilter,
     setSessionFilterWindow, setWidgetMultiFilter, setActionInvocationFilter,
     setWidgetFilterWindow, setActionFilterWindow,
     pushNavSnapshot, location.pathname,
   ])
+
+  // Persist legend toggles through zoom/pan rebuilds. ECharts fires
+  // legendselectchanged with the full `selected` map on every click, so we
+  // just replace our state with the new snapshot.
+  const onLegendSelectChanged = useCallback((params) => {
+    if (params?.selected) setLegendSelected({ ...params.selected })
+  }, [])
 
   if (!hasData || !overview) return null
 
@@ -569,33 +648,23 @@ function ActivityTimeline() {
   const t = detail ?? overview
 
   return (
-    <section className="activity-timeline" ref={rootRef}>
+    <section
+      className={`activity-timeline${embedded ? ' is-embedded' : ''}`}
+      ref={rootRef}
+    >
       <header className="activity-timeline-header">
-        <button
-          type="button"
-          className="activity-timeline-toggle"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-expanded={!collapsed}
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+        {embedded ? (
           <span className="activity-timeline-title">Activity Timeline</span>
-        </button>
-        {!t.empty && !collapsed && (
-          <div className="activity-timeline-legend" role="group" aria-label="Toggle series">
-            {LEGEND_ITEMS.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                className={`activity-timeline-legend-item${hidden[key] ? ' is-hidden' : ''}`}
-                onClick={() => toggleSeries(key)}
-                aria-pressed={!hidden[key]}
-                title={hidden[key] ? `Show ${label}` : `Hide ${label}`}
-              >
-                <span className={`activity-timeline-swatch swatch-${key}`} />
-                {label}
-              </button>
-            ))}
-          </div>
+        ) : (
+          <button
+            type="button"
+            className="activity-timeline-toggle"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+            <span className="activity-timeline-title">Activity Timeline</span>
+          </button>
         )}
       </header>
 
@@ -638,19 +707,12 @@ function ActivityTimeline() {
             ) : (
               <>
                 <div className="activity-timeline-detail" ref={detailWrapRef}>
-                  <ColumnChart
-                    dataset={detailDataset}
-                    dimensions={[{ accessor: 'label' }]}
-                    measures={detailMeasures}
-                    onDataPointClick={(e) => onDetailClick(e.detail)}
-                    noLegend
-                    noAnimation
-                    style={{ height: 300, width: '100%' }}
-                    chartConfig={{
-                      margin: { top: 8, right: 16, bottom: 8, left: 8 },
-                      // Integer count ticks on a linear axis.
-                      yAxisConfig: { allowDecimals: false },
-                    }}
+                  <ReactECharts
+                    option={detailOption}
+                    style={{ height: 400, width: '100%' }}
+                    notMerge
+                    lazyUpdate
+                    onEvents={{ click: onDetailClick, legendselectchanged: onLegendSelectChanged }}
                   />
                 </div>
                 <ReactECharts
@@ -665,8 +727,47 @@ function ActivityTimeline() {
           </div>
         </div>
       )}
+
+      {embedded && scatterBucket && scatterOption && (
+        <div className="activity-timeline-drill" ref={scatterRef}>
+          <EChartCard
+            title={`Actions in ${scatterBucket.fullLabel ?? scatterBucket.label}`}
+            subtitle={`${scatterInstances.length} action${scatterInstances.length === 1 ? '' : 's'} · over time × duration · log axis · click a dot for detail`}
+            option={scatterOption}
+            height={360}
+            onRemove={() => { setScatterKey(null); setPinned(null) }}
+            onEvents={onScatterEvents}
+          />
+        </div>
+      )}
+
+      {embedded && pinned && pinnedCell && (
+        <ActionCellDetail
+          story={pinned.story}
+          action={pinned.action}
+          cell={pinnedCell}
+          rows={scopedRows ?? rows}
+          headers={headers}
+          byActionKey={byActionKey}
+          tierByType={tierByType}
+          initialInstanceTs={pinned.timestamp}
+          onClose={() => setPinned(null)}
+          detailRef={cellDetailRef}
+        />
+      )}
     </section>
   )
+}
+
+function samePoint(a, b) {
+  return !!a && !!b && a.story === b.story && a.action === b.action && a.timestamp === b.timestamp
+}
+
+function smoothScroll(el) {
+  const reduce =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
 // Compact "Jun 15, 14:30 → Jul 2, 09:00" window label.

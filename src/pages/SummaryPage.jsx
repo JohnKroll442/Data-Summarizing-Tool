@@ -79,7 +79,9 @@ function SummaryPage() {
       <div className="summary-content">
         {/* Heading + KPIs portal in here, so they sit above the timeline. */}
         <div className="summary-header-slot" ref={setHeaderSlot} />
-        <ActivityTimeline />
+        {/* The shared timeline sits above every view EXCEPT the Action View,
+            which hosts it inside its own "Time-Of-Day-Trend" tab instead. */}
+        {activeSegment !== 'action' && <ActivityTimeline />}
         {/* Scroll anchor: the Sessions-bar click in ActivityTimeline collapses
             the timeline and scrolls this into view so the filtered table is
             front and center. */}

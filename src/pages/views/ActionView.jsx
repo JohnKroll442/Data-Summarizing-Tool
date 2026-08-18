@@ -4,7 +4,7 @@ import ActionViewSwitcher from '../../components/ActionViewSwitcher'
 import ActionDataTablePanel from '../../components/ActionDataTablePanel'
 import ActionHeatmapPanel from '../../components/ActionHeatmapPanel'
 import ActionOffsetPanel from '../../components/ActionOffsetPanel'
-import ActionTimeOfDayPanel from '../../components/ActionTimeOfDayPanel'
+import ActivityTimeline from '../../components/ActivityTimeline'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
@@ -13,7 +13,6 @@ import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDurationPoints } from '../../lib/anomalyDetect'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
-import { buildTimeOfDayTrend } from '../../lib/timeOfDayTrend'
 import { resolveActiveView } from '../../lib/actionViews'
 import './ActionView.css'
 
@@ -83,15 +82,6 @@ function ActionView() {
   const offsetDuration = useMemo(
     () => buildOffsetDurationPoints(scopedRows, headers),
     [scopedRows, headers],
-  )
-
-  // p50 / p90 action duration per time bucket along the data's timeline (bucket
-  // granularity scales to the span), plus each bucket's instances for the
-  // click-to-drill scatter — feeds the Time-Of-Day trend panel. Scoped like the
-  // rail; a cache hit on the memoized aggRows.
-  const timeOfDayTrend = useMemo(
-    () => buildTimeOfDayTrend(aggRows),
-    [aggRows],
   )
 
   // The heatmap cell whose drill-down detail is open, as { story, action }, or
@@ -356,13 +346,12 @@ function ActionView() {
         )}
 
         {activeView === 'timeOfDay' && (
-          <ActionTimeOfDayPanel
-            data={timeOfDayTrend}
+          <ActivityTimeline
+            embedded
             matrix={storyActionMatrix}
-            rows={scopedRows}
-            headers={headers}
             byActionKey={anomalies.byActionKey}
             tierByType={tierByType}
+            scopedRows={scopedRows}
           />
         )}
       </div>

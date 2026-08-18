@@ -27,6 +27,7 @@ import { aggregateByAction } from './actionAggregate'
 import { aggregateByWidget } from './widgetAggregate'
 import { detectSessionKey } from './drillDown'
 import { memoizeFilter } from './memoize'
+import { percentile } from './timeOfDayTrend'
 
 // Strict timestamp parse for span/bucketing. Unlike timeBuckets.parseTimestamp
 // (which falls back to `new Date(s)` and so turns junk like a bare "2029" or
@@ -242,6 +243,28 @@ export function actionPoint(row) {
   return parseStamp(row._action_timestamp)
 }
 
+// One action instance for the Time-Of-Day drill-down scatter. Carries the
+// bucketing Date plus everything the hour-scatter option and its click-to-detail
+// need: the raw fields (action / story / user / timestamp), the epoch-ms `t` for
+// the X position, and the `actionKey` used to look up anomaly flags. Returns
+// null unless the row has both a parseable timestamp and a positive duration.
+export function actionInstance(row) {
+  const date = parseStamp(row._action_timestamp)
+  if (!date) return null
+  const duration = Number(row?.action_duration)
+  if (!Number.isFinite(duration) || duration <= 0) return null
+  return {
+    date,
+    t: date.getTime(),
+    duration,
+    action: row.action_name,
+    story: row.story_name,
+    user: row.user,
+    timestamp: row._action_timestamp ?? '',
+    actionKey: `${row.action_name}::${row._action_timestamp ?? ''}`,
+  }
+}
+
 /**
  * Distinct session IDs whose interval overlaps the half-open window
  * [start, end) (epoch ms). Used to turn a clicked timeline bucket into the set
@@ -372,7 +395,7 @@ const toDate = (v) => (v instanceof Date ? v : new Date(v))
  * @param opts.primaryFilter / opts.secondaryFilter  { field, values } | null
  * @returns {
  *   granularity, granularityClamped, buckets, series:{sessions,actions,widgets},
- *   totals:{sessions,actions,widgets}, span:{min,max}, range:{min,max}, empty
+ *   actionDurations, totals:{sessions,actions,widgets}, span:{min,max}, range:{min,max}, empty
  * }
  */
 export function buildActivityTimeline(rows, headers, {
@@ -389,6 +412,7 @@ export function buildActivityTimeline(rows, headers, {
     granularityClamped: false,
     buckets: [],
     series: { sessions: [], actions: [], widgets: [] },
+    actionDurations: {},
     totals: { sessions: 0, actions: 0, widgets: 0 },
     span: { min: null, max: null },
     range: { min: null, max: null },
@@ -405,10 +429,10 @@ export function buildActivityTimeline(rows, headers, {
     .map(sessionInterval).filter(Boolean)
   const widgets = aggregateByWidget(scoped, headers).rows
     .map(widgetInterval).filter(Boolean)
-  // Actions are one-time events — counted in the bucket they fired in (a point),
-  // NOT stretched across their session's span like sessions/widgets.
-  const actions = aggregateByAction(scoped, headers).rows
-    .map(actionPoint).filter(Boolean)
+  const aggActions = aggregateByAction(scoped, headers).rows
+  const actions = aggActions.map(actionPoint).filter(Boolean)
+  const actionInstances = aggActions
+    .map(actionInstance).filter(Boolean)
 
   // Full data span across every interval and point.
   let spanMin = null
@@ -439,6 +463,7 @@ export function buildActivityTimeline(rows, headers, {
     : chooseGranularity(effMin, effMax)
 
   const { buckets, indexByKey } = enumerateBuckets(effMin, effMax, id)
+  const actionDurations = aggregateActionDurations(actionInstances, buckets, indexByKey, id)
 
   return {
     granularity: id,
@@ -449,6 +474,7 @@ export function buildActivityTimeline(rows, headers, {
       actions: countPoints(actions, buckets.length, indexByKey, id),
       widgets: countIntervals(widgets, buckets, indexByKey, id),
     },
+    actionDurations,
     totals: {
       sessions: sessions.filter((iv) => iv.start <= effMax && iv.end >= effMin).length,
       actions: actions.filter((p) => p >= effMin && p <= effMax).length,
@@ -467,6 +493,32 @@ function countPoints(points, n, indexByKey, interval) {
     if (idx !== undefined) counts[idx]++
   }
   return counts
+}
+
+// Per bucket: the p50 / p90 of action duration (for the trend band + lines) and
+// the full list of action instances that fell in it (for the click-to-drill
+// scatter). Keyed by bucket index. Empty buckets carry null percentiles and an
+// empty instance list.
+function aggregateActionDurations(actionInstances, buckets, indexByKey, interval) {
+  const result = {}
+  for (let i = 0; i < buckets.length; i++) {
+    result[i] = { p50: null, p90: null, instances: [] }
+  }
+  for (const inst of actionInstances) {
+    const idx = indexByKey.get(keyOf(inst.date, interval))
+    if (idx !== undefined) {
+      result[idx].instances.push(inst)
+    }
+  }
+  for (let i = 0; i < buckets.length; i++) {
+    const durations = result[i].instances.map((inst) => inst.duration)
+    if (durations.length > 0) {
+      const sorted = durations.slice().sort((a, b) => a - b)
+      result[i].p50 = percentile(sorted, 0.5)
+      result[i].p90 = percentile(sorted, 0.9)
+    }
+  }
+  return result
 }
 
 // Difference array so an interval spanning K buckets is applied in O(1). An
