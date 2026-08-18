@@ -148,10 +148,10 @@ function ActivityTimeline({
       return { Sessions: false, Actions: true, Widgets: false, p50: true, p90: true, Spread: true }
     }
     if (view === 'session') {
-      return { Sessions: true, Actions: false, Widgets: false, p50: false, p90: false, Spread: false }
+      return { Sessions: true, Actions: false, Widgets: false, p50: true, p90: true, Spread: true }
     }
     if (view === 'widget') {
-      return { Sessions: false, Actions: false, Widgets: true, p50: false, p90: false, Spread: false }
+      return { Sessions: false, Actions: false, Widgets: true, p50: true, p90: true, Spread: true }
     }
     // raw / summary / fallback → show all
     return { Sessions: true, Actions: true, Widgets: true, p50: true, p90: true, Spread: true }
