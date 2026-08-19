@@ -98,6 +98,10 @@ function ActivityTimeline({
   byActionKey = null,
   tierByType = null,
   scopedRows = null,
+  // Aggregated action rows (from ActionView) — used in embedded mode so a
+  // scatter dot click always opens ActionCellDetail even when the story×action
+  // combination isn't in the matrix (e.g. due to a session-scope mismatch).
+  actionRows = null,
 }) {
   const {
     rows,
@@ -351,9 +355,17 @@ function ActivityTimeline({
       setPinned(null)
     }
   }, [detail, scatterKey])
+  // Close the pinned ActionCellDetail when its action is no longer in scope:
+  // check actionRows first (most precise), fall back to the matrix when
+  // actionRows isn't supplied (shell / non-embedded usage).
   useEffect(() => {
-    if (pinned && !matrix?.cells?.has(cellKeyOf(pinned.story, pinned.action))) setPinned(null)
-  }, [matrix, pinned])
+    if (!pinned) return
+    if (actionRows?.length > 0) {
+      if (!actionRows.some((r) => r.action_name === pinned.action)) setPinned(null)
+    } else if (matrix?.cells && !matrix.cells.has(cellKeyOf(pinned.story, pinned.action))) {
+      setPinned(null)
+    }
+  }, [matrix, pinned, actionRows])
 
   // Click a scatter dot → toggle its ActionCellDetail (clicking the same dot
   // closes it). Only scatter points carry the action/story/timestamp payload.
@@ -372,9 +384,29 @@ function ActivityTimeline({
     }
   }, [])
 
-  const pinnedCell = pinned
-    ? matrix?.cells?.get(cellKeyOf(pinned.story, pinned.action)) ?? null
-    : null
+  // Derive the ActionCellDetail cell. Prefer the precomputed matrix cell (it's
+  // already story×action scoped with correct field names). Fall back to building
+  // one from actionRows filtered by action name — this makes the detail open
+  // reliably even when the scatter shows instances outside the current scope
+  // (e.g. global rows vs. session-filtered matrix).
+  const pinnedCell = useMemo(() => {
+    if (!pinned) return null
+    // 1) Matrix cell (story × action — exact match)
+    const fromMatrix = matrix?.cells?.get(cellKeyOf(pinned.story, pinned.action)) ?? null
+    if (fromMatrix) return fromMatrix
+    // 2) Build from aggregated action rows (action name only, cross-story)
+    if (!actionRows?.length) return null
+    const instances = actionRows.filter((r) => r.action_name === pinned.action)
+    if (!instances.length) return null
+    const nums = instances
+      .map((r) => r.action_duration)
+      .filter((v) => typeof v === 'number' && Number.isFinite(v))
+    return {
+      duration: nums.length ? Math.max(...nums) : null,
+      count: instances.length,
+      instances,
+    }
+  }, [pinned, matrix, actionRows])
 
   // Scroll each drill level into view when it opens / retargets (respects
   // reduced-motion). Keyed so it fires on open + retarget but not on close.

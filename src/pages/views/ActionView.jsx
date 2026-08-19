@@ -381,6 +381,7 @@ function ActionView() {
             byActionKey={anomalies.byActionKey}
             tierByType={tierByType}
             scopedRows={scopedRows}
+            actionRows={aggRows}
           />
         )}
       </div>
