@@ -102,6 +102,12 @@ function ActionView() {
 
   const [waterfallOpen, setWaterfallOpen] = useState(false)
   const [waterfallInitialKey, setWaterfallInitialKey] = useState(null)
+  // The action name, story, and timestamp of the row whose waterfall icon was
+  // clicked. Used to build the ActionCellDetail instance list (all visible
+  // instances of that action name) and to pre-select the clicked instance.
+  const [waterfallActionName, setWaterfallActionName] = useState(null)
+  const [waterfallStory, setWaterfallStory] = useState(null)
+  const [waterfallInitialTs, setWaterfallInitialTs] = useState(null)
   // The fully filtered + sorted action rows, published up by the table so the
   // waterfall picker, the KPIs and the histogram all reflect exactly what the
   // table shows (every column / search / time / timeline / anomaly filter).
@@ -238,10 +244,29 @@ function ActionView() {
     [bucketedRows],
   )
 
-  const openWaterfallFor = ({ name, timestamp }) => {
+  const openWaterfallFor = ({ name, timestamp, story }) => {
     setWaterfallInitialKey(`${name}::${timestamp ?? ''}`)
+    setWaterfallActionName(name ?? null)
+    setWaterfallStory(story ?? null)
+    setWaterfallInitialTs(timestamp ?? null)
     setWaterfallOpen(true)
   }
+
+  // Instances of the clicked action name from the current filtered + bucketed
+  // rows. Passed to ActionCellDetail as `cell` so the left instance list shows
+  // every visible run of that action (sorted slowest-first inside the detail).
+  const detailCell = useMemo(() => {
+    if (!waterfallOpen || !waterfallActionName) return null
+    const instances = bucketedRows.filter((r) => r.action_name === waterfallActionName)
+    const nums = instances
+      .map((r) => r.action_duration)
+      .filter((v) => typeof v === 'number' && Number.isFinite(v))
+    return {
+      duration: nums.length ? Math.max(...nums) : null,
+      count: instances.length,
+      instances,
+    }
+  }, [waterfallOpen, waterfallActionName, bucketedRows])
 
   // Scroll the inline waterfall panel into view when it opens (or when a
   // per-row icon retargets it to a different action while already open). Keyed
@@ -315,6 +340,10 @@ function ActionView() {
             panelRef={panelRef}
             showAnomalies={showAnomalies}
             setShowAnomalies={setShowAnomalies}
+            detailCell={detailCell}
+            detailActionName={waterfallActionName}
+            detailStory={waterfallStory}
+            detailInitialTs={waterfallInitialTs}
           />
         )}
 

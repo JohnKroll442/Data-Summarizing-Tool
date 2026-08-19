@@ -665,6 +665,7 @@ function ActionSummaryTable({
                         onOpenWaterfall({
                           name: row.action_name,
                           timestamp: row._action_timestamp ?? '',
+                          story: row.story_name ?? '',
                         })
                       }}
                     >

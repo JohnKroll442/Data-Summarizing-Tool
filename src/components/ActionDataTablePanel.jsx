@@ -1,5 +1,5 @@
 import ActionSummaryTable from './ActionSummaryTable'
-import ActionWaterfallPanel from './ActionWaterfallPanel'
+import ActionCellDetail from './ActionCellDetail'
 import DurationDistribution from './DurationDistribution'
 import AnomalySummaryPanel from './AnomalySummaryPanel'
 
@@ -34,13 +34,18 @@ function ActionDataTablePanel({
   onClearAnomalyFilter,
   durationBucketFilter,
   onClearDurationBucket,
-  // inline waterfall
+  // inline waterfall → action detail (ActionCellDetail)
   waterfallOpen,
   waterfallActions,
   waterfallInitialKey,
   scopedRows,
   onCloseWaterfall,
   panelRef,
+  // action-detail props (ActionCellDetail-style left list + right waterfall)
+  detailCell,
+  detailActionName,
+  detailStory,
+  detailInitialTs,
   // anomaly panel visibility
   showAnomalies = true,
   setShowAnomalies,
@@ -86,17 +91,19 @@ function ActionDataTablePanel({
           setShowAnomalies={setShowAnomalies}
         />
 
-        {waterfallOpen && (
-          <div ref={panelRef}>
-            <ActionWaterfallPanel
-              open={waterfallOpen}
-              onClose={onCloseWaterfall}
-              rows={scopedRows}
-              headers={headers}
-              actions={waterfallActions}
-              initialKey={waterfallInitialKey}
-            />
-          </div>
+        {waterfallOpen && detailCell && (
+          <ActionCellDetail
+            story={detailStory}
+            action={detailActionName}
+            cell={detailCell}
+            rows={scopedRows}
+            headers={headers}
+            byActionKey={byActionKey}
+            tierByType={tierByType}
+            initialInstanceTs={detailInitialTs}
+            onClose={onCloseWaterfall}
+            detailRef={panelRef}
+          />
         )}
       </div>
     </div>
