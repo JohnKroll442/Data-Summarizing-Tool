@@ -4,6 +4,7 @@ import ActionCellDetail from './ActionCellDetail'
 import { buildOffsetDurationOption } from './charts/options/offsetDuration'
 import { cellKeyOf } from '../lib/storyActionMatrix'
 import { formatDurationMs } from '../lib/format'
+import { scrollFast } from '../lib/scrollFast'
 import './ActionOffsetPanel.css'
 
 /**
@@ -79,10 +80,7 @@ function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByTyp
   // Scroll the detail into view when pinned.
   useEffect(() => {
     if (!pinned || !detailRef.current) return
-    const reduce =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    detailRef.current.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    scrollFast(detailRef.current)
   }, [pinned])
 
   const onEvents = useMemo(() => {

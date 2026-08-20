@@ -19,6 +19,7 @@ import ActionCellDetail from './ActionCellDetail'
 import { cellKeyOf } from '../lib/storyActionMatrix'
 import { formatTimeRangeLabel } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
+import { scrollFast } from '../lib/scrollFast'
 import './ActivityTimeline.css'
 
 // Smallest focus window — the drag box never represents less than 4 minutes,
@@ -260,9 +261,7 @@ function ActivityTimeline({
     const [vlo, vhi] = clampToSpan(c - vw / 2, c + vw / 2)
     setViewRange({ min: vlo, max: vhi })
     setCollapsed(false)
-    requestAnimationFrame(() => {
-      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    requestAnimationFrame(() => scrollFast(rootRef.current))
   }, [timelineFocus, span, spanMin, spanMax, clampToSpan])
 
   // After a drag settles, re-frame the navigator context around the focus so
@@ -629,11 +628,9 @@ function ActivityTimeline({
       resetTimeline()
       navigate(`/summary/${view}`)
       setCollapsed(true)
-      requestAnimationFrame(() => {
-        document
-          .getElementById('summary-view-top')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
+      requestAnimationFrame(() =>
+        scrollFast(document.getElementById('summary-view-top'))
+      )
     }
 
     const seriesName = params?.seriesName
@@ -796,10 +793,7 @@ function samePoint(a, b) {
 }
 
 function smoothScroll(el) {
-  const reduce =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  scrollFast(el)
 }
 
 // Compact "Jun 15, 14:30 → Jul 2, 09:00" window label.

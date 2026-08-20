@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { scrollFast } from '../../lib/scrollFast'
 import KpiStrip from '../../components/KpiStrip'
 import ActionViewSwitcher from '../../components/ActionViewSwitcher'
 import ActionDataTablePanel from '../../components/ActionDataTablePanel'
@@ -271,14 +272,11 @@ function ActionView() {
   // Scroll the inline waterfall panel into view when it opens (or when a
   // per-row icon retargets it to a different action while already open). Keyed
   // on open + initialKey, NOT on the picker index, so stepping through actions
-  // doesn't yank the page. Respects reduced-motion.
+  // doesn't yank the page.
   const panelRef = useRef(null)
   useEffect(() => {
     if (!waterfallOpen) return
-    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
-      : 'smooth'
-    panelRef.current?.scrollIntoView({ behavior, block: 'start' })
+    scrollFast(panelRef.current)
   }, [waterfallOpen, waterfallInitialKey])
 
   // Toggle the heatmap cell drill-down: clicking the open cell closes it.
@@ -290,14 +288,11 @@ function ActionView() {
   // Scroll the heatmap's inline Action detail into view when a cell is picked
   // (or when clicking a different cell retargets it), mirroring the waterfall
   // panel above so the drill-down is never off-screen. Keyed on the cell key so
-  // it fires on open and on retarget, but not on closing. Respects reduced-motion.
+  // it fires on open and on retarget, but not on closing.
   const detailRef = useRef(null)
   useEffect(() => {
     if (!selectedCellKey) return
-    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
-      : 'smooth'
-    detailRef.current?.scrollIntoView({ behavior, block: 'start' })
+    scrollFast(detailRef.current)
   }, [selectedCellKey])
 
   return (
