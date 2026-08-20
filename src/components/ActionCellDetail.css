@@ -1,6 +1,17 @@
 /* Action detail — the drill-down beneath the Story × Action heatmap. A header
    plus a two-pane body: a scrollable instance list on the left and the selected
    instance's waterfall on the right. Matches the SAP chart-card look. */
+@keyframes cell-detail-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .cell-detail {
   margin-top: 0.75rem;
   border: 1px solid var(--sap-border);
@@ -8,6 +19,13 @@
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  animation: cell-detail-enter 300ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell-detail {
+    animation: none;
+  }
 }
 
 .cell-detail__header {

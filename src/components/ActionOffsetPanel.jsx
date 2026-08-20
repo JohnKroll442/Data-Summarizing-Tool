@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import EChartCard from './charts/EChartCard'
 import ActionCellDetail from './ActionCellDetail'
 import { buildOffsetDurationOption } from './charts/options/offsetDuration'
@@ -31,42 +31,9 @@ function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByTyp
   const { points = [], largeOffsetMs, counts = { ok: 0, large: 0, overrun: 0 } } = data ?? {}
   const option = useMemo(() => buildOffsetDurationOption({ points }), [points])
 
-  // The chart fills the viewport from its own top edge down to a small gap above
-  // the bottom, instead of a fixed height that leaves whitespace below on tall
-  // screens. We measure the card's document-absolute top (scroll-independent) so
-  // the height stays put as the page scrolls, and recompute on window resize and
-  // whenever content ABOVE the chart changes size (a ResizeObserver on <body>
-  // catches the timeline collapsing, KPI wraps, etc.). echarts-for-react's
-  // size-sensor auto-resizes the canvas when this height changes. The detail
-  // panel sits BELOW the chart, so opening it never shrinks the plot.
-  const chartWrapRef = useRef(null)
-  const [chartHeight, setChartHeight] = useState(520)
-
-  const measureHeight = useMemo(() => {
-    return () => {
-      const el = chartWrapRef.current
-      if (!el || typeof window === 'undefined') return
-      const chartEl = el.firstElementChild?.lastElementChild ?? el
-      const top = chartEl.getBoundingClientRect().top + window.scrollY
-      const avail = window.innerHeight - top - CHART_BOTTOM_GAP
-      const next = Math.max(CHART_MIN_HEIGHT, Math.round(avail))
-      setChartHeight((prev) => (Math.abs(next - prev) > 1 ? next : prev))
-    }
-  }, [])
-
-  useLayoutEffect(() => {
-    measureHeight()
-    window.addEventListener('resize', measureHeight)
-    let ro
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(measureHeight)
-      ro.observe(document.body)
-    }
-    return () => {
-      window.removeEventListener('resize', measureHeight)
-      ro?.disconnect()
-    }
-  }, [measureHeight])
+  // Simplified: use responsive height via CSS flexbox instead of complex JS measurements.
+  // ECharts-for-react's size sensor will handle the actual canvas sizing automatically,
+  // making this more performant and avoiding layout thrashing during chart initialization.
 
   // Single pin state — only click-to-pin, no hover preview.
   const [pinned, setPinned] = useState(null)
@@ -113,12 +80,12 @@ function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByTyp
 
   return (
     <section className="action-view-fullscreen" aria-label="Offset vs duration">
-      <div ref={chartWrapRef} className="offset-panel__chart">
+      <div className="offset-panel__chart">
         <EChartCard
           title="Offset vs Duration"
           subtitle={subtitle}
           option={option}
-          height={chartHeight}
+          height={520}
           onEvents={onEvents}
         />
       </div>

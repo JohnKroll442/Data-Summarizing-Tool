@@ -44,8 +44,6 @@ function EChartCard({ title, subtitle, option, height = 280, onRemove, onEvents 
         <ReactECharts
           option={option}
           style={{ height, width: '100%' }}
-          notMerge
-          lazyUpdate
           onEvents={onEvents}
         />
       ) : (

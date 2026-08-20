@@ -311,7 +311,6 @@ function ActionWaterfallPanel({ open, onClose, rows, headers, actions, initialKe
           option={option}
           style={{ height: chartHeight, width: '100%' }}
           notMerge
-          lazyUpdate
           onEvents={{ click: onChartClick }}
         />
       </div>

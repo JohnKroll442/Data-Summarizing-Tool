@@ -2,10 +2,25 @@
    charts/EChartCard.css); the full-screen frame is the shared
    .action-view-fullscreen used by the other Action views.
 
-   The chart card's plot height is measured in JS (ActionOffsetPanel) so it
-   fills the viewport down to a small bottom gap instead of a fixed height. This
-   wrapper just lets it span the full width and shrink with the grid. */
+   Simplified layout: the chart now uses responsive CSS instead of complex JS
+   height measurement, making rendering much more performant and avoiding
+   layout thrashing when charts first appear. */
 .offset-panel__chart {
   width: 100%;
   min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure chart card fills available space in flex container */
+.offset-panel__chart .echart-card {
+  flex: 1 1 auto;
+}
+
+.action-view-fullscreen {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: auto;
 }

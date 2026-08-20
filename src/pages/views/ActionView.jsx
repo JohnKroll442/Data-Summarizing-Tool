@@ -273,10 +273,16 @@ function ActionView() {
   // per-row icon retargets it to a different action while already open). Keyed
   // on open + initialKey, NOT on the picker index, so stepping through actions
   // doesn't yank the page.
+  //
+  // The rAF lets the browser paint the panel's first frame — including its
+  // initial height — before we calculate the scroll target. Without it the
+  // target position can shift mid-animation as the ECharts chart renders,
+  // causing a visible jump. 350 ms gives the scroll time to breathe alongside
+  // the panel's entrance animation.
   const panelRef = useRef(null)
   useEffect(() => {
     if (!waterfallOpen) return
-    scrollFast(panelRef.current)
+    requestAnimationFrame(() => scrollFast(panelRef.current, 350))
   }, [waterfallOpen, waterfallInitialKey])
 
   // Toggle the heatmap cell drill-down: clicking the open cell closes it.
@@ -292,7 +298,7 @@ function ActionView() {
   const detailRef = useRef(null)
   useEffect(() => {
     if (!selectedCellKey) return
-    scrollFast(detailRef.current)
+    requestAnimationFrame(() => scrollFast(detailRef.current, 350))
   }, [selectedCellKey])
 
   return (
