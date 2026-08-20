@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import WidgetSummaryTable from '../../components/WidgetSummaryTable'
 import WidgetTimingPanel from '../../components/WidgetTimingPanel'
 import { useCsvData } from '../../context/useCsvData'
@@ -19,25 +19,28 @@ function WidgetView() {
   const [timingSel, setTimingSel] = useState(null)
   const panelOpen = timingSel != null
 
-  // Scroll the panel into view when a widget is first selected. Keyed on the
-  // open boolean only, NOT the selection identity, so stepping through widgets
-  // with the picker/arrows doesn't yank the page each time. Respects
-  // reduced-motion.
+  // Scroll the timing panel into view whenever the user clicks a widget name.
+  // Uses requestAnimationFrame so the scroll fires after React has committed the
+  // panel to the DOM (on first open the div doesn't exist yet). Arrow/picker
+  // navigation inside the panel does NOT call this, so stepping through widgets
+  // with the arrows won't yank the viewport. Respects reduced-motion.
   const panelRef = useRef(null)
-  useEffect(() => {
-    if (!panelOpen) return
-    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
-      : 'smooth'
-    panelRef.current?.scrollIntoView({ behavior, block: 'start' })
-  }, [panelOpen])
+  const scrollToPanel = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (!panelRef.current) return
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth'
+      panelRef.current.scrollIntoView({ behavior, block: 'start' })
+    })
+  }, [])
 
   return (
     <>
       <HeaderPortal>
         <h2 className="view-heading">Widget View</h2>
       </HeaderPortal>
-      <WidgetSummaryTable rows={rows} headers={headers} onTimingChange={setTimingSel} />
+      <WidgetSummaryTable rows={rows} headers={headers} onTimingChange={setTimingSel} onScrollToChart={scrollToPanel} />
 
       {timingSel && (
         <div ref={panelRef}>

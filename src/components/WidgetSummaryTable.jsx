@@ -39,7 +39,7 @@ import './SessionSummaryTable.css'
  * widgets that ran in the chosen scope. Two pills at the top show the
  * active filters; clicking the × on either clears just that filter.
  */
-function WidgetSummaryTable({ rows, headers, onTimingChange }) {
+function WidgetSummaryTable({ rows, headers, onTimingChange, onScrollToChart }) {
   const location = useLocation()
   const {
     sessionFilter,
@@ -696,6 +696,7 @@ function WidgetSummaryTable({ rows, headers, onTimingChange }) {
                       (r) => String(r.widget_id) === String(row.widget_id)
                     )
                     setTimingIdx(idx >= 0 ? idx : 0)
+                    onScrollToChart?.()
                   }}
                 >
                   {String(v)}

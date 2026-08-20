@@ -246,6 +246,28 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
   // Responsive type sizes, derived from the current root font-size.
   const f = chartFontSizes()
 
+  // Responsive grid margins. On small viewports the fixed 288 px label column
+  // consumed too much width and left almost no room for the bars. We now step
+  // the left margin down with the viewport and tell ECharts to truncate any
+  // label that's still too wide — the full name stays readable in the tooltip.
+  // ActionWaterfallPanel already tracks viewportWidth as a useMemo dependency,
+  // so the option rebuilds whenever the window is resized.
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const gridLeft  = vw < 640  ? 160 : vw < 1024 ? 220 : 288
+  const gridRight = vw < 640  ?  56 : vw < 1024 ?  72 :  96
+  // Max pixel width for a y-axis label before it gets an ellipsis. Leaves ~12 px
+  // of breathing room on each side inside the gridLeft column.
+  const labelMaxWidth = Math.max(80, gridLeft - 24)
+  // grid.top must clear the two stacked markLine labels that float above the
+  // chart (text row + time value row, each ~f.markLine px tall + spacing).
+  // Add 6 px breathing room so labels never clip against the container edge.
+  const gridTop = Math.max(56, f.markLine * 2 + 20)
+  // On narrow screens the full "Action Start Timestamp" label is too wide and
+  // crashes into "Action End Timestamp" across the chart. Use short labels
+  // below 768 px, and drop the " Timestamp" suffix up to 1024 px.
+  const startLabel = vw < 768 ? 'Start' : vw < 1024 ? 'Action Start' : 'Action Start Timestamp'
+  const endLabel   = vw < 768 ? 'End'   : vw < 1024 ? 'Action End'   : 'Action End Timestamp'
+
 
   // Two vertical markLines anchor the sequence to the action's start (x=0) and
   // its real end. The end marker is pinned to the authoritative action_duration
@@ -257,7 +279,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
     {
       xAxis: 0,
       label: {
-        formatter: 'Action Start Timestamp',
+        formatter: startLabel,
         position: 'end', distance: [0, 6], color: '#1d2d3e',
         fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },
@@ -278,7 +300,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
       // of every phase stacked end-to-end.
       xAxis: endMarker,
       label: {
-        formatter: 'Action End Timestamp',
+        formatter: endLabel,
         position: 'end', distance: [0, 6], color: '#1d2d3e',
         fontSize: f.markLine, align: 'center', verticalAlign: 'bottom',
       },
@@ -313,7 +335,7 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
         ].join('<br/>')
       },
     },
-    grid: { ...BASE_GRID, left: 288, right: 96, top: 44, bottom: 56 },
+    grid: { ...BASE_GRID, left: gridLeft, right: gridRight, top: gridTop, bottom: 56 },
     xAxis: {
       type: 'value',
       min: 0,
@@ -336,7 +358,18 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
       data: yLabels.slice().reverse(),
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: '#1d2d3e', fontSize: f.axis },
+      axisLabel: {
+        color: '#1d2d3e',
+        fontSize: f.axis,
+        // Truncate labels that are wider than the allocated column so they
+        // never bleed into the bar area. The full name is always in the tooltip.
+        overflow: 'truncate',
+        width: labelMaxWidth,
+        ellipsis: '…',
+      },
+      // Disable the crosshair/shadow line that follows the cursor across the
+      // category axis — it causes rapid redraws that look like screen flicker.
+      axisPointer: { show: false },
     },
     series: [
       {
@@ -368,6 +401,10 @@ export function buildActionSequenceOption(actionRows, opts = {}) {
           color: '#1d2d3e',
           fontSize: f.barLabel,
         },
+        // Prevent bars from scaling/growing on hover — that jump is the main
+        // cause of the "shaking" feeling when moving the cursor across rows.
+        emphasis: { scale: false },
+        select:   { scale: false },
       },
     ],
 

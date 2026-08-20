@@ -78,6 +78,13 @@ export const BASE_TOOLTIP = {
   backgroundColor: 'rgba(255, 255, 255, 0.97)',
   borderColor: SAP_BLUE_LIGHT,
   textStyle: { color: SAP_TEXT },
+  // confine keeps the tooltip inside the chart canvas so it never overflows
+  // the page and triggers a scrollbar-induced layout shift (screen shake).
+  confine: true,
+  // Snap the tooltip to the cursor instantly — no lag or buffering sensation.
+  transitionDuration: 0,
+  // Hide immediately when the cursor leaves; no ghosting of the old position.
+  hideDelay: 0,
 }
 
 export const BASE_GRID = {
