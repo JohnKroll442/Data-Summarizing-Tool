@@ -4,7 +4,7 @@
    rule matches. The tint is a touch stronger than the faint hover background
    used elsewhere so already-drilled rows read as "visited" at a glance, and
    deepens slightly on hover. Scoped under the wrapper so it can't leak to any
-   other table. 
+   other table. */
 .analytical-data-table-wrap .viewed-row {
   background-color: rgba(0, 112, 242, 0.1);
 }
