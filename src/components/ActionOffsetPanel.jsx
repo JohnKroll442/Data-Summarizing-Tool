@@ -27,7 +27,7 @@ import './ActionOffsetPanel.css'
  *   byActionKey Map<"name::ts", flags[]> from detectAnomalies
  *   tierByType  Map<typeKey, 1|2|3> from rankAnomalyTiers
  */
-function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByType }) {
+function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByType, onLegendChange }) {
   const { points = [], largeOffsetMs, counts = { ok: 0, large: 0, overrun: 0 } } = data ?? {}
   const option = useMemo(() => buildOffsetDurationOption({ points }), [points])
 
@@ -62,8 +62,9 @@ function ActionOffsetPanel({ data, matrix, rows, headers, byActionKey, tierByTyp
         if (!sel) return
         setPinned((prev) => (samePoint(prev, sel) ? null : sel))
       },
+      legendselectchanged: (params) => onLegendChange?.(params.selected),
     }
-  }, [])
+  }, [onLegendChange])
 
   const selectedCell = pinned
     ? matrix?.cells?.get(cellKeyOf(pinned.story, pinned.action)) ?? null

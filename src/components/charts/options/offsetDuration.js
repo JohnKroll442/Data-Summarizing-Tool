@@ -35,6 +35,13 @@ export const OFFSET_CLASS_LEGEND = [
   { klass: 'ok',      name: 'Healthy',      color: SAP_BLUE,   symbol: 'circle' },
 ]
 
+// Default legend visibility — Healthy hidden so the anomaly series stand out.
+// Single source of truth: drives both the chart's initial legend.selected and
+// the offsetLegendSelected state in ActionView.
+export const OFFSET_LEGEND_DEFAULT = Object.fromEntries(
+  OFFSET_CLASS_LEGEND.map((c) => [c.name, c.klass !== 'ok']),
+)
+
 const fmt = (v) => (Number.isFinite(Number(v)) ? formatDurationMs(v) : '')
 
 // Largest power of ten ≤ v (≥ 1) — the log-axis floor. Zero/tiny offsets clamp
@@ -103,7 +110,7 @@ export function buildOffsetDurationOption({ points } = {}) {
       top: 4,
       textStyle: { color: SAP_TEXT, fontSize: f.legend },
       data: ['offset = duration', ...OFFSET_CLASS_LEGEND.map((c) => c.name)],
-      selected: { Healthy: false },
+      selected: OFFSET_LEGEND_DEFAULT,
     },
     tooltip: {
       ...BASE_TOOLTIP,

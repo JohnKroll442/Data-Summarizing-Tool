@@ -12,7 +12,10 @@ import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown
 import { aggregateByAction } from '../../lib/actionAggregate'
 import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
+import { matchesTimeRange } from '../../lib/timeBuckets'
+import { ACTION_TS } from '../../lib/viewFilters'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDurationPoints } from '../../lib/anomalyDetect'
+import { OFFSET_CLASS_LEGEND, OFFSET_LEGEND_DEFAULT } from '../../components/charts/options/offsetDuration'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
 import { resolveActiveView } from '../../lib/actionViews'
 import './ActionView.css'
@@ -36,7 +39,7 @@ import './ActionView.css'
  *     panel just re-tallies over the visible keys via summarizeActionFlags.
  */
 function ActionView() {
-  const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi } = useCsvData()
+  const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi, timelineRange } = useCsvData()
 
   // Scope KPIs + charts + detection to match the table. The multiselect
   // Sessions filter, when active, takes over the row scope; otherwise the
@@ -146,6 +149,13 @@ function ActionView() {
   const selectDurationBucket = (key) =>
     setDurationBucket((prev) => (prev === key ? null : key))
 
+  // Tracks which offset-scatter series are currently visible (mirrors the chart
+  // legend). Initialised from OFFSET_LEGEND_DEFAULT (same value the chart starts
+  // with) and updated via onLegendChange whenever the user clicks a legend item.
+  // Resets on tab switch because ActionOffsetPanel remounts, which re-initialises
+  // the ECharts legend from its option — keeping both in sync.
+  const [offsetLegendSelected, setOffsetLegendSelected] = useState(OFFSET_LEGEND_DEFAULT)
+
   // Which of the three top-level views is active. Seeded from (and persisted
   // to) viewUi.action.activeView so it survives drilling to Widget view + Back.
   const [activeView, setActiveView] = useState(
@@ -162,6 +172,41 @@ function ActionView() {
     ? bands.find((b) => b.key === durationBucket) ?? null
     : null
 
+  // When on the timeOfDay tab, the table is not mounted so filteredActionRows
+  // is stale or empty. Use aggRows (full session-scoped set) filtered to the
+  // chart's visible window instead. On all other tabs, keep using filteredActionRows
+  // so every table filter continues to reshape the KPIs as before.
+  const timeOfDayBase = useMemo(() => {
+    if (activeView !== 'timeOfDay') return filteredActionRows
+    if (!timelineRange) return aggRows
+    return aggRows.filter((r) => matchesTimeRange(r, ACTION_TS, timelineRange))
+  }, [activeView, aggRows, filteredActionRows, timelineRange])
+
+  // When on the offset tab, the table is not mounted so filteredActionRows is
+  // stale or empty. Build KPI base from aggRows, joined to offsetDuration.points
+  // (the only source of klass), filtered to the series visible in the legend.
+  // aggRows rows with no scatter point (no widget offset data) are excluded —
+  // they're invisible on the chart regardless of legend state.
+  // On all other tabs, chain through timeOfDayBase so both fixes compose cleanly.
+  const offsetBase = useMemo(() => {
+    if (activeView !== 'offset') return timeOfDayBase
+
+    // klass lookup: actionKey = "name::timestamp" matches aggRows' own key format
+    const klassMap = new Map(
+      offsetDuration.points.map((p) => [p.actionKey, p.klass])
+    )
+    const visibleKlasses = new Set(
+      OFFSET_CLASS_LEGEND
+        .filter((c) => offsetLegendSelected[c.name] !== false)
+        .map((c) => c.klass)
+    )
+    return aggRows.filter((r) => {
+      const key = `${r.action_name}::${r._action_timestamp ?? ''}`
+      const klass = klassMap.get(key)
+      return klass !== undefined && visibleKlasses.has(klass)
+    })
+  }, [activeView, aggRows, timeOfDayBase, offsetLegendSelected, offsetDuration])
+
   // The visible action set narrowed to the selected duration bucket. This feeds
   // the KPI strip, the anomaly-summary counts and the waterfall picker so they
   // recompute to the chosen range — matching the table below (which applies the
@@ -170,9 +215,9 @@ function ActionView() {
   const bucketedRows = useMemo(
     () =>
       durationBucket
-        ? filteredActionRows.filter((r) => bucketKeyOf(r.action_duration, bands) === durationBucket)
-        : filteredActionRows,
-    [filteredActionRows, durationBucket, bands],
+        ? offsetBase.filter((r) => bucketKeyOf(r.action_duration, bands) === durationBucket)
+        : offsetBase,
+    [offsetBase, durationBucket, bands],
   )
 
   // Rail KPIs track the visible (filtered) action set, matching the old header
@@ -372,6 +417,7 @@ function ActionView() {
             headers={headers}
             byActionKey={anomalies.byActionKey}
             tierByType={tierByType}
+            onLegendChange={setOffsetLegendSelected}
           />
         )}
 
