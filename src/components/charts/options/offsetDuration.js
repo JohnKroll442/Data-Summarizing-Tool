@@ -103,6 +103,7 @@ export function buildOffsetDurationOption({ points } = {}) {
       top: 4,
       textStyle: { color: SAP_TEXT, fontSize: f.legend },
       data: ['offset = duration', ...OFFSET_CLASS_LEGEND.map((c) => c.name)],
+      selected: { Healthy: false },
     },
     tooltip: {
       ...BASE_TOOLTIP,
