@@ -66,6 +66,35 @@ export function memoizeFilter(fn, sigFn) {
   }
 }
 
+/**
+ * Memoize a pure `(rows, headers, arg) => result` aggregate that depends on
+ * both the row/header identity AND a third argument (e.g. thresholds).
+ * Cache shape: `WeakMap<rows, WeakMap<headers, Map<sig, result>>>` where
+ * `sig = sigFn(arg)` is a string so cache hits work even when the third
+ * argument is a new object reference each render.
+ */
+export function memoizeAggregate3(fn, sigFn) {
+  const cache = new WeakMap() // rows -> WeakMap<headers, Map<sig, result>>
+  return (rows, headers, arg) => {
+    if (!isObject(rows) || !isObject(headers)) return fn(rows, headers, arg)
+    let byHeaders = cache.get(rows)
+    if (!byHeaders) {
+      byHeaders = new WeakMap()
+      cache.set(rows, byHeaders)
+    }
+    let bySig = byHeaders.get(headers)
+    if (!bySig) {
+      bySig = new Map()
+      byHeaders.set(headers, bySig)
+    }
+    const sig = sigFn(arg)
+    if (bySig.has(sig)) return bySig.get(sig)
+    const result = fn(rows, headers, arg)
+    bySig.set(sig, result)
+    return result
+  }
+}
+
 function isObject(v) {
   return v !== null && typeof v === 'object'
 }

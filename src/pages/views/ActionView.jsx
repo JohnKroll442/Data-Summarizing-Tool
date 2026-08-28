@@ -39,7 +39,7 @@ import './ActionView.css'
  *     panel just re-tallies over the visible keys via summarizeActionFlags.
  */
 function ActionView() {
-  const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi, timelineRange } = useCsvData()
+  const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi, timelineRange, thresholds } = useCsvData()
 
   // Scope KPIs + charts + detection to match the table. The multiselect
   // Sessions filter, when active, takes over the row scope; otherwise the
@@ -56,8 +56,9 @@ function ActionView() {
   // local filters) — the panel's "N (X%)" counts and the byActionKey lookup the
   // table reads for badges / tint / click-to-filter.
   const anomalies = useMemo(
-    () => detectAnomalies(scopedRows, headers),
-    [scopedRows, headers],
+    () => detectAnomalies(scopedRows, headers, thresholds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopedRows, headers, thresholds.slowActionMs, thresholds.healthyCeilingMs],
   )
 
   // The canonical duration bands the detector computed over the full scope — the
@@ -84,8 +85,9 @@ function ActionView() {
   // vs Duration scatter — reuses the detector's exact offset/duration math (same
   // scope as the rail; a cache hit shares detectAnomalies' grouping).
   const offsetDuration = useMemo(
-    () => buildOffsetDurationPoints(scopedRows, headers),
-    [scopedRows, headers],
+    () => buildOffsetDurationPoints(scopedRows, headers, thresholds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopedRows, headers, thresholds.slowActionMs],
   )
 
   // The heatmap cell whose drill-down detail is open, as { story, action }, or
@@ -226,8 +228,9 @@ function ActionView() {
   // to filter the table to that band), so the tile no longer doubles as a filter
   // — its ≥30s count and the slow_action anomaly (≥2m) are now different sets.
   const kpis = useMemo(
-    () => actionKpisFromAgg(bucketedRows, mapping),
-    [bucketedRows, mapping],
+    () => actionKpisFromAgg(bucketedRows, mapping, thresholds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bucketedRows, mapping, thresholds.slowActionMs],
   )
 
   const durations = useMemo(
@@ -390,6 +393,7 @@ function ActionView() {
             detailActionName={waterfallActionName}
             detailStory={waterfallStory}
             detailInitialTs={waterfallInitialTs}
+            thresholds={thresholds}
           />
         )}
 

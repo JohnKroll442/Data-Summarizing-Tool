@@ -45,6 +45,9 @@ import { emptyViewedItems, addViewed } from '../lib/viewedItems'
 // eslint-disable-next-line react-refresh/only-export-components
 export const CsvDataContext = createContext(null)
 
+// eslint-disable-next-line react-refresh/only-export-components
+export const DEFAULT_THRESHOLDS = { slowActionMs: 120000, healthyCeilingMs: 5000 }
+
 const MAX_RECENT_FILES = 5
 const EMPTY_DATA = { id: '', headers: [], rows: [], fileName: '', fileSize: 0 }
 
@@ -70,6 +73,23 @@ export function CsvDataProvider({ children }) {
   const [data, setData] = useState(EMPTY_DATA)
 
   const [recentFiles, setRecentFiles] = useState([])
+
+  // Per-dataset anomaly thresholds — keyed by data.id so each file remembers
+  // its own settings. Not in resetDerivedState(): thresholds are deliberate user
+  // choices that persist across file switches; only clear() wipes them.
+  const [thresholdsById, setThresholdsById] = useState({})
+  const activeThresholds = thresholdsById[data?.id] ?? DEFAULT_THRESHOLDS
+  const setThresholds = useCallback((partial) => {
+    if (!data?.id) return
+    setThresholdsById((prev) => ({
+      ...prev,
+      [data.id]: { ...(prev[data.id] ?? DEFAULT_THRESHOLDS), ...partial },
+    }))
+  }, [data?.id])
+  const resetThresholds = useCallback(() => {
+    if (!data?.id) return
+    setThresholdsById((prev) => { const n = { ...prev }; delete n[data.id]; return n })
+  }, [data?.id])
 
   // Skip the first persist effect so we don't overwrite the IndexedDB cache
   // with an empty payload before hydration has a chance to run.
@@ -312,6 +332,7 @@ export function CsvDataProvider({ children }) {
   const clear = useCallback(() => {
     setData(EMPTY_DATA)
     setRecentFiles([])
+    setThresholdsById({})
     resetDerivedState()
     clearCache()
   }, [resetDerivedState])
@@ -363,6 +384,7 @@ export function CsvDataProvider({ children }) {
       if (!mounted) return
       if (cached?.data) setData(cached.data)
       if (cached?.recentFiles) setRecentFiles(cached.recentFiles)
+      if (cached?.thresholdsById) setThresholdsById(cached.thresholdsById)
       hydratedRef.current = true
     })
     return () => { mounted = false }
@@ -375,8 +397,8 @@ export function CsvDataProvider({ children }) {
       clearCache()
       return
     }
-    saveCache({ data, recentFiles })
-  }, [data, recentFiles])
+    saveCache({ data, recentFiles, thresholdsById })
+  }, [data, recentFiles, thresholdsById])
 
   // Seed default charts once per file so users see visualizations
   // immediately on first load. Only fires when the id changes, so if the
@@ -466,6 +488,9 @@ export function CsvDataProvider({ children }) {
         clearComparison,
         baselinePayload: resolvePayload(baselineId),
         currentPayload: resolvePayload(currentId),
+        thresholds: activeThresholds,
+        setThresholds,
+        resetThresholds,
       }
     },
     [
@@ -505,6 +530,9 @@ export function CsvDataProvider({ children }) {
       setBaselineId,
       setCurrentId,
       clearComparison,
+      activeThresholds,
+      setThresholds,
+      resetThresholds,
     ]
   )
 

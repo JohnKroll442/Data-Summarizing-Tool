@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeKpis, percentile } from '../kpis'
+import { computeKpis, percentile, actionKpisFromAgg } from '../kpis'
 
 const SESSION_HEADERS = ['SESSION_ID', 'USER_NAME', 'STORY_NAME', 'DURATION']
 const ACTION_HEADERS = [
@@ -55,7 +55,7 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('action', rows, ACTION_HEADERS)
     expect(kpis.map((k) => k.label)).toEqual([
-      'Total actions', '>2 min actions',
+      'Total actions', '>2m actions',
       'Median duration', 'p90 duration', 'p95 action duration',
     ])
   })
@@ -75,7 +75,7 @@ describe('computeKpis', () => {
     ]
     const kpis = computeKpis('action', rows, headers)
     const byLabel = Object.fromEntries(kpis.map((k) => [k.label, k.value]))
-    expect(byLabel['>2 min actions']).toBe('2 (50%)')
+    expect(byLabel['>2m actions']).toBe('2 (50%)')
     expect(byLabel['Median duration']).toBe('2m 0s')
   })
 
@@ -112,5 +112,42 @@ describe('computeKpis', () => {
     const kpis = computeKpis('session', rows, [])
     const total = kpis.find((k) => k.label === 'Total sessions')
     expect(total.value).toBe('1')
+  })
+})
+
+describe('actionKpisFromAgg — configurable thresholds', () => {
+  // Pre-aggregated action rows: durations 30 s, 35 s, 40 s
+  const agg = [
+    { action_name: 'A', action_duration: 30000 },
+    { action_name: 'B', action_duration: 35000 },
+    { action_name: 'C', action_duration: 40000 },
+  ]
+  const mapping = { actionName: 'action_name' }
+
+  it('uses default 2m threshold when no thresholds supplied', () => {
+    const kpis = actionKpisFromAgg(agg, mapping)
+    const over = kpis.find((k) => k.key === 'over_2m')
+    expect(over.label).toBe('>2m actions')
+    expect(over.value).toBe('0 (0%)') // none ≥ 120 000 ms
+  })
+
+  it('applies a custom slowActionMs and updates the label', () => {
+    const kpis = actionKpisFromAgg(agg, mapping, { slowActionMs: 30000 })
+    const over = kpis.find((k) => k.key === 'over_2m')
+    expect(over.label).toBe('>30s actions')
+    expect(over.value).toBe('3 (100%)') // all three ≥ 30 000 ms
+  })
+
+  it('formats sub-minute threshold as seconds label', () => {
+    const kpis = actionKpisFromAgg(agg, mapping, { slowActionMs: 5000 })
+    const over = kpis.find((k) => k.key === 'over_2m')
+    expect(over.label).toBe('>5s actions')
+  })
+
+  it('formats non-round minutes as seconds label', () => {
+    // 90 000 ms is 90 s — not an exact minute count
+    const kpis = actionKpisFromAgg(agg, mapping, { slowActionMs: 90000 })
+    const over = kpis.find((k) => k.key === 'over_2m')
+    expect(over.label).toBe('>90s actions')
   })
 })

@@ -15,13 +15,14 @@ const OVER_ACTION_MS = 120000
  * Compute KPI cards for a given view variant. Returns an array of
  * `{ label, value }` objects, or `null` when there are no rows to summarize.
  * Missing columns / no matching data render as an em dash.
+ * Optional `thresholds` overrides the slow-action cutoff for the action variant.
  */
-export function computeKpis(variant, rows, headers) {
+export function computeKpis(variant, rows, headers, thresholds = {}) {
   if (!rows?.length) return null
   const list = headers && headers.length ? headers : deriveHeaders(rows)
   switch (variant) {
     case 'session': return sessionKpis(rows, list)
-    case 'action':  return actionKpis(rows, list)
+    case 'action':  return actionKpis(rows, list, thresholds)
     case 'widget':  return widgetKpis(rows, list)
     default: return null
   }
@@ -72,9 +73,9 @@ export function sessionKpisFromAgg(agg, mapping, { hasSessions = true } = {}) {
   ]
 }
 
-function actionKpis(rows, headers) {
+function actionKpis(rows, headers, thresholds = {}) {
   const { rows: agg, mapping } = aggregateByAction(rows, headers)
-  return actionKpisFromAgg(agg, mapping)
+  return actionKpisFromAgg(agg, mapping, thresholds)
 }
 
 /**
@@ -82,8 +83,11 @@ function actionKpis(rows, headers) {
  * action, as produced by aggregateByAction). Exported so the summary table can
  * feed its filtered/visible rows here, keeping the KPIs in sync with the active
  * filters without re-aggregating.
+ * Optional `thresholds` overrides the slow-action cutoff and updates the tile
+ * label to match (e.g. ">30s actions" when slowActionMs = 30 000).
  */
-export function actionKpisFromAgg(agg, mapping) {
+export function actionKpisFromAgg(agg, mapping, thresholds = {}) {
+  const overMs = thresholds.slowActionMs ?? OVER_ACTION_MS
   const totalActions = mapping.actionName ? agg.length : ''
 
   const durations = agg.map((r) => r.action_duration)
@@ -96,23 +100,23 @@ export function actionKpisFromAgg(agg, mapping) {
   const p90Duration = percentile(durations, 0.9)
   const p95Duration = percentile(durations, 0.95)
 
-  // ">2 min actions" — how many actions crossed the fixed 2-minute "clearly too
-  // slow" cutoff, as a count + share of all actions. Same threshold as the
-  // slow_action anomaly, so this headline count matches the flagged-action total.
+  // ">X actions" — how many actions crossed the configured slow-action cutoff,
+  // as a count + share of all actions. Same threshold as the slow_action anomaly,
+  // so this headline count matches the flagged-action total.
   const over2m = durations.reduce((n, v) => {
     const d = Number(v)
-    return Number.isFinite(d) && d >= OVER_ACTION_MS ? n + 1 : n
+    return Number.isFinite(d) && d >= overMs ? n + 1 : n
   }, 0)
   const over2mValue = agg.length
     ? `${formatCount(over2m)} (${Math.round((over2m / agg.length) * 100)}%)`
     : MISSING
 
   return [
-    { key: 'total_actions',   label: 'Total actions',       value: fmt(totalActions, formatCount) },
-    { key: 'over_2m',         label: '>2 min actions',      value: over2mValue },
-    { key: 'median_duration', label: 'Median duration',      value: fmt(medianDuration, formatDurationMs) },
-    { key: 'p90_duration',    label: 'p90 duration',         value: fmt(p90Duration, formatDurationMs) },
-    { key: 'p95_duration',    label: 'p95 action duration',  value: fmt(p95Duration, formatDurationMs) },
+    { key: 'total_actions',   label: 'Total actions',                value: fmt(totalActions, formatCount) },
+    { key: 'over_2m',         label: `>${fmtShort(overMs)} actions`, value: over2mValue },
+    { key: 'median_duration', label: 'Median duration',               value: fmt(medianDuration, formatDurationMs) },
+    { key: 'p90_duration',    label: 'p90 duration',                  value: fmt(p90Duration, formatDurationMs) },
+    { key: 'p95_duration',    label: 'p95 action duration',           value: fmt(p95Duration, formatDurationMs) },
   ]
 }
 
@@ -146,6 +150,16 @@ export function widgetKpisFromAgg(agg, mapping) {
 }
 
 /* ——— helpers ——— */
+
+/**
+ * Short human label for a millisecond threshold used in KPI tile labels,
+ * e.g. 30 000 → "30s", 120 000 → "2m", 90 000 → "90s".
+ */
+function fmtShort(ms) {
+  if (ms < 60000) return `${ms / 1000}s`
+  if (ms % 60000 === 0) return `${ms / 60000}m`
+  return `${(ms / 1000).toFixed(0)}s`
+}
 
 /**
  * The p-th percentile (p in 0..1) of the numeric values, via linear

@@ -30,7 +30,7 @@
 
 .duration-dist__row {
   display: grid;
-  grid-template-columns: 3.2rem 1fr auto;
+  grid-template-columns: max-content 1fr auto;
   align-items: center;
   gap: 0.5rem;
   font-size: var(--text-xs);
@@ -77,6 +77,10 @@ button.duration-dist__row:disabled {
 .duration-dist__label {
   color: var(--sap-text-muted);
   white-space: nowrap;
+  display: block;
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .duration-dist__bar-track {

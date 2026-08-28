@@ -41,7 +41,7 @@ import { actionEndDuration, actionRenderDuration } from './actionAggregate'
 import { detectSessionKey } from './drillDown'
 import { computeDurationBands } from './durationBands'
 import { stripUserPrefix } from './format'
-import { memoizeAggregate } from './memoize'
+import { memoizeAggregate3 } from './memoize'
 import { detectWidgetMapping, measureMatches } from './widgetAggregate'
 
 /* ——— tunable thresholds (fixed, top-of-file so they're trivial to adjust) ——— */
@@ -180,6 +180,24 @@ const tierOf = (key) => TYPE_BY_KEY.get(key)?.tier ?? 'performance'
 const HEADLINE_KEYS = new Set(ANOMALY_TYPES.filter((t) => !t.subgroup).map((t) => t.key))
 
 /**
+ * Human-readable blurb for the slow_action anomaly, reflecting the current
+ * threshold. Used by AnomalySummaryPanel so the tooltip updates live when the
+ * user changes the threshold in the settings dialog.
+ */
+export function getSlowActionBlurb(thresholds = {}) {
+  const ms = thresholds.slowActionMs ?? SLOW_ACTION_MS
+  let label
+  if (ms < 60000) {
+    label = `${ms / 1000} seconds`
+  } else if (ms % 60000 === 0) {
+    label = `${ms / 60000} minutes`
+  } else {
+    label = `${(ms / 1000).toFixed(0)} seconds`
+  }
+  return `This action took ${label} or longer from start to finish.`
+}
+
+/**
  * Whether an action counts toward the "Any anomaly" total. True iff it carries
  * at least one HEADLINE flag — an action flagged ONLY by the phase-attribution
  * subgroup is not itself an anomaly, so it doesn't. Shared by the detector, the
@@ -260,9 +278,15 @@ export function rankAnomalyTiers(counts) {
   return tiers
 }
 
-export const detectAnomalies = memoizeAggregate(detectAnomaliesImpl)
+export const detectAnomalies = memoizeAggregate3(
+  detectAnomaliesImpl,
+  (t) => `${t?.slowActionMs ?? SLOW_ACTION_MS}:${t?.healthyCeilingMs ?? 5000}`,
+)
 
-function detectAnomaliesImpl(rows, headers) {
+function detectAnomaliesImpl(rows, headers, thresholds = {}) {
+  const slowActionMs = thresholds.slowActionMs ?? SLOW_ACTION_MS
+  const ceilMs = slowActionMs // DURATION_CEIL_MS tracks the slow-action threshold
+  const goodMaxMs = thresholds.healthyCeilingMs ?? 5000
   const mapping = detectMapping(headers, rows)
 
   const columns = [
@@ -290,7 +314,8 @@ function detectAnomaliesImpl(rows, headers) {
       counts: emptyCounts(),
       totalFlagged: { actions: 0, pct: 0 },
       totalActions: 0,
-      bands: computeDurationBands([]),
+      bands: computeDurationBands([], { ceilMs, goodMaxMs }),
+      slowActionMs,
     }
   }
 
@@ -307,8 +332,8 @@ function detectAnomaliesImpl(rows, headers) {
   for (const [actionKey, groupRows] of groups) {
     durationByKey.set(actionKey, computeActionDuration(groupRows, mapping))
   }
-  const bands = computeDurationBands([...durationByKey.values()])
-  // large_offset fires at the terminal band's lower edge (≤ 2m by construction).
+  const bands = computeDurationBands([...durationByKey.values()], { ceilMs, goodMaxMs })
+  // large_offset fires at the terminal band's lower edge (≤ ceilMs by construction).
   const largeOffsetMs = bands[bands.length - 1].min
 
   const counts = emptyCounts()
@@ -317,7 +342,7 @@ function detectAnomaliesImpl(rows, headers) {
   let totalFlaggedActions = 0
 
   for (const [actionKey, groupRows] of groups) {
-    const flags = detectActionFlags(groupRows, mapping, largeOffsetMs)
+    const flags = detectActionFlags(groupRows, mapping, largeOffsetMs, slowActionMs)
     byActionKey.set(actionKey, flags)
     if (!flags.length) continue
 
@@ -363,6 +388,7 @@ function detectAnomaliesImpl(rows, headers) {
     },
     totalActions,
     bands,
+    slowActionMs,
   }
 }
 
@@ -411,9 +437,14 @@ export function classifyOffsetPoint(maxOffset, duration, largeOffsetMs) {
  * Returns { points, largeOffsetMs, counts: { ok, large, overrun } } where each
  * point is { actionKey, action, story, user, timestamp, duration, maxOffset, klass }.
  */
-export const buildOffsetDurationPoints = memoizeAggregate(buildOffsetDurationPointsImpl)
+export const buildOffsetDurationPoints = memoizeAggregate3(
+  buildOffsetDurationPointsImpl,
+  (t) => String(t?.slowActionMs ?? SLOW_ACTION_MS),
+)
 
-function buildOffsetDurationPointsImpl(rows, headers) {
+function buildOffsetDurationPointsImpl(rows, headers, thresholds = {}) {
+  const slowActionMs = thresholds.slowActionMs ?? SLOW_ACTION_MS
+  const ceilMs = slowActionMs
   const mapping = detectMapping(headers, rows)
   const empty = { points: [], largeOffsetMs: Infinity, counts: { ok: 0, large: 0, overrun: 0 } }
   if (!mapping.actionName || !rows?.length) return empty
@@ -427,7 +458,7 @@ function buildOffsetDurationPointsImpl(rows, headers) {
   for (const [key, groupRows] of groups) {
     durationByKey.set(key, computeActionDuration(groupRows, mapping))
   }
-  const bands = computeDurationBands([...durationByKey.values()])
+  const bands = computeDurationBands([...durationByKey.values()], { ceilMs })
   const largeOffsetMs = bands[bands.length - 1].min
 
   const points = []
@@ -463,14 +494,14 @@ function buildOffsetDurationPointsImpl(rows, headers) {
  * come first (matching ANOMALY_TYPES order) so the badge renders loud symbols
  * ahead of quiet ones.
  */
-function detectActionFlags(groupRows, mapping, largeOffsetMs = Infinity) {
+function detectActionFlags(groupRows, mapping, largeOffsetMs = Infinity, slowActionMs = SLOW_ACTION_MS) {
   const flags = []
   const add = (type, value, detail) => flags.push({ type, tier: tierOf(type), value, detail })
 
-  // 1. slow_action — total action duration ≥ 2m.
+  // 1. slow_action — total action duration ≥ slowActionMs.
   const duration = computeActionDuration(groupRows, mapping)
-  if (Number.isFinite(duration) && duration >= SLOW_ACTION_MS) {
-    add('slow_action', duration, `Action took ${fmtMs(duration)} (≥ ${fmtMs(SLOW_ACTION_MS)}).`)
+  if (Number.isFinite(duration) && duration >= slowActionMs) {
+    add('slow_action', duration, `Action took ${fmtMs(duration)} (≥ ${fmtMs(slowActionMs)}).`)
   }
 
   // Per-widget stats — the remaining rules compare values WITHIN a widget or a

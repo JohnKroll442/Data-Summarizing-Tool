@@ -42,14 +42,16 @@ const TARGET_BANDS = 6
 /**
  * The absolute 5-band health color for a duration (ms), or null for non-finite.
  * Independent of the (adaptive) band edges — it's a fixed traffic light.
+ * Optional `opts` overrides: `goodMaxMs` (green ceiling) and `ceilMs` (red floor).
  */
-export function durationTier(ms) {
+export function durationTier(ms, opts = {}) {
+  const { ceilMs = DURATION_CEIL_MS, goodMaxMs = DURATION_GOOD_MAX } = opts
   const n = Number(ms)
   if (!Number.isFinite(n)) return null
-  if (n < DURATION_GOOD_MAX) return 'good'
+  if (n < goodMaxMs) return 'good'
   if (n < 30 * SEC) return 'neutral'
   if (n < MIN) return 'watch'
-  if (n < 2 * MIN) return 'warn'
+  if (n < ceilMs) return 'warn'
   return 'bad'
 }
 
@@ -69,27 +71,27 @@ function bandLabel(min, max) {
 
 // A band spanning [min, max): min inclusive, max exclusive. The open-ended
 // terminal band (max = Infinity) is the ">2m" danger bucket.
-function makeBand(min, max) {
+function makeBand(min, max, opts = {}) {
   const band = {
     key: `${min}_${max}`,
     label: bandLabel(min, max),
     min,
     max,
-    tier: durationTier(min),
+    tier: durationTier(min, opts),
   }
   if (max === Infinity) band.danger = true
   return band
 }
 
-function buildBands(boundaries, terminalOpen, topEdge) {
+function buildBands(boundaries, terminalOpen, topEdge, opts = {}) {
   const bands = []
   let prev = 0
   for (const b of boundaries) {
-    bands.push(makeBand(prev, b))
+    bands.push(makeBand(prev, b, opts))
     prev = b
   }
-  bands.push(makeBand(prev, topEdge)) // last sub-terminal / closed terminal band
-  if (terminalOpen) bands.push(makeBand(topEdge, Infinity)) // ">2m" danger
+  bands.push(makeBand(prev, topEdge, opts)) // last sub-terminal / closed terminal band
+  if (terminalOpen) bands.push(makeBand(topEdge, Infinity, opts)) // ">2m" danger
   return bands
 }
 
@@ -114,8 +116,16 @@ function snapToLadder(x) {
  * Compute the dataset's duration bands from its action durations (ms). Returns
  * `[{ key, label, min, max, tier, danger? }]` in ascending order. Empty /
  * all-non-finite input falls back to the fixed ladder.
+ *
+ * Optional `opts`:
+ *   `ceilMs`    — the slow-action ceiling (defaults to DURATION_CEIL_MS = 2m).
+ *                 Determines the terminal ">X" danger band boundary.
+ *   `goodMaxMs` — the green/healthy band ceiling (defaults to DURATION_GOOD_MAX = 5s).
+ *                 Affects band colour via durationTier.
  */
-export function computeDurationBands(durations) {
+export function computeDurationBands(durations, opts = {}) {
+  const { ceilMs = DURATION_CEIL_MS, goodMaxMs = DURATION_GOOD_MAX } = opts
+  const bandOpts = { ceilMs, goodMaxMs }
   const D = []
   for (const v of durations || []) {
     if (v === '' || v === null || v === undefined) continue
@@ -126,12 +136,12 @@ export function computeDurationBands(durations) {
   D.sort((a, b) => a - b)
   const maxD = D[D.length - 1]
 
-  // Terminal band: the ">2m" ceiling when the data reaches it, else the round
+  // Terminal band: the ">ceilMs" ceiling when the data reaches it, else the round
   // band containing the slowest action (adapt down).
-  const hasCeil = maxD >= DURATION_CEIL_MS
+  const hasCeil = maxD >= ceilMs
   const topEdge = hasCeil
-    ? DURATION_CEIL_MS
-    : ROUND_LADDER.find((v) => v > maxD) ?? DURATION_CEIL_MS
+    ? ceilMs
+    : ROUND_LADDER.find((v) => v > maxD) ?? ceilMs
 
   // Interior cut points from evenly-spaced quantiles, snapped to the ladder and
   // kept strictly inside (0, topEdge). Skewed data collapses duplicates, which
@@ -145,7 +155,7 @@ export function computeDurationBands(durations) {
   }
 
   const boundaries = [...edges].sort((a, b) => a - b)
-  return buildBands(boundaries, hasCeil, topEdge)
+  return buildBands(boundaries, hasCeil, topEdge, bandOpts)
 }
 
 /**

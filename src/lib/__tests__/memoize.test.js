@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { memoizeAggregate, memoizeFilter } from '../memoize'
+import { memoizeAggregate, memoizeFilter, memoizeAggregate3 } from '../memoize'
 
 describe('memoizeAggregate', () => {
   it('returns the same result reference for the same (rows, headers)', () => {
@@ -82,6 +82,57 @@ describe('memoizeFilter', () => {
     expect(x).not.toBe(y)
     expect(calls).toBe(2)
     expect(fn(rows, [], 'x')).toBe(x) // 'x' still cached
+    expect(calls).toBe(2)
+  })
+})
+
+describe('memoizeAggregate3', () => {
+  it('returns the same result for the same (rows, headers, sig)', () => {
+    let calls = 0
+    const fn = memoizeAggregate3(
+      (rows, headers, thresholds) => { calls++; return { count: rows.length, ms: thresholds?.slowMs } },
+      (t) => String(t?.slowMs ?? 0),
+    )
+    const rows = [{ a: 1 }, { a: 2 }]
+    const headers = ['a']
+    const t = { slowMs: 30000 }
+
+    const first = fn(rows, headers, t)
+    const second = fn(rows, headers, t) // same sig → cache hit
+
+    expect(second).toBe(first)
+    expect(calls).toBe(1)
+  })
+
+  it('treats different sig values as separate cache entries', () => {
+    let calls = 0
+    const fn = memoizeAggregate3(
+      (rows, _h, t) => { calls++; return { ms: t?.ms } },
+      (t) => String(t?.ms ?? 0),
+    )
+    const rows = [{ a: 1 }]
+    const headers = ['a']
+
+    const r1 = fn(rows, headers, { ms: 5000 })
+    const r2 = fn(rows, headers, { ms: 10000 })
+
+    expect(r1).not.toBe(r2)
+    expect(calls).toBe(2)
+
+    // Re-using an existing sig → cache hit, no third call
+    const r3 = fn(rows, headers, { ms: 5000 })
+    expect(r3).toBe(r1)
+    expect(calls).toBe(2)
+  })
+
+  it('falls through (no caching) for non-object rows or headers', () => {
+    let calls = 0
+    const fn = memoizeAggregate3(
+      (rows, headers, t) => { calls++; return { rows, t } },
+      (t) => String(t),
+    )
+    fn(null, ['a'], 'x')
+    fn([{ a: 1 }], null, 'x')
     expect(calls).toBe(2)
   })
 })

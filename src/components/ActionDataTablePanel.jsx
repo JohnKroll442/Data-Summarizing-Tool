@@ -49,6 +49,8 @@ function ActionDataTablePanel({
   // anomaly panel visibility
   showAnomalies = true,
   setShowAnomalies,
+  // configurable detection thresholds — forwarded to AnomalySummaryPanel
+  thresholds,
 }) {
   return (
     <div className="action-view">
@@ -69,6 +71,7 @@ function ActionDataTablePanel({
             activeType={anomalyTypeFilter}
             onSelectType={onSelectAnomalyType}
             tierByType={tierByType}
+            thresholds={thresholds}
           />
         )}
       </aside>

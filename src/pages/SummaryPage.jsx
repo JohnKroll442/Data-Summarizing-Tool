@@ -1,10 +1,13 @@
-import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { Bar, Button, Title, Select, Option } from '@ui5/webcomponents-react'
+import '@ui5/webcomponents-icons/dist/nav-back.js'
+import '@ui5/webcomponents-icons/dist/action-settings.js'
 import { useCsvData } from '../context/useCsvData'
 import { HeaderSlotProvider } from '../context/HeaderSlot'
 import ActivityTimeline from '../components/ActivityTimeline'
 import ActionViewSwitcher from '../components/ActionViewSwitcher'
+import ThresholdSettingsDialog from '../components/ThresholdSettingsDialog'
 import './SummaryPage.css'
 
 // The four CSV views plus the roll-up Summary, in tab order. `key` matches
@@ -33,6 +36,7 @@ function SummaryPage() {
   // above the timeline. A ref callback (not useRef) so the first render that
   // has the node re-runs the provider and the portals find their target.
   const [headerSlot, setHeaderSlot] = useState(null)
+  const [thresholdDialogOpen, setThresholdDialogOpen] = useState(false)
 
   if (!hasData) {
     return <Navigate to="/" replace />
@@ -43,31 +47,51 @@ function SummaryPage() {
 
   return (
     <div className="summary-page">
-      <div className="summary-file-banner" aria-label="Loaded file">
-        <Link to="/" className="summary-home-link" aria-label="Back to upload page">
-          <ArrowLeft size={14} aria-hidden="true" /> Home
-        </Link>
+      <Bar
+        design="Header"
+        accessibleName="Loaded file"
+        startContent={
+          <Button
+            icon="nav-back"
+            design="Transparent"
+            tooltip="Back to upload page"
+            onClick={() => navigate('/')}
+          >
+            Home
+          </Button>
+        }
+        endContent={
+          <Button
+            icon="action-settings"
+            design="Transparent"
+            tooltip="Threshold settings"
+            onClick={() => setThresholdDialogOpen(true)}
+          />
+        }
+      >
         {canSwitch ? (
-          <select
-            className="summary-file-select"
+          <Select
             value={activeFileId}
-            aria-label="Switch loaded file"
+            accessibleName="Switch loaded file"
             onChange={(e) => {
-              if (e.target.value && e.target.value !== activeFileId) {
-                selectRecentFile(e.target.value)
-              }
+              const id = e.detail.selectedOption.getAttribute('value')
+              if (id && id !== activeFileId) selectRecentFile(id)
             }}
           >
             {recentFiles.map((file) => (
-              <option key={file.id} value={file.id}>
+              <Option key={file.id} value={file.id}>
                 {file.fileName}
-              </option>
+              </Option>
             ))}
-          </select>
+          </Select>
         ) : (
-          <span className="summary-file-name">{fileName}</span>
+          <Title level="H5" size="H5">{fileName}</Title>
         )}
-      </div>
+      </Bar>
+      <ThresholdSettingsDialog
+        open={thresholdDialogOpen}
+        onClose={() => setThresholdDialogOpen(false)}
+      />
 
       <ActionViewSwitcher
         views={VIEW_TABS}

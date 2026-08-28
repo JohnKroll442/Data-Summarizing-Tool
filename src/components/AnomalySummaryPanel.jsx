@@ -1,4 +1,4 @@
-import { ANOMALY_TYPES } from '../lib/anomalyDetect'
+import { ANOMALY_TYPES, getSlowActionBlurb } from '../lib/anomalyDetect'
 import TierBadge from './TierBadge'
 import AnomalyInfo from './AnomalyInfo'
 import './AnomalySummaryPanel.css'
@@ -57,7 +57,12 @@ function AnomalySummaryPanel({
   activeType,
   onSelectType,
   tierByType,
+  thresholds,
 }) {
+  // Build effective blurbs: slow_action is dynamic (reflects current threshold);
+  // everything else stays static.
+  const effectiveBlurbs = { ...BLURBS, slow_action: getSlowActionBlurb(thresholds) }
+
   if (hoveredFlags) {
     return (
       <section className="anomaly-panel" aria-label="Anomalies for this action">
@@ -72,7 +77,7 @@ function AnomalySummaryPanel({
               return (
                 <li className="anomaly-panel__ctx-row" key={f.type}>
                   <span className="anomaly-panel__label">
-                    <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
+                    <AnomalyInfo title={t.label} text={effectiveBlurbs[t.key] ?? t.description} />
                     <span className="anomaly-panel__label-text">{t.label}</span>
                   </span>
                   <span className="anomaly-panel__detail" title={f.detail}>{f.detail}</span>
@@ -97,7 +102,7 @@ function AnomalySummaryPanel({
           onClick={() => onSelectType?.(t.key)}
         >
           <span className="anomaly-panel__label">
-            <AnomalyInfo title={t.label} text={BLURBS[t.key] ?? t.description} />
+            <AnomalyInfo title={t.label} text={effectiveBlurbs[t.key] ?? t.description} />
             <TierBadge tier={tierByType?.get(t.key)} />
             <span className="anomaly-panel__label-text">{t.label}</span>
             {t.provisional && <span className="anomaly-panel__tag">needs validation</span>}
