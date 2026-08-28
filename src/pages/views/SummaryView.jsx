@@ -152,7 +152,6 @@ function SummaryView() {
   return (
     <>
       <HeaderPortal>
-        <h2 className="view-heading">Summary</h2>
       </HeaderPortal>
 
       {timelineRange && (

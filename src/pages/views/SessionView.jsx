@@ -8,7 +8,6 @@ function SessionView() {
   return (
     <>
       <HeaderPortal>
-        <h2 className="view-heading">Session View</h2>
       </HeaderPortal>
       <SessionSummaryTable rows={rows} headers={headers} />
     </>

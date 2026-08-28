@@ -48,7 +48,6 @@ function RawDataView() {
   return (
     <>
       <HeaderPortal>
-        <h2 className="view-heading">Raw Data View</h2>
       </HeaderPortal>
       <div className="summary-filters">
         <span className="summary-filter-count" style={{ marginLeft: 0, marginRight: 'auto' }}>

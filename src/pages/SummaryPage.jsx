@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { Bar, Button, Title, Select, Option } from '@ui5/webcomponents-react'
+import { Button, Select, Option } from '@ui5/webcomponents-react'
 import '@ui5/webcomponents-icons/dist/nav-back.js'
 import '@ui5/webcomponents-icons/dist/action-settings.js'
 import { useCsvData } from '../context/useCsvData'
@@ -29,7 +29,7 @@ const VIEW_TABS = [
  * (refresh / direct URL), bounce back to /.
  */
 function SummaryPage() {
-  const { hasData, fileName, recentFiles, activeFileId, selectRecentFile } = useCsvData()
+  const { hasData, recentFiles, activeFileId, selectRecentFile } = useCsvData()
   const location = useLocation()
   const navigate = useNavigate()
   // The active view portals its heading + KPI strip into this node so they sit
@@ -47,29 +47,14 @@ function SummaryPage() {
 
   return (
     <div className="summary-page">
-      <Bar
-        design="Header"
-        accessibleName="Loaded file"
-        startContent={
-          <Button
-            icon="nav-back"
-            design="Transparent"
-            tooltip="Back to upload page"
-            onClick={() => navigate('/')}
-          >
-            Home
-          </Button>
-        }
-        endContent={
-          <Button
-            icon="action-settings"
-            design="Transparent"
-            tooltip="Threshold settings"
-            onClick={() => setThresholdDialogOpen(true)}
-          />
-        }
-      >
-        {canSwitch ? (
+      <ThresholdSettingsDialog
+        open={thresholdDialogOpen}
+        onClose={() => setThresholdDialogOpen(false)}
+      />
+
+      {/* File-switcher row — only visible when more than one file is loaded */}
+      {canSwitch && (
+        <div className="summary-file-switcher">
           <Select
             value={activeFileId}
             accessibleName="Switch loaded file"
@@ -84,20 +69,35 @@ function SummaryPage() {
               </Option>
             ))}
           </Select>
-        ) : (
-          <Title level="H5" size="H5">{fileName}</Title>
-        )}
-      </Bar>
-      <ThresholdSettingsDialog
-        open={thresholdDialogOpen}
-        onClose={() => setThresholdDialogOpen(false)}
-      />
+        </div>
+      )}
 
       <ActionViewSwitcher
         views={VIEW_TABS}
         activeView={activeSegment}
         onChange={(seg) => navigate(seg)}
         ariaLabel="Summary views"
+        startContent={
+          <Button
+            icon="nav-back"
+            design="Transparent"
+            className="summary-home-btn"
+            tooltip="Back to upload page"
+            onClick={() => navigate('/')}
+            style={{'--sapButton_Lite_Textcolor': '#000000'}}
+          >
+            Home
+          </Button>
+        }
+        endContent={
+          <Button
+            icon="action-settings"
+            className="summary-settings-btn"
+            design="Transparent"
+            tooltip="Threshold settings"
+            onClick={() => setThresholdDialogOpen(true)}
+          />
+        }
       />
 
       <div className="summary-content">

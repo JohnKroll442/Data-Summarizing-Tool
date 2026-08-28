@@ -11,6 +11,12 @@
   background: transparent;
 }
 
+.summary-home-btn::part(button), .summary-settings-btn::part(button){
+  color: #000000;
+}
+
+
+/* TODO: delete these two rules — ui5-bar no longer rendered (safe dead code) */
 .summary-page ui5-bar::part(bar) {
   box-shadow: none !important;
   border-bottom: none !important;
@@ -91,6 +97,12 @@
   line-height: 1.2;
   letter-spacing: var(--tracking-heading);
   color: var(--sap-text);
+}
+
+/* File-switcher row — only rendered when >1 file has been loaded this session */
+.summary-file-switcher {
+  display: flex;
+  justify-content: center;
 }
 
 /* IconTabBar handles responsive wrapping internally */

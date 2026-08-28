@@ -40,7 +40,6 @@ function WidgetView() {
   return (
     <>
       <HeaderPortal>
-        <h2 className="view-heading">Widget View</h2>
       </HeaderPortal>
       <WidgetSummaryTable rows={rows} headers={headers} onTimingChange={setTimingSel} onScrollToChart={scrollToPanel} />
 

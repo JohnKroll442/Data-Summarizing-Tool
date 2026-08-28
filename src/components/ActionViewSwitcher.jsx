@@ -17,28 +17,38 @@ function ActionViewSwitcher({
   onChange,
   views = ACTION_VIEWS,
   ariaLabel = 'Action view',
+  startContent,
+  endContent,
 }) {
   return (
     <div className="action-view-switcher" role="tablist" aria-label={ariaLabel}>
-      {views.map((v) => {
-        const isActive = v.key === activeView
-        return (
-          <button
-            key={v.key}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            className={
-              'action-view-switcher__tab' + (isActive ? ' is-active' : '')
-            }
-            onClick={() => {
-              if (!isActive) onChange(v.key)
-            }}
-          >
-            {v.label}
-          </button>
-        )
-      })}
+      {startContent && (
+        <div className="action-view-switcher__start">{startContent}</div>
+      )}
+      <div className="action-view-switcher__tabs">
+        {views.map((v) => {
+          const isActive = v.key === activeView
+          return (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={
+                'action-view-switcher__tab' + (isActive ? ' is-active' : '')
+              }
+              onClick={() => {
+                if (!isActive) onChange(v.key)
+              }}
+            >
+              {v.label}
+            </button>
+          )
+        })}
+      </div>
+      {endContent && (
+        <div className="action-view-switcher__end">{endContent}</div>
+      )}
     </div>
   )
 }
