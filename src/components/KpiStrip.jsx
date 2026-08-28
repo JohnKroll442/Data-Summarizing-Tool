@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card, AnalyticalCardHeader } from '@ui5/webcomponents-react'
+import { Card, CardHeader } from '@ui5/webcomponents-react'
 import { computeKpis } from '../lib/kpis'
 import './KpiStrip.css'
 
@@ -24,17 +24,13 @@ function KpiStrip({ variant, rows, headers, kpis: kpisProp, columns }) {
                 ? `kpi-card-ui5 is-clickable${k.active ? ' is-active' : ''}`
                 : 'kpi-card-ui5'
             }
-            header={
-              <AnalyticalCardHeader
-                titleText={k.label}
-                value={String(k.value)}
-                state={k.state ?? 'None'}
-                onClick={clickable ? k.onClick : undefined}
-                aria-pressed={clickable ? String(Boolean(k.active)) : undefined}
-                tooltip={k.hint || undefined}
-              />
-            }
-          />
+            header={<CardHeader titleText={k.label} />}
+            onClick={clickable ? k.onClick : undefined}
+            aria-pressed={clickable ? String(Boolean(k.active)) : undefined}
+            title={k.hint || undefined}
+          >
+            <div className="kpi-value-display">{k.value}</div>
+          </Card>
         )
       })}
     </div>

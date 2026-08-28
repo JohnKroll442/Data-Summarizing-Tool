@@ -1,60 +1,54 @@
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  column-gap: 0;
-  row-gap: 0.75rem;
+  gap: 0.75rem;
   margin: 0 0 1.25rem;
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-/* Remove individual card chrome — the strip provides all the framing */
 .kpi-strip > .kpi-card-ui5::part(root) {
   box-shadow: none;
-  border: none;
-  border-radius: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
 }
 
 .kpi-strip > .kpi-card-ui5::part(root):hover {
   box-shadow: none;
 }
 
-/* Vertical separator between cards in the same row */
-.kpi-strip > .kpi-card-ui5:not(:nth-child(4n+1))::part(root) {
-  border-left: 1px solid var(--color-border-subtle);
+.kpi-value-display {
+  font-size: 1.8rem;
+  font-weight: 800;
+  text-align: left;
+  color: var(--sap-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  padding: 0 1rem 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kpi-strip > .kpi-card-ui5.is-clickable::part(root) {
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .kpi-strip > .kpi-card-ui5.is-active::part(root) {
+  border-color: var(--sap-blue);
   background: var(--sap-blue-bg);
-  border-left-color: var(--sap-blue);
 }
 
 @media (max-width: 900px) {
   .kpi-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  /* Reset and re-apply separators for 2-column layout */
-  .kpi-strip > .kpi-card-ui5:not(:nth-child(4n+1))::part(root) {
-    border-left: none;
-  }
-
-  .kpi-strip > .kpi-card-ui5:nth-child(even)::part(root) {
-    border-left: 1px solid var(--color-border-subtle);
-  }
 }
 
 @media (max-width: 520px) {
   .kpi-strip {
     grid-template-columns: 1fr;
-  }
-
-  .kpi-strip > .kpi-card-ui5:nth-child(even)::part(root) {
-    border-left: none;
   }
 }
