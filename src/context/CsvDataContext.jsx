@@ -187,10 +187,18 @@ export function CsvDataProvider({ children }) {
 
   // A request to reset the Activity Timeline back to its full range, bumped by a
   // table's Clear (or the range banner's clear) so clearing the table filters
-  // also drops the timeline zoom. The timeline observes the nonce and resets its
-  // local window, which in turn clears timelineRange. Mirrors timelineFocus.
+  // also drops the timeline zoom.
+  //
+  // Two-pronged: `setTimelineRange(null)` clears the filter immediately so the
+  // table un-filters even when ActivityTimeline is not mounted (e.g. the user is
+  // on the Data Table sub-tab of Session/Widget view). The nonce bump separately
+  // tells any mounted ActivityTimeline to reset its internal zoom window so it
+  // re-opens at full range next time it becomes visible.
   const [timelineResetNonce, setTimelineResetNonce] = useState(0)
-  const resetTimeline = useCallback(() => setTimelineResetNonce((n) => n + 1), [])
+  const resetTimeline = useCallback(() => {
+    setTimelineRange(null)
+    setTimelineResetNonce((n) => n + 1)
+  }, [setTimelineRange])
 
   // Compare selection — ephemeral, not persisted to localStorage.
   const [baselineId, setBaselineIdState] = useState(null)
