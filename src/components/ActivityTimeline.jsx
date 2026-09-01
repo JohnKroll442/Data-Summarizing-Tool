@@ -95,6 +95,11 @@ function getPlotRect(container) {
  */
 function ActivityTimeline({
   embedded = false,
+  // startExpanded — start the panel open without the full `embedded` mode
+  // behaviour (action scatter drill-down). Used by the Session/Widget view's
+  // "Time-of-Day Trend" tab, where the timeline should be immediately visible
+  // but keeps the Sessions/Widgets bar-click navigation unchanged.
+  startExpanded = false,
   matrix = null,
   byActionKey = null,
   tierByType = null,
@@ -131,17 +136,18 @@ function ActivityTimeline({
   // The timeline starts collapsed on every shell view; the user opens it
   // manually (or it auto-expands when a "busiest period" card focuses it). In
   // embedded (tab) mode it starts expanded — it IS the tab's content.
-  const [collapsed, setCollapsed] = useState(!embedded)
+  const [collapsed, setCollapsed] = useState(!embedded && !startExpanded)
   // Which /summary/<view> we're on drives the collapse-on-navigation reset.
   const view = location.pathname.split('/').pop()
-  // When you move to another summary view, re-collapse the panel — the timeline
-  // defaults to closed on every view; manual opens then persist until the next
-  // navigation. In embedded (tab) mode we keep it expanded and don't reset on
-  // navigation — the Action View tab owns its visibility.
+  // When navigating to a different summary view, re-collapse the shell panel.
+  // Skipped for both embedded and startExpanded modes — in both cases the
+  // component unmounts on tab/view switch anyway, so there is nothing to
+  // collapse. Without the guard, the effect would immediately collapse the
+  // startExpanded panel on its first mount.
   useEffect(() => {
-    if (embedded) return
+    if (embedded || startExpanded) return
     setCollapsed(true)
-  }, [view, embedded])
+  }, [view, embedded, startExpanded])
 
   // Default legend visibility per view. Determines which series are shown on
   // first render. User can toggle others on via the legend; selections persist
@@ -623,10 +629,14 @@ function ActivityTimeline({
       setActionFilterWindow(null)
     }
 
-    const finish = (view) => {
+    // Pass optional router state so the target view can react (e.g. switch
+    // to its Data Table tab). Sessions and Widgets carry { viewTab: 'table' }
+    // so that clicking a bar while on the "Time-of-Day Trend" sub-tab of
+    // Session/Widget view switches back to the data table automatically.
+    const finish = (view, navState) => {
       pushNavSnapshot(location.pathname)
       resetTimeline()
-      navigate(`/summary/${view}`)
+      navigate(`/summary/${view}`, navState ? { state: navState } : undefined)
       setCollapsed(true)
       requestAnimationFrame(() =>
         scrollFast(document.getElementById('summary-view-top'))
@@ -640,14 +650,14 @@ function ActivityTimeline({
       clearDrills()
       setSessionMultiFilter(ids)
       setSessionFilterWindow(windowLabel)
-      finish('session')
+      finish('session', { viewTab: 'table' })
     } else if (seriesName === 'Widgets') {
       const ids = widgetIdsInWindow(rows, headers, start, end)
       if (ids.length === 0) return
       clearDrills()
       setWidgetMultiFilter(ids)
       setWidgetFilterWindow(windowLabel)
-      finish('widget')
+      finish('widget', { viewTab: 'table' })
     } else if (seriesName === 'Actions') {
       const keys = actionKeysInWindow(rows, headers, start, end)
       if (keys.length === 0) return
