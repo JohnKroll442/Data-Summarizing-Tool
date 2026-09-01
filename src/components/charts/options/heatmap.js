@@ -9,12 +9,26 @@ import {
 
 /**
  * Heatmap — crosstab of `xKey` × `yKey` colored by count (or sum(valueKey)).
+ * mode = 'TIME_SERIES' flips the axes logic:
+ *   x-axis -> timeBucket dimension, y-axis -> entity dimension, value -> anomaly count.
  */
-export function buildHeatmapOption(rows, { xKey, yKey, valueKey } = {}) {
-  if (!xKey || !yKey || !rows?.length) return { series: [] }
+export function buildHeatmapOption(
+  rows,
+  { xKey, yKey, valueKey, mode = 'STORY_ACTION' } = {},
+) {
+  if (!rows?.length) return { series: [] }
 
-  const xCats = Array.from(new Set(rows.map((r) => String(r?.[xKey] ?? '')))).filter(Boolean)
-  const yCats = Array.from(new Set(rows.map((r) => String(r?.[yKey] ?? '')))).filter(Boolean)
+  let xKeyResolved, yKeyResolved; // sentinel columns for TIME_SERIES mode
+  if (mode === 'TIME_SERIES') {
+    xKeyResolved = String(yKey)   // time dimension -> vertical (y-axis)
+    yKeyResolved = String(xKey)   // entity dimension -> horizontal (x-axis)
+  } else {
+    xKeyResolved = String(xKey)    // classic mode: region, plant, ...
+    yKeyResolved = String(yKey)
+  }
+
+  const xCats = Array.from(new Set(rows.map((r) => String(r?.[xKeyResolved] ?? '')))).filter(Boolean)
+  const yCats = Array.from(new Set(rows.map((r) => String(r?.[yKeyResolved] ?? '')))).filter(Boolean)
   if (!xCats.length || !yCats.length) return { series: [] }
 
   const data = []
