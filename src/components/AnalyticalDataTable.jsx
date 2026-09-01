@@ -13,9 +13,6 @@ import './AnalyticalDataTable.css'
  *   onSortChange:(next) => void   (omit to disable header sorting)
  *   emptyMessage:string
  *   height:      CSS height for the table container (default '65vh')
- *   isRowViewed: (rowOriginal) => boolean   (optional) — rows for which this
- *                returns true get a `viewed-row` class (full-row "already
- *                viewed" tint). Omit to disable highlighting entirely.
  *   rowFlagTier: (rowOriginal) => 'performance' | null   (optional) — rows for
  *                which this returns 'performance' get an `anomaly-row
  *                anomaly-row--performance` class (loud tint). Data-quality
@@ -39,7 +36,6 @@ function AnalyticalDataTable({
   onSortChange,
   emptyMessage = 'No rows to display.',
   height = '65vh',
-  isRowViewed,
   rowFlagTier,
   onRowHover,
 }) {
@@ -57,13 +53,6 @@ function AnalyticalDataTable({
   const colsRef = useRef(resolvedColumns)
   colsRef.current = resolvedColumns
 
-  // Keep the latest "viewed" predicate reachable from a STABLE table hook. Like
-  // colsRef above, callers rebuild the predicate every render; the ref lets the
-  // getRowProps closure read the current one without giving `tableHooks` a new
-  // identity (which would force the table to re-init its state each render).
-  const isRowViewedRef = useRef(isRowViewed)
-  isRowViewedRef.current = isRowViewed
-
   // Same stable-ref pattern for the anomaly-tint predicate and the hover
   // callback: callers rebuild them every render, the refs keep `tableHooks`
   // identity-stable so the table doesn't re-init its state.
@@ -74,12 +63,12 @@ function AnalyticalDataTable({
 
   // Whether any per-row feature is active. Fixed for the table's lifetime (the
   // caller either wires these up or not), so it can gate the stable hook below.
-  const hasRowFeatures = Boolean(isRowViewed || rowFlagTier || onRowHover)
+  const hasRowFeatures = Boolean(rowFlagTier || onRowHover)
 
-  // Contribute per-row props: a `viewed-row` / `anomaly-row` className and the
-  // hover handlers. react-table CONCATENATES className across every
-  // getRowProps contributor (it doesn't overwrite the table's built-in row
-  // class), and the row <div> renders in light DOM, so the CSS rules match.
+  // Contribute per-row props: an `anomaly-row` className and the hover
+  // handlers. react-table CONCATENATES className across every getRowProps
+  // contributor (it doesn't overwrite the table's built-in row class), and the
+  // row <div> renders in light DOM, so the CSS rules match.
   // undefined when no feature is supplied, leaving other callers unchanged.
   const tableHooks = useMemo(() => {
     if (!hasRowFeatures) return undefined
@@ -87,7 +76,6 @@ function AnalyticalDataTable({
       (hooks) => {
         hooks.getRowProps.push((rowProps, { row }) => {
           const classes = []
-          if (isRowViewedRef.current?.(row.original)) classes.push('viewed-row')
           const tier = rowFlagTierRef.current?.(row.original)
           if (tier === 'performance') classes.push('anomaly-row', 'anomaly-row--performance')
           const extra = classes.length ? { className: classes.join(' ') } : {}

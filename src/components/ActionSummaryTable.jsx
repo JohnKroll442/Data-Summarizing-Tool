@@ -79,8 +79,6 @@ function ActionSummaryTable({
     pushNavSnapshot,
     viewUi,
     setViewUi,
-    viewedItems,
-    markViewed,
   } = useCsvData()
 
 
@@ -583,7 +581,6 @@ function ActionSummaryTable({
         rows={pageRows}
         sort={sort}
         onSortChange={setSort}
-        isRowViewed={(row) => Boolean(viewedItems.action[actionKey(row)])}
         columns={visibleColumns.map((c) => ({
           ...c,
           // The Action name cell carries the name link plus the always-on
@@ -626,8 +623,8 @@ function ActionSummaryTable({
                       // Record this Action View (route + filters) so Back can
                       // return to it exactly as it is now, before we drill.
                       pushNavSnapshot(location.pathname)
-                      // Mark this action as viewed so its row stays tinted.
-                      markViewed('action', actionKey(row))
+
+
                       // Pin the SAME session as this action row so Widget View
                       // shows only that session's widgets. Actions are grouped
                       // by name + timestamp (not session), so an action name
@@ -660,8 +657,8 @@ function ActionSummaryTable({
                       aria-label={`Open Action Waterfall Chart for ${row.action_name}`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        // Opening the waterfall also counts as viewing.
-                        markViewed('action', actionKey(row))
+
+  
                         onOpenWaterfall({
                           name: row.action_name,
                           timestamp: row._action_timestamp ?? '',
