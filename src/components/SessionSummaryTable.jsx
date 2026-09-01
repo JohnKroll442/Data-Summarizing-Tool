@@ -373,7 +373,9 @@ function SessionSummaryTable({ rows, headers }) {
                     // Clear any deeper drill-down so Action View shows
                     // a fresh, unfiltered set of actions for this session.
                     setActionFilter(null)
-                    navigate('/summary/action')
+                    // Pass activeView:'table' so ActionView always lands on the
+                    // Data Table tab, regardless of which tab was last persisted.
+                    navigate('/summary/action', { state: { activeView: 'table' } })
                   }}
                 >
                   {String(v)}

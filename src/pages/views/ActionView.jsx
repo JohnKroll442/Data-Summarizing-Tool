@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { scrollFast } from '../../lib/scrollFast'
 import KpiStrip from '../../components/KpiStrip'
 import ActionViewSwitcher from '../../components/ActionViewSwitcher'
@@ -17,7 +18,7 @@ import { ACTION_TS } from '../../lib/viewFilters'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDurationPoints } from '../../lib/anomalyDetect'
 import { OFFSET_CLASS_LEGEND, OFFSET_LEGEND_DEFAULT } from '../../components/charts/options/offsetDuration'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
-import { resolveActiveView } from '../../lib/actionViews'
+import { resolveActiveView, isActionViewKey } from '../../lib/actionViews'
 import './ActionView.css'
 
 /**
@@ -40,6 +41,7 @@ import './ActionView.css'
  */
 function ActionView() {
   const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi, timelineRange, thresholds } = useCsvData()
+  const location = useLocation()
 
   // Scope KPIs + charts + detection to match the table. The multiselect
   // Sessions filter, when active, takes over the row scope; otherwise the
@@ -163,6 +165,17 @@ function ActionView() {
   const [activeView, setActiveView] = useState(
     () => resolveActiveView(viewUi.action.activeView),
   )
+
+  // When navigating here from Session View (session name click), the navigate
+  // call passes { state: { activeView: 'table' } } so we always land on the
+  // Data Table — regardless of which tab was last persisted. Mirrors the same
+  // pattern used by SessionView and WidgetView for their own tab switches.
+  useEffect(() => {
+    const requested = location.state?.activeView
+    if (requested && isActionViewKey(requested)) {
+      setActiveView(requested)
+    }
+  }, [location.state])
 
   // Persist the two rail selections into viewUi so the nav snapshot captures
   // them (setViewUi merges, so this leaves the table's own keys untouched).
