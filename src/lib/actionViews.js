@@ -8,6 +8,7 @@ export const ACTION_VIEWS = [
   { key: 'heatmap', label: 'Story × Action' },
   { key: 'offset', label: 'Offset vs Duration' },
   { key: 'timeOfDay', label: 'Time-Of-Day-Trend' },
+  { key: 'charts', label: 'Charts' },
 ]
 
 /** The view shown when nothing is persisted. */

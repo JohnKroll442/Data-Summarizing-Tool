@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Story Anomaly Chart</title>
+
+    <!--
+        UI5 bootstrap — pulls sap.m, sap.viz, and sap.ui.layout from the
+        official CDN. Switch the src to your local runtime path if this is
+        deployed inside a Fiori Launchpad or a BTP HTML5 application.
+    -->
+    <script
+        id="sap-ui-bootstrap"
+        src="https://ui5.sap.com/resources/sap-ui.js"
+        data-sap-ui-theme="sap_horizon"
+        data-sap-ui-libs="sap.m,sap.viz,sap.ui.layout"
+        data-sap-ui-resourceroots='{"chart": "./"}'
+        data-sap-ui-compatVersion="edge"
+        data-sap-ui-async="true">
+    </script>
+
+    <script>
+        sap.ui.getCore().attachInit(function () {
+            sap.ui.require(
+                ["sap/ui/core/mvc/XMLView"],
+                function (XMLView) {
+                    XMLView.create({
+                        viewName: "chart.view.StoryAnomalyChart"
+                    }).then(function (oView) {
+                        oView.placeAt("content");
+                    });
+                }
+            );
+        });
+    </script>
+
+    <style>
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        #content    { height: 100%; }
+    </style>
+</head>
+<body class="sapUiBody" id="content"></body>
+</html>

@@ -6,6 +6,7 @@ import ActionViewSwitcher from '../../components/ActionViewSwitcher'
 import ActionDataTablePanel from '../../components/ActionDataTablePanel'
 import ActionHeatmapPanel from '../../components/ActionHeatmapPanel'
 import ActionOffsetPanel from '../../components/ActionOffsetPanel'
+import ActionChartsPanel from '../../components/ActionChartsPanel'
 import ActivityTimeline from '../../components/ActivityTimeline'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
@@ -446,6 +447,13 @@ function ActionView() {
             tierByType={tierByType}
             scopedRows={scopedRows}
             actionRows={aggRows}
+          />
+        )}
+
+        {activeView === 'charts' && (
+          <ActionChartsPanel
+            aggRows={aggRows}
+            byActionKey={anomalies.byActionKey}
           />
         )}
 

@@ -1,0 +1,143 @@
+/* ── Charts panel shell ──────────────────────────────────────────────────── */
+
+.charts-panel {
+  padding: 0.25rem 0;
+}
+
+/* The free-form canvas — cards are absolutely positioned inside this.
+   Height is set dynamically in the component (always 80 px below the lowest
+   card), so the page can scroll and the bottom-right resize handle is never
+   hidden. overflow: visible lets cards nudge outside the canvas edge without
+   being clipped. */
+.charts-canvas {
+  position: relative;
+  width: 100%;
+  /* min-height is intentionally omitted here — the inline style owns it */
+}
+
+/* ── Positioner wrapper (absolute-positioned container for each card) ─────── */
+
+/* The drag and z-index are managed via inline styles set by the component.
+   This class just ensures the Card fills the positioner and the resize handle
+   can be layered on top via absolute positioning. */
+.chart-widget-positioner {
+  /* position/left/top/width/height/zIndex all come from inline styles */
+}
+
+/* ── UI5 Card shell ───────────────────────────────────────────────────────── */
+
+/* Ensure the UI5 Card fills the positioner width (it does by default, but
+   min-width:0 prevents it from overflowing on narrow screens). */
+.chart-widget-card {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Apply grab cursor to the CardHeader and block text selection while dragging.
+   The :active state switches to grabbing so the cursor stays correct mid-drag. */
+.chart-widget-card__header {
+  cursor: grab !important;
+  user-select: none;
+}
+
+.chart-widget-card__header:active {
+  cursor: grabbing !important;
+}
+
+.chart-widget__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.chart-widget__label {
+  font-size: 0.8125rem;
+  color: var(--sap-text-muted, #556b82);
+  white-space: nowrap;
+}
+
+.chart-widget__num-input {
+  width: 52px;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--color-border, #dde1e7);
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  background: #ffffff;
+  color: var(--sap-text, #1d2d3e);
+  text-align: center;
+  -moz-appearance: textfield; /* Firefox: hide spinner */
+}
+
+.chart-widget__num-input::-webkit-inner-spin-button,
+.chart-widget__num-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.chart-widget__num-input:focus {
+  outline: 2px solid var(--sap-blue, #0070f2);
+  outline-offset: 1px;
+  border-color: var(--sap-blue, #0070f2);
+}
+
+/* ── Chart body ──────────────────────────────────────────────────────────── */
+
+/* The body receives an explicit pixel height from the component
+   (bounds.h - CARD_HEADER_HEIGHT), so height:100% on ReactECharts resolves
+   correctly — same pattern as EChartCard's fixed height prop. */
+.chart-widget__body {
+  overflow: hidden;
+  position: relative;
+  /* No padding — the UI5 Card content area already provides spacing. */
+}
+
+.chart-widget__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.875rem;
+  color: var(--sap-text-muted, #556b82);
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ── Custom resize handle (bottom-right corner ◢) ────────────────────────── */
+
+.chart-widget__resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: se-resize;
+  /* Draw the classic two-line corner grip */
+  background-image:
+    linear-gradient(
+      -45deg,
+      transparent 30%,
+      var(--color-border, #dde1e7) 30%,
+      var(--color-border, #dde1e7) 34%,
+      transparent 34%,
+      transparent 54%,
+      var(--color-border, #dde1e7) 54%,
+      var(--color-border, #dde1e7) 58%,
+      transparent 58%
+    );
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  border-radius: 0 0 0.5rem 0;
+}
+
+.chart-widget:hover .chart-widget__resize-handle {
+  opacity: 1;
+}
+
+/* ── Header slot (controls area on the right of the header) ──────────────── */
+
+.chart-widget__header-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}

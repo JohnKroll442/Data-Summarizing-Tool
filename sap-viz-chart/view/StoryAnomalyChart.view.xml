@@ -1,0 +1,131 @@
+<mvc:View
+    controllerName="chart.controller.StoryAnomalyChart"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    xmlns:l="sap.ui.layout"
+    xmlns:viz="sap.viz.ui5.controls"
+    xmlns:viz.data="sap.viz.ui5.data"
+    xmlns:viz.feeds="sap.viz.ui5.controls.common.feeds"
+    displayBlock="true">
+
+    <!--
+        Page shell — gives us the SAP Fiori header bar and content padding.
+        Remove and replace with a plain <Panel> if embedding inside an existing
+        Fiori Launchpad tile.
+    -->
+    <Page
+        id="page"
+        title="Stories by Anomaly Count"
+        showHeader="true"
+        class="sapUiContentPadding">
+
+        <content>
+            <VBox fitContainer="true" class="sapUiSmallMargin">
+
+                <!-- ── Top-N control bar ──────────────────────────────────── -->
+                <Toolbar class="sapUiSmallMarginBottom" style="background:transparent;border:none">
+                    <Label text="Show top" class="sapUiTinyMarginEnd" />
+                    <StepInput
+                        id="topNInput"
+                        value="10"
+                        min="1"
+                        max="50"
+                        step="1"
+                        width="90px"
+                        validationMode="LiveChange"
+                        change=".onTopNChange" />
+                    <Label text="stories (sorted by anomaly count)" class="sapUiTinyMarginBegin" />
+                    <ToolbarSpacer />
+                    <Text
+                        id="ratioLabel"
+                        text=""
+                        class="sapUiSmallMarginEnd sapThemeHighlight-asColor" />
+                </Toolbar>
+
+                <!-- ── VizFrame ───────────────────────────────────────────── -->
+                <!--
+                    vizType="bar" = horizontal grouped bar in sap.viz terminology.
+                    Two measures (Total, Anomalies) render as two side-by-side
+                    horizontal bars per story row, matching the reference image.
+                    The third measure (Anomaly %) is wired only to the tooltip
+                    FeedItem so it appears in the hover card but not as a bar.
+                -->
+                <viz:VizFrame
+                    id="vizFrame"
+                    vizType="bar"
+                    uiConfig="{applicationSet:'fiori'}"
+                    width="100%"
+                    height="520px">
+
+                    <!-- Dataset: one row per story, three measures -->
+                    <viz:dataset>
+                        <viz.data:FlattenedDataset data="{/stories}">
+
+                            <viz.data:dimensions>
+                                <viz.data:DimensionDefinition
+                                    name="Story"
+                                    value="{story}" />
+                            </viz.data:dimensions>
+
+                            <viz.data:measures>
+                                <!-- Plotted bars -->
+                                <viz.data:MeasureDefinition
+                                    name="Total"
+                                    value="{total}" />
+                                <viz.data:MeasureDefinition
+                                    name="Anomalies"
+                                    value="{anomalies}" />
+                                <!-- Tooltip-only measure — not fed to valueAxis -->
+                                <viz.data:MeasureDefinition
+                                    name="Anomaly %"
+                                    value="{anomalyRatio}" />
+                            </viz.data:measures>
+
+                        </viz.data:FlattenedDataset>
+                    </viz:dataset>
+
+                    <!-- Feeds -->
+                    <viz:feeds>
+                        <!--
+                            valueAxis — the two bars drawn per story.
+                            Order here controls the color palette assignment:
+                            index 0 → Total (blue), index 1 → Anomalies (amber).
+                        -->
+                        <viz.feeds:FeedItem
+                            uid="valueAxis"
+                            type="Measure"
+                            values="Total,Anomalies" />
+
+                        <!--
+                            categoryAxis — story names on the Y axis.
+                        -->
+                        <viz.feeds:FeedItem
+                            uid="categoryAxis"
+                            type="Dimension"
+                            values="Story" />
+
+                        <!--
+                            tooltip — extra measures shown in the hover card
+                            but NOT rendered as bars. Anomaly % lands here.
+                        -->
+                        <viz.feeds:FeedItem
+                            uid="tooltip"
+                            type="Measure"
+                            values="Anomaly %" />
+                    </viz:feeds>
+
+                </viz:VizFrame>
+
+                <!--
+                    Popover — the built-in SAP viz detail card that appears when
+                    a bar is clicked. Connected to the VizFrame in the controller
+                    via oPopover.connect(oVizFrame.getVizUid()).
+                -->
+                <viz:Popover id="popover" />
+
+            </VBox>
+        </content>
+
+    </Page>
+
+</mvc:View>
