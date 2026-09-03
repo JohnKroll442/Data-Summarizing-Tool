@@ -3,13 +3,17 @@ import ReactECharts from 'echarts-for-react'
 import { Card, CardHeader } from '@ui5/webcomponents-react'
 import { isAnomalyFlagged } from '../lib/anomalyDetect'
 import { buildStoryAnomalyOption } from './charts/options/storyAnomalyBar'
+import { buildActionBoxplotOption } from './charts/options/actionBoxplot'
+import { buildActionParetoOption }  from './charts/options/actionPareto'
 import './ActionChartsPanel.css'
 
 // CardHeader height in the SAP Horizon theme (title row + top/bottom borders).
 // Used to compute how much vertical space the chart body gets inside the card.
 const CARD_HEADER_HEIGHT = 52
 
-const DEFAULT_TOP_N = 10
+const DEFAULT_TOP_N        = 10
+const DEFAULT_BOX_TOP_N    = 10
+const DEFAULT_PARETO_TOP_N = 6
 
 /**
  * Initial layout for every chart card on the canvas.
@@ -17,10 +21,16 @@ const DEFAULT_TOP_N = 10
  * x/y = px offset from the canvas top-left corner.
  * w/h = px dimensions of the card.
  *
- * To add more charts later, add an entry here AND a <ChartCard> in the render.
+ * Two-column arrangement (col-1 = x:16, col-2 = x:860):
+ *   Top row:    Story Anomaly Bar  |  Action Duration Box Plot
+ *   Bottom row: Action Pareto      |  (open canvas)
+ *
+ * Cards are freely draggable / resizable — this is just the starting position.
  */
 const INITIAL_LAYOUT = {
-  'story-anomaly': { x: 16, y: 16, w: 820, h: 460, minW: 320, minH: 220, zIndex: 1 },
+  'story-anomaly': { x: 16,  y: 16,  w: 820, h: 460, minW: 320, minH: 220, zIndex: 1 },
+  'action-boxplot':{ x: 860, y: 16,  w: 820, h: 500, minW: 320, minH: 280, zIndex: 1 },
+  'action-pareto': { x: 16,  y: 492, w: 820, h: 480, minW: 320, minH: 260, zIndex: 1 },
 }
 
 // Global z-index counter so the last-touched card always sits on top.
@@ -156,8 +166,16 @@ function ChartCard({ id, bounds, title, onBoundsChange, headerSlot, children, ca
 // No external dependencies — uses pointer events for drag and resize.
 //
 function ActionChartsPanel({ aggRows, byActionKey }) {
-  const [topN,   setTopN]   = useState(DEFAULT_TOP_N)
-  const [layout, setLayout] = useState(INITIAL_LAYOUT)
+  const [topN,          setTopN]          = useState(DEFAULT_TOP_N)
+  // String states let the user clear the field before typing a new number.
+  // The numeric value used by the chart is derived below via parseInt.
+  const [boxTopNStr,    setBoxTopNStr]    = useState(String(DEFAULT_BOX_TOP_N))
+  const [paretoTopNStr, setParetoTopNStr] = useState(String(DEFAULT_PARETO_TOP_N))
+  const [layout,        setLayout]        = useState(INITIAL_LAYOUT)
+
+  // Derived numeric values — fall back to the defaults when the field is empty
+  const boxTopN    = Math.max(3,  parseInt(boxTopNStr,    10) || DEFAULT_BOX_TOP_N)
+  const paretoTopN = Math.max(3,  parseInt(paretoTopNStr, 10) || DEFAULT_PARETO_TOP_N)
   const canvasRef = useRef(null)
 
   const updateBounds = useCallback((id, patch) => {
@@ -192,6 +210,18 @@ function ActionChartsPanel({ aggRows, byActionKey }) {
     [storyData],
   )
 
+  // ── Box plot: action duration distribution ─────────────────────────────
+  const boxplotOption = useMemo(
+    () => buildActionBoxplotOption(aggRows, { topN: boxTopN }),
+    [aggRows, boxTopN],
+  )
+
+  // ── Pareto: which actions own the most total time ─────────────────────
+  const paretoOption = useMemo(
+    () => buildActionParetoOption(aggRows, { topN: paretoTopN }),
+    [aggRows, paretoTopN],
+  )
+
   // Keep the canvas at least 80 px below the lowest card edge so the
   // bottom-right resize handle is always reachable — even when a card fills
   // most of the viewport.
@@ -204,6 +234,7 @@ function ActionChartsPanel({ aggRows, byActionKey }) {
     <section className="action-view-fullscreen charts-panel" aria-label="Charts">
       <div ref={canvasRef} className="charts-canvas" style={{ height: canvasHeight }}>
 
+        {/* ── Story Anomaly Bar ───────────────────────────────────────── */}
         <ChartCard
           id="story-anomaly"
           bounds={layout['story-anomaly']}
@@ -236,6 +267,88 @@ function ActionChartsPanel({ aggRows, byActionKey }) {
           ) : (
             <ReactECharts
               option={anomalyBarOption}
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'canvas' }}
+              notMerge
+            />
+          )}
+        </ChartCard>
+
+        {/* ── Action Duration Box Plot ────────────────────────────────── */}
+        <ChartCard
+          id="action-boxplot"
+          bounds={layout['action-boxplot']}
+          title="Action Duration Distribution (Box Plot)"
+          onBoundsChange={updateBounds}
+          canvasRef={canvasRef}
+          headerSlot={
+            <div className="chart-widget__controls">
+              <label className="chart-widget__label" htmlFor="boxplot-top-n">Top</label>
+              <input
+                id="boxplot-top-n"
+                type="number"
+                className="chart-widget__num-input"
+                value={boxTopNStr}
+                min={3}
+                max={50}
+                onChange={(e) => setBoxTopNStr(e.target.value)}
+                onBlur={() => {
+                  const v = parseInt(boxTopNStr, 10)
+                  if (!Number.isFinite(v) || v < 3) setBoxTopNStr(String(DEFAULT_BOX_TOP_N))
+                }}
+              />
+              <span className="chart-widget__label">actions</span>
+            </div>
+          }
+        >
+          {!boxplotOption?.series?.length ? (
+            <div className="chart-widget__empty">
+              Not enough data — each action needs at least 3 recorded instances.
+            </div>
+          ) : (
+            <ReactECharts
+              option={boxplotOption}
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'canvas' }}
+              notMerge
+            />
+          )}
+        </ChartCard>
+
+        {/* ── Action Pareto ───────────────────────────────────────────── */}
+        <ChartCard
+          id="action-pareto"
+          bounds={layout['action-pareto']}
+          title="Action Duration Pareto"
+          onBoundsChange={updateBounds}
+          canvasRef={canvasRef}
+          headerSlot={
+            <div className="chart-widget__controls">
+              <label className="chart-widget__label" htmlFor="pareto-top-n">Top</label>
+              <input
+                id="pareto-top-n"
+                type="number"
+                className="chart-widget__num-input"
+                value={paretoTopNStr}
+                min={3}
+                max={50}
+                onChange={(e) => setParetoTopNStr(e.target.value)}
+                onBlur={() => {
+                  const v = parseInt(paretoTopNStr, 10)
+                  if (!Number.isFinite(v) || v < 3) setParetoTopNStr(String(DEFAULT_PARETO_TOP_N))
+                }}
+              />
+              <span className="chart-widget__label">actions</span>
+            </div>
+          }
+        >
+          {!paretoOption?.series?.length ? (
+            <div className="chart-widget__empty">
+              No action duration data available for the current scope.
+            </div>
+          ) : (
+            <ReactECharts
+              option={paretoOption}
               style={{ height: '100%', width: '100%' }}
               opts={{ renderer: 'canvas' }}
               notMerge
