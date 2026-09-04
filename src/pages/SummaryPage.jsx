@@ -5,7 +5,6 @@ import '@ui5/webcomponents-icons/dist/nav-back.js'
 import '@ui5/webcomponents-icons/dist/action-settings.js'
 import { useCsvData } from '../context/useCsvData'
 import { HeaderSlotProvider } from '../context/HeaderSlot'
-import ActivityTimeline from '../components/ActivityTimeline'
 import ActionViewSwitcher from '../components/ActionViewSwitcher'
 import ThresholdSettingsDialog from '../components/ThresholdSettingsDialog'
 import './SummaryPage.css'
@@ -103,11 +102,6 @@ function SummaryPage() {
       <div className="summary-content">
         {/* Heading + KPIs portal in here, so they sit above the timeline. */}
         <div className="summary-header-slot" ref={setHeaderSlot} />
-        {/* The shared timeline sits above every view EXCEPT the Action View
-            (which hosts it inside its own "Time-Of-Day-Trend" tab), the
-            Session View, and the Widget View — both of which now host the
-            timeline inside their own "Time-of-Day Trend" sub-tab. */}
-        {activeSegment !== 'action' && activeSegment !== 'session' && activeSegment !== 'widget' && <ActivityTimeline />}
         {/* Scroll anchor: the Sessions-bar click in ActivityTimeline collapses
             the timeline and scrolls this into view so the filtered table is
             front and center. */}
