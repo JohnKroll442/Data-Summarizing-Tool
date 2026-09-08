@@ -688,11 +688,11 @@ function ActivityTimeline({
 
   return (
     <section
-      className={`activity-timeline${embedded ? ' is-embedded' : ''}`}
+      className={`activity-timeline${(embedded || startExpanded) ? ' is-embedded' : ''}`}
       ref={rootRef}
     >
       <header className="activity-timeline-header">
-        {embedded ? (
+        {(embedded || startExpanded) ? (
           <span className="activity-timeline-title">Activity Timeline</span>
         ) : (
           <button

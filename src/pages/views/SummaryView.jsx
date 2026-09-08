@@ -1,5 +1,14 @@
 import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import {
+  Card,
+  CardHeader,
+  List,
+  ListItemStandard,
+  MessageStrip,
+  ObjectStatus,
+  Title,
+} from '@ui5/webcomponents-react'
 import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { computeRankings, computeBusiest } from '../../lib/summary'
@@ -120,90 +129,79 @@ function SummaryView() {
       ].filter((c) => c.period)
     : []
 
+  // ── Ranking card (Card + List of up to 10 ListItemStandard rows) ────────
   const renderList = (list) => (
-    <section className="summary-top10-card" key={list.id}>
-      <h4 className="summary-top10-title">{list.title}</h4>
+    <Card key={list.id} header={<CardHeader titleText={list.title} />}>
       {list.items.length === 0 ? (
         <p className="summary-top10-empty">No data for this metric.</p>
       ) : (
-        <ol className="summary-top10-list">
+        <List selectionMode="None">
           {list.items.map((it, i) => (
-            <li key={`${it.label}-${i}`}>
-              <button
-                type="button"
-                className="summary-top10-row"
-                onClick={() => openEntity(it.nav)}
-                title={`Open in ${it.nav.view} view`}
-              >
-                <span className="summary-top10-rank">{i + 1}</span>
-                <span className="summary-top10-name">
-                  <span className="summary-top10-primary">{it.label}</span>
-                  {it.sublabel && <span className="summary-top10-sub">{it.sublabel}</span>}
-                </span>
-                <span className="summary-top10-value">{formatDurationMs(it.value)}</span>
-              </button>
-            </li>
+            <ListItemStandard
+              key={`${it.label}-${i}`}
+              description={it.sublabel ?? undefined}
+              additionalText={formatDurationMs(it.value)}
+              type="Navigation"
+              onClick={() => openEntity(it.nav)}
+            >
+              {i + 1}.&nbsp;{it.label}
+            </ListItemStandard>
           ))}
-        </ol>
+        </List>
       )}
-    </section>
+    </Card>
   )
 
   return (
     <>
-      <HeaderPortal>
-      </HeaderPortal>
+      <HeaderPortal />
 
+      {/* Timeline range banner — MessageStrip close button = "Clear" */}
       {timelineRange && (
-        <div className="summary-active-window is-centered" role="status">
-          Busiest periods and rankings for the timeline range{' '}
-          <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
-          <button
-            type="button"
-            className="summary-active-window-clear"
-            onClick={resetTimeline}
-            title="Reset the Activity Timeline to its full range"
-          >
-            Clear
-          </button>
+        <div className="summary-ms-wrap">
+          <MessageStrip design="Information" onClose={resetTimeline}>
+            Busiest periods and rankings for the timeline window&nbsp;
+            <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+          </MessageStrip>
         </div>
       )}
 
+      {/* Busiest period cards — CardHeader interactive = full-header click target */}
       {busiestCards.length > 0 && (
         <div className="summary-busiest" role="group" aria-label="Busiest periods">
           {busiestCards.map((c) => (
-            <button
-              type="button"
-              className="summary-busiest-card"
+            <Card
               key={c.key}
-              onClick={() => focusTimeline(c.period.min, c.period.max)}
-              title="Focus the Activity Timeline on this period"
-            >
-              <div className="summary-busiest-label">{c.label}</div>
-              <div className="summary-busiest-period">{c.period.label}</div>
-              <div className="summary-busiest-count">
-                {formatCount(c.period.count)} actions
-              </div>
-            </button>
+              className="summary-busiest-card-ui5"
+              header={
+                <CardHeader
+                  titleText={c.label}
+                  subtitleText={c.period.label}
+                  interactive
+                  onHeaderClick={() => focusTimeline(c.period.min, c.period.max)}
+                  action={
+                    <ObjectStatus state="Information">
+                      {formatCount(c.period.count)}&nbsp;actions
+                    </ObjectStatus>
+                  }
+                />
+              }
+            />
           ))}
         </div>
       )}
 
-      <section className="summary-rank-section summary-rank-slowest">
-        <h3 className="summary-rank-heading">
-          <span className="summary-rank-dot" aria-hidden="true" />
-          Slowest 10
-        </h3>
+      {/* Slowest 10 */}
+      <section className="summary-rank-section">
+        <Title level="H4" className="summary-rank-title">Slowest 10</Title>
         <div className="summary-top10-grid">{rankings.slowest.map(renderList)}</div>
       </section>
 
       <hr className="summary-rank-divider" />
 
-      <section className="summary-rank-section summary-rank-fastest">
-        <h3 className="summary-rank-heading">
-          <span className="summary-rank-dot" aria-hidden="true" />
-          Fastest 10
-        </h3>
+      {/* Fastest 10 */}
+      <section className="summary-rank-section">
+        <Title level="H4" className="summary-rank-title">Fastest 10</Title>
         <div className="summary-top10-grid">{rankings.fastest.map(renderList)}</div>
       </section>
     </>

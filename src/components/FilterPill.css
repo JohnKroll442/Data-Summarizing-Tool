@@ -1,95 +1,14 @@
-.filter-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
-  background: var(--sap-blue);
-  color: #fff;
-  border: 1px solid var(--sap-blue-dark);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 1px 3px rgba(0, 64, 176, 0.3);
-}
+/* UI5 Token handles its own chip styling (shape, colour, × button).
+   Only layout for the wrapping bar is needed here. */
 
-/* A wrapping row of pills — one per active filter value. Pills manage their
-   own margin normally; inside the bar the bar owns the spacing. */
+/* Wrapping row of UI5 Tokens (+ optional Show all/less Button).
+   Token and Button handle their own chip/button styling via SAP Horizon. */
 .filter-pill-bar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
-}
-
-.filter-pill-bar .filter-pill {
-  margin-bottom: 0;
-}
-
-/* Collapsed summary chip: same shell as a pill, a shade darker so it reads as
-   an aggregate ("Session · 76 selected") rather than one value. */
-.filter-pill-summary {
-  background: var(--sap-blue-dark);
-  border-color: var(--sap-blue-darker);
-}
-
-/* Inline "Show all" / "Show less" text toggle. Blue when standing on the light
-   bar; light when it sits inside the (dark) summary chip. */
-.filter-pill-toggle {
-  align-self: center;
-  padding: 0.2rem 0.4rem;
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--sap-blue);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.filter-pill-toggle:hover {
-  color: var(--sap-blue-darker);
-}
-
-.filter-pill-summary .filter-pill-toggle {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.filter-pill-summary .filter-pill-toggle:hover {
-  color: #fff;
-}
-
-.filter-pill-label {
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-wide);
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.filter-pill-value {
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.filter-pill-clear {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.filter-pill-clear:hover {
-  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Cells you can click to drill down. */

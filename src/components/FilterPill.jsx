@@ -1,31 +1,23 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { Token, Button } from '@ui5/webcomponents-react'
 import './FilterPill.css'
 
 /**
- * FilterPill — a small chip showing the active drill-down filter on
- * ActionView / WidgetView. Click the × to clear and see all rows again.
+ * FilterPill — a UI5 Token chip showing one active drill-down filter.
+ * The Token's built-in × button fires onDelete → calls onClear.
  *
  * Props:
  *   label   short uppercase label, e.g. "Session" or "Action"
- *   value   the filter value (truncated with ellipsis if long)
+ *   value   the filter value
  *   onClear callback to remove the filter
  */
 function FilterPill({ label, value, onClear }) {
   return (
-    <div className="filter-pill" role="status">
-      <span className="filter-pill-label">{label}</span>
-      <span className="filter-pill-value" title={String(value)}>{value}</span>
-      <button
-        type="button"
-        className="filter-pill-clear"
-        onClick={onClear}
-        aria-label="Clear filter"
-        title="Clear filter"
-      >
-        <X size={14} />
-      </button>
-    </div>
+    <Token
+      text={`${label} · ${value}`}
+      title={String(value)}
+      onDelete={onClear}
+    />
   )
 }
 
@@ -84,61 +76,46 @@ export function FilterPills({ items, collapseAfter = COLLAPSE_AFTER }) {
         const overflow = g.items.length > collapseAfter
         const open = expanded.has(g.label)
 
-        // Under the threshold, or explicitly expanded → individual pills
-        // (with a "Show less" affordance when it was collapsible).
+        // Under threshold, or explicitly expanded → one Token per value
         if (!overflow || open) {
-          const pills = g.items.map((it) => (
-            <FilterPill
+          const tokens = g.items.map((it) => (
+            <Token
               key={it.key ?? `${it.label}:${it.value}`}
-              label={it.label}
-              value={it.value}
-              onClear={it.onClear}
+              text={`${it.label} · ${it.value}`}
+              title={String(it.value)}
+              onDelete={it.onClear}
             />
           ))
           if (overflow) {
-            pills.push(
-              <button
+            tokens.push(
+              <Button
                 key={`less:${g.label}`}
-                type="button"
-                className="filter-pill-toggle"
+                design="Transparent"
                 onClick={() => toggle(g.label)}
-                aria-expanded
               >
                 Show less
-              </button>,
+              </Button>,
             )
           }
-          return pills
+          return tokens
         }
 
-        // Collapsed summary chip. clear-all comes from the group (never a loop
-        // over per-value onClear — those close over the same snapshot and only
-        // the last would take effect).
+        // Collapsed: one summary Token + a Transparent Button to expand
         const onClearAll = g.items[0]?.onClearAll
         return [
-          <div className="filter-pill filter-pill-summary" key={`sum:${g.label}`} role="status">
-            <span className="filter-pill-label">{g.label}</span>
-            <span className="filter-pill-value">{g.items.length} selected</span>
-            <button
-              type="button"
-              className="filter-pill-toggle"
-              onClick={() => toggle(g.label)}
-              aria-expanded={false}
-            >
-              Show all
-            </button>
-            {onClearAll && (
-              <button
-                type="button"
-                className="filter-pill-clear"
-                onClick={onClearAll}
-                aria-label={`Clear all ${g.label} filters`}
-                title={`Clear all ${g.items.length} ${g.label} filters`}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>,
+          <Token
+            key={`sum:${g.label}`}
+            text={`${g.label} · ${g.items.length} selected`}
+            title={`${g.items.length} ${g.label} filters active — click × to clear all`}
+            onDelete={onClearAll ?? undefined}
+          />,
+          <Button
+            key={`show:${g.label}`}
+            design="Transparent"
+            onClick={() => toggle(g.label)}
+          >
+            Show all
+          </Button>,
         ]
       })}
     </div>
