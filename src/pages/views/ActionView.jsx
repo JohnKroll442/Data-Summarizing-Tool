@@ -16,6 +16,8 @@ import { actionKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
 import { matchesTimeRange } from '../../lib/timeBuckets'
 import { ACTION_TS } from '../../lib/viewFilters'
+import { formatTimeRangeLabel } from '../../lib/format'
+import '../../components/SessionSummaryTable.css'
 import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDurationPoints } from '../../lib/anomalyDetect'
 import { OFFSET_CLASS_LEGEND, OFFSET_LEGEND_DEFAULT } from '../../components/charts/options/offsetDuration'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
@@ -41,7 +43,12 @@ import './ActionView.css'
  *     panel just re-tallies over the visible keys via summarizeActionFlags.
  */
 function ActionView() {
-  const { rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi, timelineRange, thresholds } = useCsvData()
+  const {
+    rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi,
+    timelineRange, resetTimeline,
+    actionInvocationFilter, actionFilterWindow, setActionInvocationFilter,
+    thresholds,
+  } = useCsvData()
   const location = useLocation()
 
   // Scope KPIs + charts + detection to match the table. The multiselect
@@ -77,11 +84,28 @@ function ActionView() {
     [scopedRows, headers],
   )
 
-  // The max-duration crosstab behind the "Story × Action heatmap" chart tab. Scoped to
-  // the session (like the rail), independent of the table's column filters.
+  // aggRows narrowed by whichever time filter(s) are currently active — the
+  // timeline brush (timelineRange) and/or the action-invocation drill
+  // (actionInvocationFilter, set by clicking a bar on the Time of Day tab).
+  // Keeps the Heatmap, Offset, and Charts tabs in sync with the Data Table.
+  // When no filter is active this is the full aggRows set.
+  const timeFilteredAggRows = useMemo(() => {
+    let result = aggRows
+    if (timelineRange) {
+      result = result.filter((r) => matchesTimeRange(r, ACTION_TS, timelineRange))
+    }
+    if (actionInvocationFilter?.length > 0) {
+      const keySet = new Set(actionInvocationFilter.map(String))
+      result = result.filter((r) => keySet.has(String(r._action_timestamp ?? '')))
+    }
+    return result
+  }, [aggRows, timelineRange, actionInvocationFilter])
+
+  // The max-duration crosstab behind the "Story × Action heatmap" chart tab.
+  // Uses timeFilteredAggRows so the heatmap cells respect the Time of Day brush.
   const storyActionMatrix = useMemo(
-    () => buildStoryActionMatrix(aggRows),
-    [aggRows],
+    () => buildStoryActionMatrix(timeFilteredAggRows),
+    [timeFilteredAggRows],
   )
 
   // One (duration, max widget offset) point per action instance for the Offset
@@ -92,6 +116,24 @@ function ActionView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [scopedRows, headers, thresholds.slowActionMs],
   )
+
+  // Offset scatter points narrowed to the active timelineRange. Derived from
+  // the full offsetDuration by dropping points whose actionKey is not in the
+  // time-filtered aggRows set — avoids re-running the expensive raw-row build
+  // while keeping the scatter, its subtitle counts, and the KPI offsetBase
+  // consistent with the Heatmap and Charts tabs.
+  const filteredOffsetDuration = useMemo(() => {
+    if (!timelineRange && !actionInvocationFilter?.length) return offsetDuration
+    const validKeys = new Set(
+      timeFilteredAggRows.map((r) => `${r.action_name}::${r._action_timestamp ?? ''}`)
+    )
+    const points = offsetDuration.points.filter((p) => validKeys.has(p.actionKey))
+    const counts = { ok: 0, large: 0, overrun: 0 }
+    for (const p of points) {
+      if (p.klass in counts) counts[p.klass]++
+    }
+    return { ...offsetDuration, points, counts }
+  }, [offsetDuration, timeFilteredAggRows, timelineRange])
 
   // The heatmap cell whose drill-down detail is open, as { story, action }, or
   // null when none is selected. Reset if it points at a combo the current matrix
@@ -184,6 +226,15 @@ function ActionView() {
     setViewUi('action', { anomalyTypeFilter, durationBucket, activeView, showAnomalies })
   }, [anomalyTypeFilter, durationBucket, activeView, showAnomalies, setViewUi])
 
+  // When switching TO the timeOfDay tab the ActivityTimeline's wrapper div goes
+  // from display:none → visible. Notify ECharts so it redraws at the correct
+  // width (its ResizeObserver picks this up via a synthetic window resize).
+  useEffect(() => {
+    if (activeView === 'timeOfDay') {
+      window.dispatchEvent(new Event('resize'))
+    }
+  }, [activeView])
+
   const durationBucketFilter = durationBucket
     ? bands.find((b) => b.key === durationBucket) ?? null
     : null
@@ -199,8 +250,9 @@ function ActionView() {
   }, [activeView, aggRows, filteredActionRows, timelineRange])
 
   // When on the offset tab, the table is not mounted so filteredActionRows is
-  // stale or empty. Build KPI base from aggRows, joined to offsetDuration.points
-  // (the only source of klass), filtered to the series visible in the legend.
+  // stale or empty. Build KPI base from timeFilteredAggRows (already scoped to
+  // the timelineRange), joined to filteredOffsetDuration.points (the only source
+  // of klass), filtered to the series visible in the legend.
   // aggRows rows with no scatter point (no widget offset data) are excluded —
   // they're invisible on the chart regardless of legend state.
   // On all other tabs, chain through timeOfDayBase so both fixes compose cleanly.
@@ -209,19 +261,19 @@ function ActionView() {
 
     // klass lookup: actionKey = "name::timestamp" matches aggRows' own key format
     const klassMap = new Map(
-      offsetDuration.points.map((p) => [p.actionKey, p.klass])
+      filteredOffsetDuration.points.map((p) => [p.actionKey, p.klass])
     )
     const visibleKlasses = new Set(
       OFFSET_CLASS_LEGEND
         .filter((c) => offsetLegendSelected[c.name] !== false)
         .map((c) => c.klass)
     )
-    return aggRows.filter((r) => {
+    return timeFilteredAggRows.filter((r) => {
       const key = `${r.action_name}::${r._action_timestamp ?? ''}`
       const klass = klassMap.get(key)
       return klass !== undefined && visibleKlasses.has(klass)
     })
-  }, [activeView, aggRows, timeOfDayBase, offsetLegendSelected, offsetDuration])
+  }, [activeView, timeFilteredAggRows, timeOfDayBase, offsetLegendSelected, filteredOffsetDuration])
 
   // The visible action set narrowed to the selected duration bucket. This feeds
   // the KPI strip, the anomaly-summary counts and the waterfall picker so they
@@ -411,6 +463,46 @@ function ActionView() {
           />
         )}
 
+        {/* ── Time-filter banner — shown on every non-table tab when a time filter
+             is active. Matches the Data Table's "Showing rows within the timeline
+             range" banner so the user always sees which filter is in effect and
+             can clear it without switching back to the table tab. ── */}
+        {(activeView === 'heatmap' || activeView === 'offset' || activeView === 'charts') && (
+          <>
+            {timelineRange && (
+              <div className="summary-active-window is-centered" role="status">
+                Showing data within the timeline range{' '}
+                <strong>{formatTimeRangeLabel(timelineRange.min, timelineRange.max)}</strong>
+                <button
+                  type="button"
+                  className="summary-active-window-clear"
+                  onClick={resetTimeline}
+                  title="Reset the Activity Timeline to its full range"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            {actionFilterWindow && actionInvocationFilter.length > 0 && (
+              <div className="summary-active-window" role="status">
+                <span className="summary-active-window-dot" aria-hidden="true" />
+                Showing actions active <strong>{actionFilterWindow}</strong>
+                <span className="summary-active-window-count">
+                  · {actionInvocationFilter.length} action{actionInvocationFilter.length === 1 ? '' : 's'}
+                </span>
+                <button
+                  type="button"
+                  className="summary-active-window-clear"
+                  onClick={() => setActionInvocationFilter([])}
+                  title="Clear the time-of-day action filter"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
         {activeView === 'heatmap' && (
           <ActionHeatmapPanel
             matrix={storyActionMatrix}
@@ -429,7 +521,7 @@ function ActionView() {
 
         {activeView === 'offset' && (
           <ActionOffsetPanel
-            data={offsetDuration}
+            data={filteredOffsetDuration}
             matrix={storyActionMatrix}
             rows={scopedRows}
             headers={headers}
@@ -439,7 +531,10 @@ function ActionView() {
           />
         )}
 
-        {activeView === 'timeOfDay' && (
+        {/* ActivityTimeline is always mounted so its zoom/pan/scatter state
+            persists when the user switches to another tab and comes back.
+            display:none hides it visually without unmounting the component. */}
+        <div style={activeView === 'timeOfDay' ? undefined : { display: 'none' }}>
           <ActivityTimeline
             embedded
             matrix={storyActionMatrix}
@@ -448,11 +543,11 @@ function ActionView() {
             scopedRows={scopedRows}
             actionRows={aggRows}
           />
-        )}
+        </div>
 
         {activeView === 'charts' && (
           <ActionChartsPanel
-            aggRows={aggRows}
+            aggRows={timeFilteredAggRows}
             byActionKey={anomalies.byActionKey}
           />
         )}

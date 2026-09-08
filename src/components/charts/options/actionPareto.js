@@ -37,15 +37,20 @@ export function buildActionParetoOption(rows, { topN = 15 } = {}) {
   const raw = sumByColumn(rows, 'action_name', 'action_duration')
   if (!raw.length) return { series: [] }
 
+  // Grand total across ALL actions (before slicing) — this is the denominator
+  // for the cumulative % so that the line reflects share-of-everything, not
+  // just share-of-the-visible bars.  Without this, a chart showing only 6 of
+  // 20 actions would incorrectly reach 100 %.
+  const grandTotal = raw.reduce((s, d) => s + d.value, 0) || 1
+
   const sorted = [...raw]
     .sort((a, b) => b.value - a.value)
     .slice(0, topN)
 
-  const total = sorted.reduce((s, d) => s + d.value, 0) || 1
   let running = 0
   const cumPct = sorted.map((d) => {
     running += d.value
-    return Number(((running / total) * 100).toFixed(1))
+    return Number(((running / grandTotal) * 100).toFixed(1))
   })
 
   return {
