@@ -1,0 +1,187 @@
+/* ── ActionInsightSummary ────────────────────────────────────────────────── */
+
+.action-insight-summary {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--sap-blue-light, #d1e4ff);
+  background: var(--sap-blue-bg, #f0f6ff);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.action-insight-summary.all-clear {
+  border-color: #b8e0c8;
+  background: #f0faf4;
+}
+
+/* ── Headline row (always visible) ──────────────────────────────────────── */
+
+.insight-headline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.insight-headline-icon {
+  flex: 0 0 auto;
+  color: var(--sap-blue, #0070f2);
+}
+
+.all-clear .insight-headline-icon {
+  color: #1e8a45;
+}
+
+.has-anomalies .insight-headline-icon {
+  color: #bb0000;
+}
+
+.insight-headline {
+  margin: 0;
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text, #1d2d3e);
+  flex: 1 1 auto;
+}
+
+.insight-kpi-line {
+  font-size: var(--text-xs, 0.8125rem);
+  color: var(--sap-text-muted, #8696a9);
+  white-space: nowrap;
+}
+
+/* ── Export button ───────────────────────────────────────────────────────── */
+
+.insight-export-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font: inherit;
+  font-size: var(--text-xs, 0.8125rem);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-blue, #0070f2);
+  background: #fff;
+  border: 1px solid var(--sap-blue, #0070f2);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.insight-export-btn:hover:not(:disabled) {
+  background: var(--sap-blue, #0070f2);
+  color: #fff;
+}
+
+.insight-export-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.insight-export-spinner {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: insight-spin 0.7s linear infinite;
+}
+
+@keyframes insight-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.insight-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+/* Top issues list */
+
+.insight-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.25rem;
+}
+
+.insight-issue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--text-xs, 0.8125rem);
+  color: var(--sap-text, #1d2d3e);
+}
+
+.insight-issue-icon {
+  color: var(--sap-blue, #0070f2);
+  flex: 0 0 auto;
+}
+
+.insight-issue-pct {
+  color: var(--sap-text-muted, #8696a9);
+}
+
+/* Worst offender pill */
+
+.insight-worst-offender {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  background: #fff3f3;
+  border: 1px solid #f5c2c2;
+  border-radius: var(--radius-md, 6px);
+  font-size: var(--text-xs, 0.8125rem);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.insight-worst-label {
+  font-weight: var(--weight-semibold, 600);
+  color: #bb0000;
+  flex: 0 0 auto;
+}
+
+.insight-worst-action {
+  font-weight: var(--weight-semibold, 600);
+  color: var(--sap-text, #1d2d3e);
+}
+
+.insight-worst-story {
+  color: var(--sap-text-muted, #8696a9);
+}
+
+.insight-worst-dur {
+  padding: 0.1rem 0.4rem;
+  background: #bb0000;
+  color: #fff;
+  border-radius: 3px;
+  font-weight: var(--weight-semibold, 600);
+  font-variant-numeric: tabular-nums;
+}
+
+.insight-worst-flags {
+  color: #8b3030;
+  font-style: italic;
+}
+
+/* Recommendation */
+
+.insight-recommendation {
+  margin: 0;
+  font-size: var(--text-xs, 0.8125rem);
+  color: var(--sap-text-muted, #8696a9);
+  font-style: italic;
+}

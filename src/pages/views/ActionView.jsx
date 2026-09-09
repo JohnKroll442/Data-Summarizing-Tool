@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { scrollFast } from '../../lib/scrollFast'
 import KpiStrip from '../../components/KpiStrip'
@@ -22,6 +22,7 @@ import { detectAnomalies, summarizeActionFlags, rankAnomalyTiers, buildOffsetDur
 import { OFFSET_CLASS_LEGEND, OFFSET_LEGEND_DEFAULT } from '../../components/charts/options/offsetDuration'
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
 import { resolveActiveView, isActionViewKey } from '../../lib/actionViews'
+import { exportActionReport } from '../../lib/exportReport'
 import './ActionView.css'
 
 /**
@@ -47,7 +48,7 @@ function ActionView() {
     rows, headers, sessionFilter, sessionMultiFilter, viewUi, setViewUi,
     timelineRange, resetTimeline,
     actionInvocationFilter, actionFilterWindow, setActionInvocationFilter,
-    thresholds,
+    thresholds, fileName,
   } = useCsvData()
   const location = useLocation()
 
@@ -315,6 +316,67 @@ function ActionView() {
     return summarizeActionFlags(keys, anomalies.byActionKey)
   }, [bucketedRows, anomalies.byActionKey])
 
+  // Anomaly rows scoped to the currently visible (filtered + bucketed) action
+  // set — so the exported report reflects the same view the user is looking at.
+  // Cross-references bucketedRows (the live table scope) against anomalies.rows
+  // (which carry the flag detail we need for the report tables).
+  const filteredAnomalyRows = useMemo(() => {
+    if (!anomalies.rows?.length) return []
+    const visibleKeys = new Set(
+      bucketedRows.map((r) => `${r.action_name}::${r._action_timestamp ?? ''}`)
+    )
+    return anomalies.rows.filter((r) => visibleKeys.has(r.action_key))
+  }, [anomalies.rows, bucketedRows])
+
+  // Human-readable description of every active filter — shown in the report
+  // header so it's self-documenting ("you're looking at X, Y, Z").
+  const activeFilters = useMemo(() => {
+    const f = []
+    if (sessionMultiFilter.length > 0) {
+      f.push(`${sessionMultiFilter.length} session${sessionMultiFilter.length === 1 ? '' : 's'} selected`)
+    } else if (sessionFilter) {
+      f.push(`Session: ${sessionFilter}`)
+    }
+    if (timelineRange) {
+      f.push(`Timeline: ${formatTimeRangeLabel(timelineRange.min, timelineRange.max)}`)
+    }
+    if (actionFilterWindow && actionInvocationFilter.length > 0) {
+      f.push(`Active in: ${actionFilterWindow}`)
+    }
+    if (durationBucket) {
+      f.push(`Duration band: ${durationBucket}`)
+    }
+    if (anomalyTypeFilter) {
+      f.push(`Anomaly type: ${anomalyTypeFilter}`)
+    }
+    return f
+  }, [sessionFilter, sessionMultiFilter, timelineRange, actionFilterWindow,
+      actionInvocationFilter, durationBucket, anomalyTypeFilter])
+
+  // Export state — loading flag prevents double-clicks.
+  // Placed here (after kpis + filteredSummary are declared) to avoid a
+  // temporal dead zone ReferenceError that would crash the component.
+  const [exporting, setExporting] = useState(false)
+  const handleExport = useCallback(() => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      exportActionReport({
+        fileName,
+        anomalies,
+        filteredSummary,
+        filteredAnomalyRows,
+        activeFilters,
+        kpis,
+        aggRows: bucketedRows,   // fully-filtered rows (time + duration + anomaly)
+        thresholds,
+      })
+    } finally {
+      setTimeout(() => setExporting(false), 400)
+    }
+  }, [exporting, fileName, anomalies, filteredSummary, filteredAnomalyRows,
+      activeFilters, kpis, timeFilteredAggRows, thresholds])
+
   // Rank the visible anomaly types into T1/T2/T3 by prevalence (highest share of
   // actions = T1). Derived from the SAME counts the panel shows, so its badges
   // and the table's per-row badges agree, and both re-tier as the view filters.
@@ -460,6 +522,8 @@ function ActionView() {
             detailStory={waterfallStory}
             detailInitialTs={waterfallInitialTs}
             thresholds={thresholds}
+            onExportReport={handleExport}
+            exporting={exporting}
           />
         )}
 

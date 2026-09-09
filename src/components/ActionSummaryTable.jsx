@@ -56,6 +56,8 @@ function ActionSummaryTable({
   tierByType = null,
   showAnomalies = true,
   setShowAnomalies,
+  onExportReport,
+  exporting = false,
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -544,6 +546,17 @@ function ActionSummaryTable({
         >
           Export CSV
         </button>
+        {onExportReport && (
+          <button
+            type="button"
+            className="summary-filter-export"
+            disabled={exporting}
+            title="Download an Action Performance Report as a PDF"
+            onClick={onExportReport}
+          >
+            {exporting ? 'Generating…' : 'Export Report'}
+          </button>
+        )}
         {activeFilterCount > 0 && (
           <button
             type="button"

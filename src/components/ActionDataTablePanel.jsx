@@ -51,6 +51,9 @@ function ActionDataTablePanel({
   setShowAnomalies,
   // configurable detection thresholds — forwarded to AnomalySummaryPanel
   thresholds,
+  // report export — forwarded to ActionSummaryTable so the button sits next to CSV
+  onExportReport,
+  exporting = false,
 }) {
   return (
     <div className="action-view">
@@ -92,6 +95,8 @@ function ActionDataTablePanel({
           tierByType={tierByType}
           showAnomalies={showAnomalies}
           setShowAnomalies={setShowAnomalies}
+          onExportReport={onExportReport}
+          exporting={exporting}
         />
 
         {waterfallOpen && detailCell && (
