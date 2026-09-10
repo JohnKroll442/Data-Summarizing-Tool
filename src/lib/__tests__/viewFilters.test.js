@@ -93,7 +93,7 @@ describe('filterAggRows', () => {
     expect(filterAggRows(aggRows, columns, opts)).toEqual(inline)
   })
 
-  it('search matches via startsWith over display columns', () => {
+  it('search matches via includes over display columns', () => {
     const out = filterAggRows(aggRows, columns, { search: 'alice' })
     expect(out).toHaveLength(1)
     expect(out[0].session).toBe('S1')

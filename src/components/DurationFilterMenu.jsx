@@ -13,11 +13,6 @@ import './DurationFilterMenu.css'
  * `null` for an open side) while at least one bound is set, or `null` when both
  * are cleared/invalid.
  *
- * This component owns the control state (min / max / unit); the parent owns only
- * the resulting `{ minMs, maxMs }` filter. When the parent clears the filter
- * from outside (e.g. a toolbar "Clear" button), we reset the inputs so the
- * trigger returns to "any".
- *
  * Props:
  *   label:    trigger prefix, e.g. "Total duration"
  *   value:    the active `{ minMs, maxMs }` filter or null

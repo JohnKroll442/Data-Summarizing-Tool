@@ -138,3 +138,26 @@ export function formatDurationMs(value) {
   const s = totalSec % 60
   return `${sign}${m}m ${s}s`
 }
+
+/**
+ * Format an epoch-ms timestamp as a concise relative time string:
+ *   < 1 min   → "just now"
+ *   < 1 hour  → "X min ago"
+ *   < 24 hrs  → "X hr ago"
+ *   < 7 days  → "X days ago"
+ *   otherwise → "MMM D" (e.g. "Sep 3")
+ */
+export function formatRelativeTime(ts) {
+  if (!ts) return ''
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const diffMs = Date.now() - ts
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin} min ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr} hr ago`
+  const diffDays = Math.floor(diffHr / 24)
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+  const d = new Date(ts)
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`
+}

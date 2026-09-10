@@ -1,31 +1,25 @@
-/* FileUpload — minimal wrapper around UI5 FileUploader */
-.file-upload {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
+/* FileUpload — drop zone container. All interactive elements inside are UI5
+   components; this file only controls the zone's visual appearance. */
+
+.file-upload-zone {
   gap: 0.5rem;
   padding: 1.5rem 1.25rem;
   border: 1.5px dashed var(--sap-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  background: var(--sap-blue-bg);
   box-shadow: var(--shadow-sm);
+  text-align: center;
   transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
-.file-upload:hover {
+.file-upload-zone:hover {
   border-color: var(--sap-blue);
-  background: var(--sap-blue-bg);
+  background: var(--sap-blue-light);
 }
 
 .file-upload-subtitle {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--sap-text-muted);
-}
-
-.file-upload-uploader {
-  width: auto;
+  font-size: var(--sapFontSmallSize, 0.75rem);
+  color: var(--sapContent_LabelColor);
 }
 
 

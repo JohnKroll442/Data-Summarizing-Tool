@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { Button, Select, Option } from '@ui5/webcomponents-react'
-import '@ui5/webcomponents-icons/dist/nav-back.js'
+import '@ui5/webcomponents-icons/dist/home.js'
 import '@ui5/webcomponents-icons/dist/action-settings.js'
 import { useCsvData } from '../context/useCsvData'
 import { HeaderSlotProvider } from '../context/HeaderSlot'
@@ -83,7 +83,6 @@ function SummaryPage() {
             className="summary-home-btn"
             tooltip="Back to upload page"
             onClick={() => navigate('/')}
-            style={{'--sapButton_Lite_Textcolor': '#000000'}}
           >
             Home
           </Button>
@@ -91,8 +90,8 @@ function SummaryPage() {
         endContent={
           <Button
             icon="action-settings"
-            className="summary-settings-btn"
             design="Transparent"
+            className="summary-settings-btn"
             tooltip="Threshold settings"
             onClick={() => setThresholdDialogOpen(true)}
           />

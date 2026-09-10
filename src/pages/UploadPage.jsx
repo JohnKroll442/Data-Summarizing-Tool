@@ -1,11 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, ArrowRight } from 'lucide-react'
-import { MessageStrip, BusyIndicator, Title } from '@ui5/webcomponents-react'
+import {
+  MessageStrip,
+  BusyIndicator,
+  Title,
+  Text,
+  Card,
+  CardHeader,
+  List,
+  ListItemCustom,
+  Button,
+  FlexBox,
+} from '@ui5/webcomponents-react'
+import '@ui5/webcomponents-icons/dist/decline.js'
+import '@ui5/webcomponents-icons/dist/arrow-right.js'
 import FileUpload from '../components/FileUpload'
 import CsvValidationDialog from '../components/CsvValidationDialog'
 import { parseCsvFile, validateSchema } from '../lib/parseCsv'
-import { formatFileSize } from '../lib/format'
+import { formatFileSize, formatRelativeTime } from '../lib/format'
 import { useCsvData } from '../context/useCsvData'
 import sapLogo from '../assets/sap-logo.png'
 
@@ -116,16 +128,38 @@ function UploadPage() {
 
   return (
     <>
-      <header className="app-header">
-        <img src={sapLogo} alt="SAP" className="app-header-logo" />
-        <div className="app-header-text">
+      {/* Header */}
+      <FlexBox
+        direction="Column"
+        alignItems="Center"
+        style={{ width: '100%', maxWidth: '960px', margin: '0 auto 1.75rem', gap: '0.1rem', textAlign: 'center' }}
+      >
+        <img
+          src={sapLogo}
+          alt="SAP"
+          style={{
+            height: '200px',
+            width: 'auto',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.18))',
+            marginBottom: '-1rem',
+          }}
+        />
+        <FlexBox direction="Column" alignItems="Center" style={{ gap: '0.25rem' }}>
           <Title level="H1" wrappingType="Normal">CSV Summarizer</Title>
-          <p>Upload file to summarize</p>
-        </div>
-      </header>
+          <Text style={{ fontSize: '1rem', color: 'var(--sapContent_LabelColor)' }}>
+            Upload file to summarize
+          </Text>
+        </FlexBox>
+      </FlexBox>
 
-      <main className="app-main">
+      {/* Main content */}
+      <FlexBox
+        direction="Column"
+        style={{ width: '100%', maxWidth: '880px', margin: '0 auto', gap: '1.25rem' }}
+      >
         <FileUpload onFilesAdded={handleFilesAdded} accept=".csv" />
+
         {isParsing && (
           <BusyIndicator
             active
@@ -135,109 +169,98 @@ function UploadPage() {
           />
         )}
         {parseError && (
-          <MessageStrip
-            design="Negative"
-            onClose={() => setParseError('')}
-          >
+          <MessageStrip design="Negative" onClose={() => setParseError('')}>
             {parseError}
           </MessageStrip>
         )}
-        <section className="recent-files" aria-label="Recently uploaded files">
-          <div className="recent-files-header">
-            <h2 className="recent-files-heading">Recent files</h2>
-            {canCompare && !compareMode && (
-              <button
-                type="button"
-                className="recent-files-compare-toggle"
-                onClick={() => setCompareMode(true)}
-              >
-                Compare files
-              </button>
-            )}
-            {compareMode && (
-              <button
-                type="button"
-                className="recent-files-compare-toggle is-exit"
-                onClick={exitCompareMode}
-              >
-                Exit compare
-              </button>
-            )}
-          </div>
+
+        {/* Recent files */}
+        <Card
+          header={
+            <CardHeader
+              titleText="Recent files"
+              action={
+                compareMode ? (
+                  <Button design="Transparent" onClick={exitCompareMode}>Exit compare</Button>
+                ) : canCompare ? (
+                  <Button design="Transparent" onClick={() => setCompareMode(true)}>Compare files</Button>
+                ) : null
+              }
+            />
+          }
+        >
           {recentFiles.length === 0 ? (
-            <p className="recent-files-empty">No files uploaded yet.</p>
+            <FlexBox style={{ padding: '0.75rem 1rem' }}>
+              <Text style={{ fontStyle: 'italic' }}>No files uploaded yet.</Text>
+            </FlexBox>
           ) : (
-            <ul className="recent-files-list">
+            <List selectionMode="None" separators="Inner" className="recent-files-list" style={{ paddingBottom: '0.75rem' }}>
               {recentFiles.map((file) => {
                 const isBaseline = compareBaselineId === file.id
                 const isCurrent = compareCurrentId === file.id
                 return (
-                  <li key={file.id} className="recent-files-item">
-                    <button
-                      type="button"
-                      className="recent-files-pick"
-                      disabled={compareMode}
-                      onClick={() => {
-                        if (compareMode) return
-                        selectRecentFile(file.id)
-                        navigate('/summary/raw')
-                      }}
+                  <ListItemCustom
+                    key={file.id}
+                    type={compareMode ? 'Inactive' : 'Active'}
+                    onClick={compareMode ? undefined : () => {
+                      selectRecentFile(file.id)
+                      navigate('/summary/raw')
+                    }}
+                  >
+                    <FlexBox
+                      alignItems="Center"
+                      style={{ width: '100%', gap: '0.5rem', padding: '0.25rem 0' }}
                     >
-                      <span className="recent-files-name">{file.fileName}</span>
-                      <span className="recent-files-meta">
-                        {formatFileSize(file.fileSize)} · {file.rows.length.toLocaleString()} rows
-                      </span>
-                    </button>
-                    {compareMode && (
-                      <div className="compare-role-picker" role="group" aria-label={`Compare role for ${file.fileName}`}>
-                        <button
-                          type="button"
-                          className={`compare-role-btn${isBaseline ? ' is-active' : ''}`}
-                          onClick={() => pickBaseline(file.id)}
-                          aria-pressed={isBaseline}
-                        >
-                          Baseline
-                        </button>
-                        <button
-                          type="button"
-                          className={`compare-role-btn${isCurrent ? ' is-active' : ''}`}
-                          onClick={() => pickCurrent(file.id)}
-                          aria-pressed={isCurrent}
-                        >
-                          Current
-                        </button>
-                      </div>
-                    )}
-                    {!compareMode && (
-                      <button
-                        type="button"
-                        className="recent-files-remove"
-                        title={`Remove ${file.fileName} from recent files`}
-                        aria-label={`Remove ${file.fileName} from recent files`}
-                        onClick={() => removeRecentFile(file.id)}
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </li>
+                      <FlexBox direction="Column" className="recent-file-pick">
+                        <Text style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {file.fileName}
+                        </Text>
+                        <Text style={{ fontSize: 'var(--sapFontSmallSize)', color: 'var(--sapContent_LabelColor)' }}>
+                          {formatFileSize(file.fileSize)} · {file.rows.length.toLocaleString()} rows · {formatRelativeTime(file.uploadedAt)}
+                        </Text>
+                      </FlexBox>
+                      {compareMode ? (
+                        <FlexBox style={{ gap: '0.25rem', flexShrink: 0 }}>
+                          <Button
+                            design={isBaseline ? 'Emphasized' : 'Default'}
+                            onClick={() => pickBaseline(file.id)}
+                          >
+                            Baseline
+                          </Button>
+                          <Button
+                            design={isCurrent ? 'Emphasized' : 'Default'}
+                            onClick={() => pickCurrent(file.id)}
+                          >
+                            Current
+                          </Button>
+                        </FlexBox>
+                      ) : (
+                        <Button
+                          design="Transparent"
+                          icon="decline"
+                          tooltip={`Remove ${file.fileName} from recent files`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeRecentFile(file.id)
+                          }}
+                        />
+                      )}
+                    </FlexBox>
+                  </ListItemCustom>
                 )
               })}
-            </ul>
+            </List>
           )}
-          {compareMode &&
-            compareBaselineId &&
-            compareCurrentId &&
-            compareBaselineId !== compareCurrentId && (
-              <button
-                type="button"
-                className="recent-files-compare-submit"
-                onClick={submitCompare}
-              >
-                Compare <ArrowRight size={14} aria-hidden="true" />
-              </button>
-            )}
-        </section>
-      </main>
+          {compareMode && compareBaselineId && compareCurrentId && compareBaselineId !== compareCurrentId && (
+            <FlexBox justifyContent="End" style={{ padding: '0.5rem 1rem 0.75rem' }}>
+              <Button design="Emphasized" icon="arrow-right" iconEnd onClick={submitCompare}>
+                Compare
+              </Button>
+            </FlexBox>
+          )}
+        </Card>
+      </FlexBox>
+
       <CsvValidationDialog
         open={Boolean(validation)}
         fileName={pendingCsv?.fileName}

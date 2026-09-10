@@ -8,9 +8,6 @@ import './MultiFilterMenu.css'
  * (MultiFilterMenu): a `.summary-filter-select` button that opens a checklist.
  * Checked = visible.
  *
- * The table's first ("top") column is always shown and is deliberately NOT
- * passed in here, so it can't be hidden and doesn't clutter the list.
- *
  * Value contract: `hidden` is the array of column keys currently hidden.
  * `onChange(nextHidden)` fires with the new hidden array. Empty = show all.
  *

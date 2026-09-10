@@ -11,10 +11,10 @@
   background: transparent;
 }
 
-.summary-home-btn::part(button), .summary-settings-btn::part(button){
+.summary-home-btn::part(button),
+.summary-settings-btn::part(button) {
   color: #000000;
 }
-
 
 /* TODO: delete these two rules — ui5-bar no longer rendered (safe dead code) */
 .summary-page ui5-bar::part(bar) {

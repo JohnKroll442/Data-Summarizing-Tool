@@ -123,8 +123,8 @@ function SummaryView() {
 
   const busiestCards = busiest
     ? [
-        { key: 'day', label: 'Busiest day', period: busiest.day },
-        { key: 'week', label: 'Busiest 7 days', period: busiest.week },
+        { key: 'day', label: 'Busiest Day', period: busiest.day },
+        { key: 'week', label: 'Busiest 7 Days', period: busiest.week },
         { key: 'month', label: 'Busiest 30 Days', period: busiest.month },
       ].filter((c) => c.period)
     : []

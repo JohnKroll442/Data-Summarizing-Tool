@@ -52,7 +52,7 @@ function MultiFilterMenu({ label, options, selected, onChange, showSelectAll = t
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
     if (!needle) return options
-    return options.filter((o) => o.toLowerCase().startsWith(needle))
+    return options.filter((o) => o.toLowerCase().includes(needle))
   }, [options, search])
 
   const selectedSet = useMemo(() => new Set(selected), [selected])
@@ -70,7 +70,7 @@ function MultiFilterMenu({ label, options, selected, onChange, showSelectAll = t
     <div className="multi-filter" ref={rootRef}>
       <button
         type="button"
-        className="summary-filter-select multi-filter-trigger"
+        className={`summary-filter-select multi-filter-trigger${selected.length > 0 ? ' has-selection' : ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

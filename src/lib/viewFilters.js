@@ -47,7 +47,7 @@ export const WIDGET_TS = (row) =>
  *   durationKey      aggregated column to threshold, or null to skip
  *   durationFilter   { minMs, maxMs } | null
  *   invocationFilter string[] of _action_timestamp (Action view only) or null
- *   search           free-text; matches when any display column startsWith it
+ *   search           free-text; matches when any display column includes it
  *   columns          display columns the search scans
  */
 export function filterAggRows(aggRows, columns, {
@@ -73,7 +73,7 @@ export function filterAggRows(aggRows, columns, {
     return cols.some((c) => {
       const v = row[c.key]
       if (v === undefined || v === null || v === '') return false
-      return String(v).toLowerCase().startsWith(needle)
+      return String(v).toLowerCase().includes(needle)
     })
   })
 }
