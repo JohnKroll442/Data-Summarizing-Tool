@@ -1078,7 +1078,9 @@ def run_trace_agent(trace_input: dict) -> dict:
     directive = _trace_chart_directive(trace_input, result, trace_input.get("question", ""))
     log.info("CHART-DEBUG trace: directive=%s widgets_found=%s fence_in_prose=%s",
              directive, (result or {}).get("widgets_found"), _CHART_FENCE in (prose or ""))
-    result["_response_text"] = _ensure_chart(prose, directive)
+    # replace=True: our deterministic directive is authoritative — override the
+    # model's own (often malformed) fence rather than deferring to it.
+    result["_response_text"] = _ensure_chart(prose, directive, replace=True)
     return result
 
 
@@ -2383,6 +2385,8 @@ def _prose(response: str) -> str:
 # authoritative as the model here; this just makes the behaviour reliable.
 
 _CHART_FENCE = "```chart"
+# Matches a whole ```chart … ``` fenced block (non-greedy to the first close).
+_CHART_FENCE_RE = re.compile(r"```chart\b.*?```", re.DOTALL)
 # Visualisation verbs that mark an explicit "show me a chart" request.
 _VIZ_VERB_RE = re.compile(
     r"\b(chart|graph|plot|visuali[sz]e|visuali[sz]ation|pareto|histogram|"
@@ -2394,15 +2398,27 @@ _WORST_RE = re.compile(r"\b(slow|slowest|worst|top|biggest|largest|bottleneck|he
                        re.IGNORECASE)
 
 
-def _ensure_chart(response_text: str, directive: dict | None) -> str:
-    """Append a ```chart fence built from `directive` unless the model already
-    emitted its own chart directive (or there is nothing to inject)."""
+def _ensure_chart(response_text: str, directive: dict | None, replace: bool = False) -> str:
+    """Append a ```chart fence built from `directive`.
+
+    Default (replace=False): leave a model-emitted fence untouched, and append
+    only when there is none — the model's own chart wins.
+
+    replace=True: when we hold an authoritative deterministic directive, strip
+    any model-emitted fence FIRST, then append ours. The trace path uses this:
+    its small model routinely emits a malformed directive (e.g. a
+    widget_waterfall with no widget_name) that the frontend silently drops as
+    no_widget_match — so deferring to the model's fence meant no chart rendered
+    at all even though we had a correct directive in hand."""
     if not directive:
         return response_text
-    if _CHART_FENCE in (response_text or ""):
+    text = response_text or ""
+    if replace:
+        text = _CHART_FENCE_RE.sub("", text).rstrip()
+    elif _CHART_FENCE in text:
         return response_text
     block = "\n\n" + _CHART_FENCE + "\n" + json.dumps(directive) + "\n```\n"
-    return (response_text or "") + block
+    return text + block
 
 
 def _resolve_trace_action(trace_input: dict, question: str) -> dict | None:
@@ -2417,7 +2433,11 @@ def _resolve_trace_action(trace_input: dict, question: str) -> dict | None:
         name = (a.get("action_name") or "").strip()
         if name and name.lower() in ql:
             return a
-    if _WORST_RE.search(ql) or not question:
+    # No named action → default to the worst action (top_actions is sorted
+    # worst-first) for a generic "worst/slowest" ask, an explicit visualisation
+    # request ("show the waterfall / chart"), or an empty question. In all three
+    # the user wants the trace agent's default subject: the slowest flagged action.
+    if _WORST_RE.search(ql) or _VIZ_VERB_RE.search(ql) or not question:
         return tops[0]
     return None
 
@@ -2425,9 +2445,13 @@ def _resolve_trace_action(trace_input: dict, question: str) -> dict | None:
 def _trace_chart_directive(trace_input: dict, result: dict, question: str) -> dict | None:
     """Build a waterfall directive for a single-action trace answer.
     widget_waterfall (with the bottleneck widget) when the ask is widget/timing
-    focused; otherwise the action-sequence waterfall."""
-    if not result or not result.get("widgets_found"):
-        return None
+    focused; otherwise the action-sequence waterfall.
+
+    Gated on DETERMINISTIC trace_input data (can we resolve a target action?),
+    NOT on the model's self-reported `widgets_found` — a small model routinely
+    omits that field or emits 0, which silently suppressed every chart. The
+    frontend rebuilds the waterfall from its own aggRows/rows via the selector,
+    so an action_waterfall needs only a resolvable action name here."""
     action = _resolve_trace_action(trace_input, question)
     if not action:
         return None
