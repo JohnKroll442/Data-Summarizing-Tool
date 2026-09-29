@@ -1,0 +1,25 @@
+{
+  "agent": "narrator",
+  "status": "AWAITING_USER_DIRECTION",
+  "meta": {
+    "file_name": null,
+    "generated_at": null,
+    "scope": null
+  },
+  "headline": null,
+  "top_types": [],
+  "phase_context": [],
+  "kpi_summary": {
+    "total_actions":   null,
+    "over_threshold":  null,
+    "median_duration": null,
+    "p90_duration":    null,
+    "p95_duration":    null,
+    "threshold_label": null
+  },
+  "worst_offender": null,
+  "routing_suggestions": [],
+  "excluded_by_user": [],
+  "user_requested_drill": null,
+  "session_notes": []
+}

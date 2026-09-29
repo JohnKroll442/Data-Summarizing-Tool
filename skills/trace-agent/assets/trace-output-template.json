@@ -1,0 +1,33 @@
+{
+  "agent": "trace-agent",
+  "status": "CONFIRMED",
+  "dataset_id": null,
+  "mode": "detail",
+  "actions_investigated": 0,
+  "widgets_found": 0,
+  "bottleneck": {
+    "widget_name": null,
+    "widget_id": null,
+    "total_ms": null,
+    "pct_of_action": null,
+    "dominant_phase": null,
+    "dominant_phase_pct": null
+  },
+  "waterfall": [
+    {
+      "widget_name": null,
+      "widget_id": null,
+      "offset_ms": null,
+      "render_ms": null,
+      "network_ms": null,
+      "backend_ms": null,
+      "total_ms": null,
+      "pct_of_action": null
+    }
+  ],
+  "loading_pattern": null,
+  "data_quality_checks": [],
+  "cross_action_summary": [],
+  "repeat_offenders": [],
+  "session_notes": []
+}

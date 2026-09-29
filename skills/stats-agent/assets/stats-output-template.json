@@ -1,0 +1,15 @@
+{
+  "agent": "stats-agent",
+  "status": "READY_FOR_REVIEW",
+  "kpis": {
+    "total_actions":   null,
+    "over_threshold":  null,
+    "median_duration": null,
+    "p90_duration":    null,
+    "p95_duration":    null
+  },
+  "keys_present": [],
+  "keys_missing":  [],
+  "threshold_label": null,
+  "session_notes": []
+}

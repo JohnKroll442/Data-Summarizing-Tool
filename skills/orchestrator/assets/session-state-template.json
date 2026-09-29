@@ -1,0 +1,12 @@
+{
+  "phase": "idle",
+  "intent": null,
+  "payload_meta": null,
+  "agents_run": [],
+  "stats_output": null,
+  "anomaly_output": null,
+  "root_cause_output": null,
+  "explorer_output": null,
+  "narrator_output": null,
+  "session_notes": []
+}

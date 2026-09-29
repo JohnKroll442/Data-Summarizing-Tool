@@ -1,0 +1,15 @@
+{
+  "agent": "anomaly-agent",
+  "status": "READY_FOR_REVIEW",
+  "total_actions": null,
+  "total_flagged": {
+    "actions": null,
+    "pct": null
+  },
+  "active_headline_types": [],
+  "active_phase_types": [],
+  "excluded_by_user": [],
+  "types_checked": 10,
+  "types_active": null,
+  "session_notes": []
+}

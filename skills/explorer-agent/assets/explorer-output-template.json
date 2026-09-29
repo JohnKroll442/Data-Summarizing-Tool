@@ -1,0 +1,11 @@
+{
+  "agent": "explorer-agent",
+  "status": "AWAITING_USER_DIRECTION",
+  "dimension_explored": null,
+  "question_answered": null,
+  "top_results": [],
+  "detail_results": [],
+  "cross_references": [],
+  "session_notes": [],
+  "user_requested_drill": null
+}
