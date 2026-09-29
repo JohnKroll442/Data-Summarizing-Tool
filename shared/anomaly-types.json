@@ -1,0 +1,112 @@
+{
+  "$schema": "shared/anomaly-types",
+  "$version": "1.0.0",
+  "$description": "Canonical anomaly type registry. Single source of truth for all agents. Merges anomaly-type-reference.md and root-cause-catalogue.md into one authoritative file.",
+  "types": {
+    "slow_action": {
+      "label": "Slow action",
+      "group": "headline",
+      "nature": "performance",
+      "description": "This action took the configured slow-action threshold or longer from start to finish.",
+      "root_cause": "The action's total wall-clock time exceeded the configured threshold. This usually means multiple slow factors added up: a heavy backend query, large data payload, sequential widget loading that could run in parallel, or a single widget blocking the rest.",
+      "what_to_look_for": "Check whether a single widget accounts for most of the duration (straggler pattern), or whether the time is spread across many widgets (fragmented pattern). If neither, the bottleneck is likely pre-render — a slow server response before any widget started.",
+      "counts_toward_flagged": true
+    },
+    "large_offset": {
+      "label": "Large offset",
+      "group": "headline",
+      "nature": "performance",
+      "description": "A widget spent a long time waiting before it started rendering.",
+      "root_cause": "A widget spent a long time waiting before it started rendering. The offset period is the gap between the action starting and the widget receiving its data to render. A large offset usually means the server response was slow, or this widget was waiting for another request to complete first.",
+      "what_to_look_for": "Check whether other widgets in the same action have normal offsets. If only one widget has a large offset, it likely depends on a slower backend call. If all widgets have large offsets, the bottleneck is earlier in the request chain — likely the initial server response.",
+      "counts_toward_flagged": true
+    },
+    "straggler": {
+      "label": "Straggler widget",
+      "group": "headline",
+      "nature": "performance",
+      "description": "One widget took far longer to render than the others in this action.",
+      "root_cause": "One widget rendered significantly slower than all others in the same action. This isolates the problem to a specific component — it fetches more data, performs heavier computation, or depends on a backend call that other widgets do not share.",
+      "what_to_look_for": "Identify the specific widget name from the Widget view. Check its render, network, and backend phase times individually. The dominant phase points to where the bottleneck sits: frontend rendering, network latency, or backend processing.",
+      "counts_toward_flagged": true
+    },
+    "fragmented": {
+      "label": "Fragmented",
+      "group": "headline",
+      "nature": "performance",
+      "description": "The slow time is spread across many widgets, with no single culprit.",
+      "root_cause": "The slow time is distributed across many widgets with no single dominant culprit. This usually means widgets are loading sequentially rather than in parallel, causing cumulative wall-clock time far beyond any individual widget's cost. Resource contention — multiple widgets competing for the same connection pool or thread — can also produce this pattern.",
+      "what_to_look_for": "Check whether widget offsets are staggered evenly (sequential loading pattern) or overlapping (parallel but slow). Staggered offsets suggest a serialization issue in the loading logic. Overlapping offsets with uniform slowness suggest resource contention.",
+      "counts_toward_flagged": true
+    },
+    "offset_overrun": {
+      "label": "Offset > Duration",
+      "group": "headline",
+      "nature": "data_quality",
+      "description": "A widget's pre-render wait exceeds the whole action — the timestamps don't add up.",
+      "root_cause": "A widget's pre-render wait (offset) was recorded as longer than the entire action duration — which is impossible since the widget runs inside the action. This indicates the action start timestamp and the widget offset timestamp were recorded against different reference points.",
+      "what_to_look_for": "Check whether the action start time and widget start time share the same clock source. A common cause is the action timestamp being captured on the server while the widget offset is captured on the client, introducing a clock skew.",
+      "data_quality_note": "This is a timestamp reference mismatch, not a real performance problem. The actual rendering likely completed normally.",
+      "counts_toward_flagged": true
+    },
+    "negative_phase": {
+      "label": "Negative phase",
+      "group": "headline",
+      "nature": "data_quality",
+      "description": "An inner timing phase outran the one containing it — inconsistent timestamps.",
+      "root_cause": "An exclusive timing phase (render minus network, or network minus backend) measured as negative across all widgets in the action. This means an inner phase was recorded as longer than the outer phase that should contain it — a physical impossibility that indicates the source timestamps are inconsistent.",
+      "what_to_look_for": "Compare the raw render, network, and backend timestamps for widgets in this action. Look for mismatched recording points — for example, the network end timestamp being recorded after the render end timestamp.",
+      "data_quality_note": "This is a timing instrumentation issue, not a real performance problem. The action may have performed normally. Treat this as a signal to review how phase timestamps are captured in the source system.",
+      "counts_toward_flagged": true
+    },
+    "component_overrun": {
+      "label": "Component overrun",
+      "group": "headline",
+      "nature": "data_quality",
+      "description": "A widget's phases add up to more than the whole action — inconsistent timestamps.",
+      "root_cause": "A widget's summed phase times (render + network + backend) exceeded the total action duration. Since the widget runs inside the action, this is impossible and indicates the phase timestamps were measured against different reference points or contain overlapping intervals.",
+      "what_to_look_for": "Check whether phases are being summed correctly or whether some phases overlap (e.g. network and backend running concurrently but being added as if sequential).",
+      "data_quality_note": "This is a phase measurement overlap or reference point mismatch, not a real performance problem.",
+      "counts_toward_flagged": true
+    },
+    "frontend_bound": {
+      "label": "Frontend",
+      "group": "phase",
+      "nature": null,
+      "description": "Most of the time went into rendering in the browser.",
+      "root_cause": "The majority of the action's widget busy time was spent in browser rendering. This typically means heavy DOM manipulation, complex layout calculations, large JavaScript bundles executing synchronously, or CSS reflow triggered repeatedly during widget updates.",
+      "counts_toward_flagged": false
+    },
+    "network_bound": {
+      "label": "Network",
+      "group": "phase",
+      "nature": null,
+      "description": "Most of the time went into waiting on the network.",
+      "root_cause": "The majority of the action's widget busy time was spent waiting for network responses. This points to slow server response times (high TTFB), large payload sizes that take time to transfer, or network latency between the client and server.",
+      "counts_toward_flagged": false
+    },
+    "backend_bound": {
+      "label": "Backend",
+      "group": "phase",
+      "nature": null,
+      "description": "Most of the time went into waiting on the backend.",
+      "root_cause": "The majority of the action's widget busy time was spent in backend processing. This typically means slow database queries, complex business logic, resource contention on the application server, or missing database indices causing full table scans.",
+      "counts_toward_flagged": false
+    }
+  },
+  "groups": {
+    "headline": {
+      "description": "Real anomalies. Count toward totalFlagged. Appear in active_headline_types[].",
+      "keys": ["slow_action", "large_offset", "straggler", "fragmented", "offset_overrun", "negative_phase", "component_overrun"]
+    },
+    "phase": {
+      "description": "Phase attribution. Do NOT count toward totalFlagged. At most one fires per action. Appear in active_phase_types[].",
+      "keys": ["frontend_bound", "network_bound", "backend_bound"]
+    }
+  },
+  "nature_classification": {
+    "performance": ["slow_action", "large_offset", "straggler", "fragmented"],
+    "data_quality": ["offset_overrun", "negative_phase", "component_overrun"]
+  },
+  "threshold_note": "The slow_action threshold is user-configurable (default: 120000ms). The payload's meta.slow_action_threshold_ms holds the active value."
+}

@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently --names \"web,api\" --prefix-colors \"cyan,magenta\" --kill-others \"npm:dev:frontend\" \"npm:dev:backend\"",
+    "dev:frontend": "vite",
+    "dev:backend": "cd backend && python app.py",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
@@ -38,6 +40,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.10",
+    "concurrently": "^10.0.5",
     "jsdom": "^29.1.1",
     "oxlint": "^1.69.0",
     "vite": "^8.1.0",

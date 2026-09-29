@@ -12,7 +12,7 @@ import { useCsvData } from '../../context/useCsvData'
 import { HeaderPortal } from '../../context/HeaderSlot'
 import { applySessionFilter, applySessionMultiFilter } from '../../lib/drillDown'
 import { aggregateByAction } from '../../lib/actionAggregate'
-import { actionKpisFromAgg } from '../../lib/kpis'
+import { actionKpisFromAgg, sessionKpisFromAgg, widgetKpisFromAgg } from '../../lib/kpis'
 import { bucketKeyOf } from '../../lib/durationBands'
 import { matchesTimeRange } from '../../lib/timeBuckets'
 import { ACTION_TS } from '../../lib/viewFilters'
@@ -23,6 +23,12 @@ import { OFFSET_CLASS_LEGEND, OFFSET_LEGEND_DEFAULT } from '../../components/cha
 import { buildStoryActionMatrix, cellKeyOf } from '../../lib/storyActionMatrix'
 import { resolveActiveView, isActionViewKey } from '../../lib/actionViews'
 import { exportActionReport } from '../../lib/exportReport'
+import AgentChatPanel from '../../components/AgentChatPanel'
+import { buildAgentPayload, buildPerActionWidgetRows } from '../../lib/buildAgentPayload'
+import { aggregateBySession } from '../../lib/sessionAggregate'
+import { aggregateByWidget } from '../../lib/widgetAggregate'
+import { computeRankings, computeBusiest } from '../../lib/summary'
+import { generateInsights } from '../../lib/generateInsights'
 import './ActionView.css'
 
 /**
@@ -186,6 +192,45 @@ function ActionView() {
     () => viewUi.action.showAnomalies ?? true,
   )
 
+  // ── Per-action widget rows for the trace agent ──────────────────────────────
+  // Each widget row is tagged with its parent action_key so GET /api/widgets can
+  // filter by action. This is different from the global aggregateByWidget() which
+  // merges a widget across all its appearances.
+  const widgetRows = useMemo(
+    () => buildPerActionWidgetRows(scopedRows, headers),
+    [scopedRows, headers],
+  )
+
+  // ── AI agent chat panel ────────────────────────────────────────────────────
+  const [chatOpen, setChatOpen] = useState(false)
+
+  // All-views data — computed here so buildPayload can snapshot every view.
+  const { rows: sessionAggRows, mapping: sessionMapping } = useMemo(
+    () => aggregateBySession(rows, headers),
+    [rows, headers],
+  )
+  const sessionKpisData = useMemo(
+    () => sessionKpisFromAgg(sessionAggRows, sessionMapping),
+    [sessionAggRows, sessionMapping],
+  )
+  const { rows: widgetAggRows, mapping: widgetMapping } = useMemo(
+    () => aggregateByWidget(rows, headers),
+    [rows, headers],
+  )
+  const widgetKpisData = useMemo(
+    () => widgetKpisFromAgg(widgetAggRows, widgetMapping),
+    [widgetAggRows, widgetMapping],
+  )
+  const rankingsData = useMemo(
+    () => computeRankings(rows, headers),
+    [rows, headers],
+  )
+  const busiestData = useMemo(
+    () => computeBusiest(rows, headers),
+    [rows, headers],
+  )
+
+
   // The active duration-histogram bucket selection (a DURATION_BUCKETS key, or
   // null). Toggling the same bucket clears it. Clicking a bar reshapes the whole
   // rail + table to that duration range; only the histogram itself stays on the
@@ -327,6 +372,33 @@ function ActionView() {
     )
     return anomalies.rows.filter((r) => visibleKeys.has(r.action_key))
   }, [anomalies.rows, bucketedRows])
+
+  // Insights for the AI payload — placed here so kpis, filteredSummary, and
+  // filteredAnomalyRows are all available (all declared above this point).
+  const insightsData = useMemo(
+    () => generateInsights({ anomalies, filteredSummary, filteredAnomalyRows, kpis, thresholds }),
+    [anomalies, filteredSummary, filteredAnomalyRows, kpis, thresholds],
+  )
+
+  // Snapshot the current view state into the agent payload at question-submit time.
+  // Placed here (after insightsData) to avoid a temporal dead zone reference error.
+  const buildPayload = useCallback(() => {
+    const actionKpis = actionKpisFromAgg(aggRows, mapping, thresholds)
+    return buildAgentPayload({
+      aggRows, mapping, anomalies, kpis: actionKpis, thresholds, fileName,
+      sessionAggRows, sessionKpis: sessionKpisData,
+      widgetAggRows,  widgetKpis:  widgetKpisData,
+      rankings: rankingsData, busiest: busiestData,
+      insights: insightsData,
+      offsetDuration,
+    })
+  }, [
+    aggRows, mapping, anomalies, thresholds, fileName,
+    sessionAggRows, sessionKpisData,
+    widgetAggRows, widgetKpisData,
+    rankingsData, busiestData, insightsData,
+    offsetDuration,
+  ])
 
   // Human-readable description of every active filter — shown in the report
   // header so it's self-documenting ("you're looking at X, Y, Z").
@@ -616,7 +688,34 @@ function ActionView() {
           />
         )}
 
-      </div>
+        {/* Ask AI floating button — hidden when chat is open (covered by overlay) */}
+        {!chatOpen && (
+          <button
+            type="button"
+            className="agent-chat-fab"
+            onClick={() => setChatOpen(true)}
+            aria-label="Open AI assistant"
+            title="Ask AI about this dataset"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: '0.35rem', verticalAlign: 'middle' }}>
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Ask AI
+          </button>
+        )}
+
+      </div>{/* /action-view-shell */}
+
+      <AgentChatPanel
+        buildPayload={buildPayload}
+        aggRows={aggRows}
+        rows={scopedRows}
+        headers={headers}
+        widgetRows={widgetRows}
+        fileName={fileName}
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+      />
     </>
   )
 }

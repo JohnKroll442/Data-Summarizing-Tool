@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import { ObjectStatus } from '@ui5/webcomponents-react/ObjectStatus'
+import { ObjectStatus, Button } from '@ui5/webcomponents-react'
+import '@ui5/webcomponents-icons/dist/navigation-right-arrow.js'
+import '@ui5/webcomponents-icons/dist/navigation-down-arrow.js'
 import {
   buildActivityTimeline,
   granularityLabel,
@@ -695,15 +696,15 @@ function ActivityTimeline({
         {(embedded || startExpanded) ? (
           <span className="activity-timeline-title">Activity Timeline</span>
         ) : (
-          <button
-            type="button"
+          <Button
+            design="Transparent"
+            icon={collapsed ? 'navigation-right-arrow' : 'navigation-down-arrow'}
             className="activity-timeline-toggle"
             onClick={() => setCollapsed((v) => !v)}
             aria-expanded={!collapsed}
           >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-            <span className="activity-timeline-title">Activity Timeline</span>
-          </button>
+            Activity Timeline
+          </Button>
         )}
       </header>
 
@@ -728,13 +729,13 @@ function ActivityTimeline({
             </div>
 
             {zoomed && (
-              <button
-                type="button"
+              <Button
+                design="Default"
                 className="activity-timeline-reset"
                 onClick={() => { setRange(null); setViewRange(null) }}
               >
                 Reset to full range
-              </button>
+              </Button>
             )}
           </aside>
 

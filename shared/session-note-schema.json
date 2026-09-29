@@ -1,0 +1,17 @@
+{
+  "$schema": "shared/session-note-schema",
+  "$version": "1.0.0",
+  "$description": "Universal session note format — all agents use this shape.",
+  "note_shape": {
+    "agent":        { "type": "string", "required": true, "description": "Name of the agent that produced this note" },
+    "observation":  { "type": "string", "required": true, "description": "One-sentence observation" },
+    "significance": { "type": "enum",   "values": ["high", "medium", "low"], "required": true }
+  },
+  "rules": {
+    "max_notes_per_agent_per_run": 1,
+    "append_only": true,
+    "agents_cannot_modify_peer_notes": true,
+    "narrator_does_not_add_notes": true,
+    "narrator_carries_through_all_upstream_notes": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "shared/kpi-schema",
+  "$version": "1.0.0",
+  "$description": "Canonical KPI field definitions — single source of truth for Stats Agent and downstream consumers.",
+  "keys": {
+    "total_actions": {
+      "description": "Total distinct action instances in the current view",
+      "output_key": "total_actions",
+      "example_value": "2,070"
+    },
+    "over_2m": {
+      "description": "Actions exceeding the slow-action threshold — count + share",
+      "output_key": "over_threshold",
+      "rename_reason": "Threshold value varies per dataset; over_2m is misleading when threshold is not 2 minutes",
+      "example_value": "47 (2%)"
+    },
+    "median_duration": {
+      "description": "p50 of action end-to-end duration (start to last render end)",
+      "output_key": "median_duration",
+      "example_value": "4.6 s"
+    },
+    "p90_duration": {
+      "description": "90th percentile of action end-to-end duration",
+      "output_key": "p90_duration",
+      "example_value": "22.6 s"
+    },
+    "p95_duration": {
+      "description": "95th percentile of action end-to-end duration",
+      "output_key": "p95_duration",
+      "example_value": "40.4 s"
+    }
+  },
+  "format_rules": {
+    "values_are_pre_formatted": true,
+    "null_sentinel": "\u2014",
+    "do_not_parse_or_reformat": true
+  },
+  "label_note": "The label on over_2m reflects the configured threshold. Always use key to identify items, never label.",
+  "scope_note": "KPIs reflect the currently filtered/visible action set, not necessarily the full dataset. Anomaly counts may use a different denominator when filters are active."
+}

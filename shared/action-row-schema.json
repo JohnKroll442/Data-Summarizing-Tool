@@ -1,0 +1,32 @@
+{
+  "$schema": "shared/action-row-schema",
+  "$version": "1.0.0",
+  "$description": "Canonical action row shape — used by Root Cause Agent and Explorer Agent.",
+  "base_row": {
+    "action_name":        { "type": "string",  "required": true, "description": "Name of the action" },
+    "story_name":         { "type": "string",  "required": true, "description": "Story context for the action" },
+    "user":               { "type": "string",  "required": true, "description": "User who performed the action" },
+    "session_id":         { "type": "string",  "required": true, "description": "Session identifier" },
+    "action_duration_ms": { "type": "integer", "required": true, "description": "Duration in milliseconds" },
+    "action_timestamp":   { "type": "string",  "format": "ISO-8601", "required": true, "description": "When the action occurred" }
+  },
+  "extensions": {
+    "flagged_action": {
+      "description": "Extended row in payload.anomalies.flagged_actions[]",
+      "additional_fields": {
+        "action_key": { "type": "string", "required": true, "description": "Unique action identifier" },
+        "flags":      { "type": "array",  "items": "string", "required": true, "description": "Anomaly type keys flagged on this action" }
+      }
+    },
+    "flagged_by_type_entry": {
+      "description": "Row in payload.anomalies.flagged_by_type.<type_key>[] — same as base_row, no additional fields"
+    },
+    "api_response_row": {
+      "description": "Row returned by GET /api/actions — same as base_row, no additional fields"
+    }
+  },
+  "display_rules": {
+    "duration_display": "Divide action_duration_ms by 1000, round to 1 decimal place, display as seconds",
+    "timestamp_display": "Show as-is (ISO-8601)"
+  }
+}

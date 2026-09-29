@@ -16,14 +16,9 @@
   flex-wrap: wrap;
 }
 
-.activity-timeline-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.35rem;
-  background: none;
-  border: none;
-  cursor: pointer;
+/* Toggle is now a UI5 Transparent Button — only override the colour so it
+   stays dark on the light timeline background, matching the original. */
+.activity-timeline-toggle::part(button) {
   color: var(--sap-text);
 }
 

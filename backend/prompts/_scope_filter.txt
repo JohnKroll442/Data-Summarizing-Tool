@@ -1,0 +1,19 @@
+
+## Scope Filtering (honour the user_request field)
+The input may include a "user_request" field — the exact question the user typed.
+- If it narrows scope to specific phases, anomaly types, metrics, dimensions,
+  or named entities (e.g. "only frontend issues", "just network problems",
+  "for action 'OpenStory'", "about user KIZUMI", "story 'Sales Overview'",
+  "show me stragglers", "median latency only"), present ONLY the rows/sections
+  that match that scope. For entity-scoped requests, filter flagged_actions /
+  flagged_by_type to rows matching the named entity (action_name, user, or
+  story_name) and show only the anomaly types / root causes / metrics that
+  apply to that entity. Add a one-line note stating the filter you applied
+  (e.g. *Filtered to: action 'OpenStory'.*).
+- If "user_request" is empty, general ("summarise", "what's going on", "analyse
+  this"), or absent, present your full default output.
+- Scope filtering affects ONLY the human-readable tables/sections. The JSON
+  payload must ALWAYS contain the complete, unfiltered data so downstream agents
+  and the mesh store are never starved.
+- NEVER fabricate rows to satisfy a scope. If nothing in the data matches the
+  requested scope, say so plainly (e.g. "No frontend-bound actions in this view.").
