@@ -541,9 +541,7 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         # first 10 actions per type (enough for pattern identification).
         _all_flagged   = payload.get("anomalies", {}).get("flagged_actions", [])
         _flagged_by_t  = payload.get("anomalies", {}).get("flagged_by_type", {})
-        _top_flagged   = sorted(_all_flagged,
-                                key=lambda a: a.get("action_duration_ms") or 0,
-                                reverse=True)[:50]
+        _top_flagged   = _sorted_flagged(_all_flagged)[:50]
 
         rc_input = {
             "active_headline_types": anomaly_out.get("active_headline_types", []),
@@ -563,7 +561,8 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         _guard_store(dataset_id, "root-cause-agent", rc_out)
 
     elif intent == "DATA_EXPLORATION":
-        explorer_input = _build_explorer_input(question, payload, dataset_id)
+        explorer_input = _build_explorer_input(question, payload, dataset_id,
+                                               llm_history=llm_history)
         out = run_explorer_agent(explorer_input)
         agent_outputs["explorer"] = out
         response_parts.append(out.get("_response_text", ""))
@@ -583,7 +582,7 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         _guard_store(dataset_id, "stats-agent", stats_out)
         _guard_store(dataset_id, "anomaly-agent", anomaly_out)
 
-        flagged = payload.get("anomalies", {}).get("flagged_actions", [])
+        flagged = _sorted_flagged(payload.get("anomalies", {}).get("flagged_actions", []))
         narrator_input = {
             "stats":              stats_out,
             "anomalies":          anomaly_out,
@@ -712,7 +711,8 @@ def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
         _guard_store(dataset_id, "root-cause-agent", out)
 
     elif agent_key == "explorer_agent":
-        explorer_input = _build_explorer_input(question, payload, dataset_id)
+        explorer_input = _build_explorer_input(question, payload, dataset_id,
+                                               llm_history=llm_history)
         out = run_explorer_agent(explorer_input)
         agent_outputs["explorer"] = out
         response_text = out.get("_response_text", "")
@@ -737,7 +737,7 @@ def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
         agent_outputs["anomaly"] = anomaly_out
         _guard_store(dataset_id, "stats-agent",   stats_out)
         _guard_store(dataset_id, "anomaly-agent", anomaly_out)
-        flagged = payload.get("anomalies", {}).get("flagged_actions", [])
+        flagged = _sorted_flagged(payload.get("anomalies", {}).get("flagged_actions", []))
         narrator_input = {
             "stats":              stats_out,
             "anomalies":          anomaly_out,
@@ -902,7 +902,7 @@ def _detect_phase_scope(question: str) -> str | None:
     Returns None if the question names zero phases or more than one (e.g.
     "compare frontend and backend" → let the normal path show every phase).
     """
-    q = (question or "").lower()
+    q = _strip_context_tag(question or "").lower()
     hits = set()
     for phase_key, words in _PHASE_ALIASES.items():
         for w in words:
@@ -1094,7 +1094,91 @@ def _run_parallel(kpis: list, anomalies: dict, question: str = "") -> tuple:
 
 # ─── explorer detail fetch ────────────────────────────────────────────────────
 
-def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
+def _strip_context_tag(question: str) -> str:
+    """Remove a leading ``[Previous: ...]`` / ``[Context: ...]`` enrichment tag.
+
+    ``_resolve_followup_references`` prepends such a tag (containing prior-turn
+    entity names, e.g. "#1 user 'SAP_SUPPORT_ACCESS9'") so the LLM can resolve
+    pronouns. But the DETERMINISTIC parsers (``parse_query``, ``_fetch_detail_rows``,
+    ``_inherit_time_context``) must never see it: they would match those injected
+    names as if they were the user's filter — turning "NROS actions during that
+    time" into a query for SAP_SUPPORT_ACCESS9. Strip the tag so deterministic
+    scoping runs against the user's literal words only. The enriched question is
+    still handed to the LLM unchanged for pronoun resolution.
+    """
+    if not question:
+        return question
+    import re
+    return re.sub(r'^\s*\[(?:Previous|Context)\b[^\]]*\]\s*', '', question)
+
+
+def _inherit_time_context(question: str, llm_history: list, dataset_id) -> str:
+    """Resolve a deictic time reference in a follow-up question.
+
+    When the CURRENT question refers to a time established in a PRIOR turn
+    ("that time", "that hour", "that period/window", "then") but names no
+    explicit time of its own, inherit the hour/date from the most recent prior
+    USER turn that named one and append it as an explicit "hour N" / "on
+    YYYY-MM-DD" clause. The deterministic parser (query_engine.parse_query,
+    _fetch_detail_rows) only ever sees the current question string, so without
+    this rewrite a follow-up like "show me NROS actions during that time" loses
+    the hour-11 scope from the previous turn and the row list stops matching
+    the breakdown count the user just saw.
+
+    Returns the question unchanged unless ALL of: (a) it uses a deictic time
+    phrase, (b) it names no explicit hour of its own, and (c) a prior user turn
+    named an explicit hour/date. Idempotent — a rewritten question already
+    carries an explicit hour, so re-running it is a no-op.
+    """
+    import re
+    if not question or not llm_history or not dataset_id:
+        return question
+    q_lower = question.lower()
+    deictic = re.search(
+        r"\b(?:that|this|the\s+same|same)\s+"
+        r"(?:time|hour|period|window|time\s*frame|timeframe|moment|point)\b"
+        r"|\bthen\b",
+        q_lower,
+    )
+    if not deictic:
+        return question
+
+    try:
+        import query_engine as _qe
+        import mesh_store as _ms
+    except Exception:
+        return question
+
+    # The question already carries its own explicit hour → respect it.
+    if _qe._detect_hour(question) is not None:
+        return question
+
+    entry = _ms.get_dataset(dataset_id)
+    rows = (entry or {}).get("rows", []) or []
+    own_date = _qe._detect_date(question, rows) if rows else None
+
+    # Scan history newest-first for the most recent user turn naming a time.
+    for msg in reversed(llm_history):
+        if msg.get("role") != "user":
+            continue
+        prior = msg.get("content") or ""
+        h = _qe._detect_hour(prior)
+        d = _qe._detect_date(prior, rows) if rows else None
+        if h is None and d is None:
+            continue
+        suffix = ""
+        if h is not None:
+            suffix += f" hour {h}"
+        if d is not None and own_date is None:
+            suffix += f" on {d}"
+        log.info("Follow-up time-context: inherited hour=%s date=%s from prior "
+                 "turn for deictic question %r", h, d, question)
+        return question + suffix
+    return question
+
+
+def _build_explorer_input(question: str, payload: dict, dataset_id,
+                          llm_history: list = None) -> dict:
     """
     Build the Explorer Agent's input.  Three distinct modes:
 
@@ -1120,6 +1204,15 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
     """
     import re
     import mesh_store as _ms
+
+    # Resolve deictic time references ("that time / that hour / then") to the
+    # explicit hour/date established in a prior turn, so the row-detail and
+    # aggregation paths scope a follow-up the same way the previous breakdown
+    # was scoped. The dimension / rank / cross detectors strip the enrichment
+    # tag internally (see _strip_context_tag) so none of them ever match an
+    # injected prior-turn entity name as a filter.
+    scoped_question = _inherit_time_context(
+        _strip_context_tag(question), llm_history, dataset_id)
 
     user_filter     = None
     detail_rows     = []
@@ -1159,7 +1252,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
         dimension = result_dim
 
         # Detect optional top-N within cross queries: "top 3 users on story X"
-        _n_match = re.search(r'\btop\s+(\d+)\b', question.lower())
+        _n_match = re.search(r'\btop\s+(\d+)\b', _strip_context_tag(question).lower())
         if _n_match:
             ranking_request = int(_n_match.group(1))
             log.info("Explorer: cross-mode top-%d request", ranking_request)
@@ -1172,7 +1265,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
             if rank is None:
                 # No rank — try to extract an explicit username from the question
                 if dataset_id:
-                    detail_rows = _fetch_detail_rows(question, dataset_id)
+                    detail_rows = _fetch_detail_rows(scoped_question, dataset_id)
                     if detail_rows:
                         user_filter = detail_rows[0].get("user")
                 mode = "detail" if user_filter else "ranking"
@@ -1222,7 +1315,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
                 question.lower(),
             )
             if dataset_id and not _analytical_signal:
-                detail_rows = _fetch_detail_rows(question, dataset_id)
+                detail_rows = _fetch_detail_rows(scoped_question, dataset_id)
                 if detail_rows:
                     user_filter = detail_rows[0].get("user")
             mode = "detail" if user_filter else "ranking"
@@ -1269,7 +1362,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
     if dataset_id:
         try:
             import query_engine as _qe
-            spec = _qe.parse_query(question, dataset_id)
+            spec = _qe.parse_query(scoped_question, dataset_id)
             if spec:
                 entry = _ms.get_dataset(dataset_id)
                 rows = (entry or {}).get("rows", []) or []
@@ -1283,6 +1376,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
                             "total_matching": agg.get("total_matching"),
                             "groups":   agg.get("groups"),
                             "table":    _qe.format_aggregation(spec, agg),
+                            "answer":   _qe.format_answer(spec, agg),
                         }
                         log.info("Explorer: on-demand aggregation "
                                  "(filters=%s group_by=%s groups=%d)",
@@ -1291,8 +1385,24 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
         except Exception:
             log.exception("Explorer on-demand aggregation failed — continuing without it")
 
+    # ── Single-source enforcement (deterministic, structural) ─────────────────
+    # When the question is SCOPED (the aggregation carries a concrete filter such
+    # as user / story / action / session / date / hour), the full-dataset ranking
+    # material below reports DIFFERENT counts for the same entity and is exactly
+    # what the LLM grabs to fabricate a contradicting answer (e.g. answering "NROS
+    # had 0/139 actions" when the scoped truth is 19). Prompt guards alone did not
+    # stop this, so remove the competing numbers from the input entirely: the
+    # aggregation becomes the ONLY per-entity numeric source the model can see.
+    scoped_agg = bool(aggregation and aggregation.get("filters"))
+    ds_out = _slim_data_summary(payload.get("data_summary", {}))
+    if scoped_agg:
+        displayed_user_ranking = displayed_story_ranking = displayed_action_ranking = []
+        if ds_out:
+            ds_out = {k: v for k, v in ds_out.items()
+                      if k not in ("by_user", "by_story", "by_action")}
+
     return {
-        "data_summary":                 _slim_data_summary(payload.get("data_summary", {})),
+        "data_summary":                 ds_out,
         "flagged_users_ranking":        displayed_user_ranking,
         "flagged_stories_ranking":      displayed_story_ranking,
         "flagged_action_types_ranking": displayed_action_ranking,
@@ -1307,7 +1417,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id) -> dict:
         "ranking_request":              ranking_request,
         "cross_filter":                 cross_filter,   # None unless mode = "cross"
         "cross_results":                (cross_results[:ranking_request] if ranking_request else cross_results),  # [] unless mode = "cross"
-        "metric_rankings":              _compute_widget_metric_rankings(dataset_id, payload),
+        "metric_rankings":              (None if scoped_agg else _compute_widget_metric_rankings(dataset_id, payload)),
         "previous_results":             _get_previous_explorer_context(dataset_id),
         "aggregation":                  aggregation,    # None unless a drilldown was parsed
     }
@@ -1406,6 +1516,7 @@ def _detect_user_rank_reference(question: str) -> int | None:
     Returns None if no rank is detected.
     """
     import re
+    question = _strip_context_tag(question)
     q = question.lower()
 
     # User-vocabulary context words — the number must appear alongside these
@@ -1449,6 +1560,7 @@ def _detect_dimension_and_rank(question: str) -> tuple:
     fire the user detector.
     """
     import re
+    question = _strip_context_tag(question)
     q = question.lower()
 
     # ── Story dimension ───────────────────────────────────────────────────────
@@ -1839,6 +1951,7 @@ def _detect_cross_dimensional_query(question: str, payload: dict) -> tuple:
     Entity names are matched longest-first to avoid partial matches.
     """
     import re
+    question = _strip_context_tag(question)
     q_lower = question.lower()
 
     # ── Step 1: Detect result dimension ──────────────────────────────────────
@@ -1954,6 +2067,30 @@ def _compute_cross_dimensional_results(
         }
         for i, (entity, data) in enumerate(ranked)
     ]
+
+
+def _sorted_flagged(flagged: list) -> list:
+    """Flagged action rows sorted worst-first by duration, each carrying a
+    `flags` alias for `anomaly_types`.
+
+    Two fixes fold together here:
+    - The payload's `flagged_actions` arrive in the frontend's serialization
+      order, NOT by duration — so `flagged[0]` was not necessarily the worst
+      offender. Sort by `action_duration_ms` descending so index 0 is the true
+      worst action (matches the ROOT_CAUSE / trace `_top_flagged` selection).
+    - Row-level SKILL tables (root-cause Step 8, narrator worst-offender) read a
+      `flags` field, but each row carries its anomaly type keys under
+      `anomaly_types`. Mirror it to `flags` so the documented read populates
+      instead of rendering blank.
+    """
+    out = []
+    for a in sorted(flagged or [],
+                    key=lambda r: r.get("action_duration_ms") or 0,
+                    reverse=True):
+        if isinstance(a, dict) and "flags" not in a and "anomaly_types" in a:
+            a = {**a, "flags": a.get("anomaly_types") or []}
+        out.append(a)
+    return out
 
 
 def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
@@ -2122,10 +2259,29 @@ def _fetch_detail_rows(question: str, dataset_id: str) -> list:
                  "skipping detail mode (likely an analytical question)", user_filter)
         return []
 
-    filtered = [r for r in rows if r.get("user") == user_filter]
-    filtered.sort(key=lambda r: r.get("action_duration_ms") or 0, reverse=True)
+    # Apply any additional time / session / story / action / duration scoping the
+    # question carries, using the SAME filter engine the on-demand aggregation
+    # uses. Without this, a scoped count ("16 actions in hour 11") and this row
+    # list ("81 rows across all hours") come from two different filters and can
+    # contradict each other. query_engine.filter_rows is the single source of truth.
+    import query_engine as _qe
+    filter_spec = {"user": user_filter}
+    try:
+        spec = _qe.parse_query(question, dataset_id)
+        if spec:
+            for k in ("date", "hour_of_day", "session", "story", "action",
+                      "duration_min_ms", "duration_max_ms"):
+                val = spec.get("filters", {}).get(k)
+                if val is not None:
+                    filter_spec[k] = val
+    except Exception:
+        log.exception("Detail fetch: extra-filter parse failed — falling back to user-only")
 
-    log.info("Detail fetch: user=%s  matched=%d rows (validated against dataset)", user_filter, len(filtered))
+    filtered = _qe.filter_rows(rows, filter_spec)
+    filtered.sort(key=lambda r: _qe._row_duration(r) or 0, reverse=True)
+
+    log.info("Detail fetch: filters=%s  matched=%d rows (validated against dataset)",
+             filter_spec, len(filtered))
     return filtered[:500]
 
 
@@ -2255,11 +2411,18 @@ def _conversational_answer(question: str, payload: dict,
     # compute it from the raw rows (query_engine). This is what lets the
     # conversational path answer time/user/story slices the summarized payload
     # doesn't carry (e.g. hour-by-hour for one user on one day).
+    _scoped_suppress = False   # set True for a scoped question → single source
+    _agg_block = ""            # the deterministic answer + table, if computed
     if dataset_id:
         try:
             import query_engine as _qe
             import mesh_store as _ms
-            spec = _qe.parse_query(question, dataset_id)
+            # Resolve deictic time references ("that time / that hour / then")
+            # against the prior turn so a follow-up drilldown inherits the hour
+            # /date the user just saw, instead of silently widening to all rows.
+            scoped_question = _inherit_time_context(
+        _strip_context_tag(question), llm_history, dataset_id)
+            spec = _qe.parse_query(scoped_question, dataset_id)
             if spec:
                 entry = _ms.get_dataset(dataset_id)
                 rows = (entry or {}).get("rows", []) or []
@@ -2267,16 +2430,32 @@ def _conversational_answer(question: str, payload: dict,
                     agg = _qe.aggregate_rows(rows, filters=spec.get("filters"),
                                              group_by=spec.get("group_by"))
                     table = _qe.format_aggregation(spec, agg)
+                    answer = _qe.format_answer(spec, agg)
                     if table:
-                        data_context_parts.append(table)
+                        _agg_block = ((answer + "\n\n") if answer else "") + table
+                        data_context_parts.append(_agg_block)
+                        # SINGLE NUMERIC SOURCE: when the question is SCOPED to a
+                        # concrete filter (user / story / action / session / date
+                        # / hour), the aggregation IS the authoritative per-entity
+                        # number. The full-dataset insights, rankings, and session
+                        # rollups gathered above describe a DIFFERENT (unscoped)
+                        # set and would let the model fabricate a contradiction —
+                        # so for a scoped question we drop them and keep only the
+                        # aggregation (mirrors _build_explorer_input's suppression).
+                        # A pure breakdown ("by hour", empty filters) keeps the
+                        # context — no per-entity contradiction is possible there.
+                        _scoped_suppress = bool(spec.get("filters"))
                         log.info("CONVERSATIONAL: injected on-demand aggregation "
-                                 "(filters=%s group_by=%s groups=%d)",
+                                 "(filters=%s group_by=%s groups=%d scoped_suppress=%s)",
                                  spec.get("filters"), spec.get("group_by"),
-                                 len(agg.get("groups", [])))
+                                 len(agg.get("groups", [])), _scoped_suppress)
         except Exception:
             log.exception("On-demand aggregation failed — continuing without it")
 
-    data_context = "\n\n".join(data_context_parts)
+    if _scoped_suppress and _agg_block:
+        data_context = _agg_block
+    else:
+        data_context = "\n\n".join(data_context_parts)
 
     if llm_history:
         # Build an enriched system prompt when we have payload data
@@ -2428,7 +2607,7 @@ def _resolve_trace_action(trace_input: dict, question: str) -> dict | None:
     tops = trace_input.get("top_actions") or []
     if not tops:
         return None
-    ql = (question or "").lower()
+    ql = (_strip_context_tag(question) or "").lower()
     for a in tops:
         name = (a.get("action_name") or "").strip()
         if name and name.lower() in ql:
@@ -2459,7 +2638,7 @@ def _trace_chart_directive(trace_input: dict, result: dict, question: str) -> di
     ts   = (action.get("action_timestamp") or "").strip()
     if not name:
         return None
-    ql = (question or "").lower()
+    ql = (_strip_context_tag(question) or "").lower()
     widget_data = trace_input.get("widget_data") or {}
     rows = widget_data.get(f"{name}::{ts}") or widget_data.get(name) or []
     if ("widget" in ql or "timing" in ql) and rows:

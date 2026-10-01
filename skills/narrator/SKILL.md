@@ -77,10 +77,12 @@ Before any step, check upstream statuses:
 
 ## CRITICAL RULE
 
-You MUST present human-readable tables BEFORE the JSON payload.
-Never output the JSON first. Never skip the tables.
+Emit the ```json payload FIRST, then the human-readable tables. The backend
+strips the JSON block from the human display wherever it sits, so emitting it
+first never changes what the user sees — it only guarantees the payload
+survives when the summary runs long. Never skip the tables.
 
-Output order: heading → anomaly table → KPI table → worst offender → routing suggestions → observations → JSON → checkpoint.
+Output order: JSON payload → heading → anomaly table → KPI table → worst offender → routing suggestions → observations → checkpoint.
 
 ---
 
@@ -124,7 +126,13 @@ Gather all `session_notes[]` from `stats` and `anomalies` outputs.
 Combine into a single `session_notes[]` array.
 This is how learning propagates — the Narrator does not add new notes.
 
-### Step 6 — Present human-readable output (ALWAYS FIRST)
+### Step 6 — Emit the agent payload FIRST, then the tables
+
+Emit the ```json Output Contract (Step 7 shape) as the very FIRST block in your
+response — write `**Agent payload — passed to next agent:**` then the JSON in a
+code block labelled json, status `"AWAITING_USER_DIRECTION"`. Then write the
+human-readable tables below. Keep them compact; the JSON already carries every
+field.
 
 SECTION 1: ### Performance Summary — [meta.file_name]
 Then write the headline.
@@ -149,10 +157,10 @@ Bullet per suggestion: - [type_keys joined]: [reason]
 SECTION 6 (if session_notes not empty): **Observations from this analysis:**
 Bullet per high/medium significance note: - [observation]
 
-### Step 7 — Present agent payload
+### Step 7 — Payload shape
 
-Write: **Agent payload — passed to next agent:**
-Then JSON in a code block labelled json. Status is `"AWAITING_USER_DIRECTION"`.
+The payload emitted in Step 6 uses the Output Contract below, with status
+`"AWAITING_USER_DIRECTION"`.
 
 ### Step 8 — Pause for human review (REQUIRED)
 
@@ -203,7 +211,7 @@ Field rules:
 
 ## Guard Rails
 
-- NEVER output JSON before tables
+- ALWAYS emit the JSON payload first, then the tables
 - NEVER use field name `kpis` — always `kpi_summary`
 - NEVER set `status: "CONFIRMED"` — Narrator does not use CONFIRMED
 - NEVER omit any of the 12 required fields

@@ -90,11 +90,18 @@ Examples: "how many actions were flagged?", "what anomaly types are there?"
 The user wants specific dataset-wide percentile or aggregate numbers.
 Examples: "what is the p95 duration?", "what is the median action time?"
 
-**5. USER / STORY / ACTION RANKINGS or ROW DETAIL → DATA_EXPLORATION**
-The user wants frequency rankings or row-level detail for named entities.
+**5. RANKINGS, ROW DETAIL, or TIME / SESSION BREAKDOWNS → DATA_EXPLORATION**
+The user wants frequency rankings, row-level detail for named entities, or a
+breakdown of the loaded dataset by any dimension — including TIME (hour of day,
+day, weekday, month) and SESSION. The Explorer Agent computes these on demand
+from the full stored rows (count + duration statistics per group), so they ARE
+supported for the current dataset.
 Examples: "who has the most actions?", "show all actions for user alice",
 "which story is most active?", "top 5 users by flagged count",
-"which stories is NSARIPIRALLA having the worst performance on?"
+"which stories is NSARIPIRALLA having the worst performance on?",
+"which hour of day is busiest?", "hour-by-hour breakdown for alice on Jul 30",
+"what's the time-of-day trend?", "busiest weekday?", "actions per day",
+"which session has the most actions?", "median duration by session".
 
 **6. WIDGET TIMING / WATERFALL → WIDGET_TRACE**
 The user wants widget-level phase breakdown for a specific action.
@@ -108,14 +115,17 @@ want KPIs and anomalies combined.
 **8. CAN BE ANSWERED DIRECTLY FROM PAYLOAD OR PRIOR TURNS → CONVERSATIONAL**
 
 **Unsupported request types (no data source exists) → CONVERSATIONAL:**
-Only the single current dataset is loaded — no history, no prior run, no
-external baseline, no time-window endpoint. These cannot be answered:
-  - Comparison/benchmarking against another dataset, a previous run, or an
+Only the single current dataset is loaded — no second dataset, no prior run, no
+external baseline. These cannot be answered:
+  - Comparison/benchmarking against ANOTHER dataset, a previous run, or an
     external baseline ("how does this compare to last week / to normal?").
-  - Time-range/time-window analysis ("actions in the last hour", "morning vs
-    afternoon", "trend over time") — the payload carries no such baselines.
 Route to CONVERSATIONAL and let the backend explain what CAN be done. NEVER
-fabricate a comparison, trend, or baseline.
+fabricate a cross-dataset comparison or an external baseline.
+
+NOTE: time-of-day / hourly / daily / weekday breakdowns and trends WITHIN the
+loaded dataset ARE supported (the Explorer Agent computes them on demand) —
+route those to DATA_EXPLORATION (rule 5), not here. Only comparisons to data
+that isn't loaded are unsupported.
 
 Scope note: whichever agent is chosen, the user_request field lets it narrow
 its output to the requested scope (phase, anomaly type, metric, dimension). Do

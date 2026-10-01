@@ -45,6 +45,49 @@ def _load_skill_body(skill_dir_name: str) -> str:
     return _strip_frontmatter(_read(path))
 
 
+# Matches a `references/<name>.md` citation anywhere in a SKILL body.
+_REF_CITATION_RE = re.compile(r"references/([A-Za-z0-9_\-]+\.md)")
+
+
+def _inline_references(skill_dir_name: str, body: str) -> str:
+    """Inline every `references/<name>.md` file the SKILL body actually cites.
+
+    The composed prompt string is the ONLY text the backend LLM ever sees — the
+    runtime never opens the referenced files. So an agent instructed to "read the
+    label and description verbatim from references/anomaly-type-reference.md" or
+    "read verbatim from references/root-cause-catalogue.md" had no catalogue in
+    front of it and fell back to inventing labels / root causes. This inlines the
+    canonical content of each cited, existing reference file, in citation order,
+    under a clearly delimited section appended to the body.
+
+    Only files the body NAMES are inlined (citation-driven), so uncited workspace
+    files such as workspace-permissions.md are naturally left out.
+    """
+    ref_dir = _SKILLS_DIR / skill_dir_name / "references"
+    if not ref_dir.is_dir():
+        return body
+
+    ordered_names = []
+    for name in _REF_CITATION_RE.findall(body):
+        if name not in ordered_names and (ref_dir / name).exists():
+            ordered_names.append(name)
+    if not ordered_names:
+        return body
+
+    parts = [
+        body,
+        "\n\n---\n\n# Inlined reference material (canonical — read verbatim)",
+        "The files your steps cite under `references/` are reproduced below in "
+        "full. This is the canonical source: when a step says to read a `label`, "
+        "`description`, `root_cause`, `nature`, or pattern verbatim from one of "
+        "these files, quote the text below exactly — never paraphrase or invent.",
+    ]
+    for name in ordered_names:
+        content = _strip_frontmatter(_read(ref_dir / name)).strip()
+        parts.append(f"\n\n## references/{name}\n\n{content}")
+    return "\n".join(parts)
+
+
 # ── Shared components (loaded once at import time) ────────────────────────────
 
 _PREAMBLE = _read(_SHARED_DIR / "preamble.md")
@@ -89,6 +132,7 @@ for _key, _cfg in _SKILL_MAP.items():
         SKILLS[_key] = _strip_frontmatter(_read(_local_overlay))
     else:
         _body = _load_skill_body(_cfg["dir"])
+        _body = _inline_references(_cfg["dir"], _body)
         SKILLS[_key] = _PREAMBLE + "\n\n" + _PIPELINE_OVERLAY + "\n\n" + _body
 
 

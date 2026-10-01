@@ -78,6 +78,11 @@ For every key in `counts`:
 Sort both arrays by `actions` descending immediately. This sort is the
 single source of truth — both table and JSON use this order.
 
+**Red flag — check before emitting `active_headline_types`:** if it contains
+`frontend_bound`, `network_bound`, or `backend_bound`, you have misrouted a
+phase-subgroup key. Move it to `active_phase_types`. `active_headline_types`
+holds ONLY headline types — never a phase-subgroup key.
+
 Early-exit: If BOTH arrays are empty:
 - Set `status: "NO_ANOMALIES"`
 - Show: "No anomaly types were active in this dataset. Total flagged: 0 of [total_actions] actions (0%)"

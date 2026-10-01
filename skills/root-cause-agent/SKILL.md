@@ -149,7 +149,19 @@ Use `assets/root-cause-output-template.json`. Fill all arrays.
 Set `types_explained` to total count across all three arrays.
 Set `excluded_by_user: []` and `user_requested_drill: null`.
 
-### Step 5 — Present root cause tables (ALWAYS BEFORE JSON)
+### Step 5 — Emit the agent payload FIRST
+
+Emit the ```json Output Contract (below) as the very FIRST block in your
+response. The backend strips this block from the human display wherever it
+appears, so emitting it first never changes what the user sees — it only
+guarantees the payload survives when many types are explained and the response
+runs long. Write `**Agent payload — passed to next agent:**` then the JSON in a
+code block labelled json. All fields must be present.
+
+### Step 6 — Present root cause tables (after the JSON)
+
+Keep the prose compact: the JSON already carries every field, so each table cell
+is a short digest, not a restatement of the full catalogue text.
 
 SECTION 1: ### Root Cause Analysis
 [total_flagged.actions] of [total_actions] actions flagged. Explaining [types_explained] active type(s).
@@ -163,11 +175,6 @@ Table columns: Type | Actions | What This Means
 
 SECTION 4 (if active_phase_types not empty): **Where time went in slow actions:**
 Table columns: Phase | Actions | Root Cause
-
-### Step 6 — Present agent payload
-
-Write: **Agent payload — passed to next agent:**
-Then JSON in a code block labelled json. All fields must be present.
 
 ### Step 7 — Pause for human review (REQUIRED)
 
@@ -215,7 +222,8 @@ Loop continues until user says "done".
 
 ## Output Contract
 
-All fields required. Never omit any field.
+Emit this block FIRST in your response (before the tables). All fields required.
+Never omit any field.
 
 ```json
 {
@@ -245,7 +253,7 @@ All fields required. Never omit any field.
 
 ## Guard Rails
 
-- NEVER present JSON before tables
+- ALWAYS emit the JSON payload FIRST, then the tables
 - NEVER explain a type not in the input
 - NEVER write own root cause — always read from catalogue
 - NEVER mix performance and data quality in same table

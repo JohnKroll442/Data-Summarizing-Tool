@@ -149,9 +149,12 @@ def get_actions():
     Query parameters
     ----------------
     dataset_id         required   UUID from POST /api/dataset
-    user               optional   exact match on 'user'
-    story              optional   exact match on 'story_name'
-    action_name        optional   exact match on 'action_name'
+    user               optional   exact match on 'user' (case-insensitive)
+    story              optional   exact match on 'story_name' (case-insensitive)
+    action_name        optional   exact match on 'action_name' (case-insensitive)
+    session            optional   exact match on 'session_id'
+    date               optional   'YYYY-MM-DD' — actions on that calendar day
+    hour_of_day        optional   int 0-23 — actions in that hour of day
     duration_min_ms    optional   inclusive lower bound (ms)
     duration_max_ms    optional   inclusive upper bound (ms)
     limit              optional   max rows returned (default 500, max 5000)
@@ -182,38 +185,36 @@ def get_actions():
     user_filter        = request.args.get("user",        "").strip() or None
     story_filter       = request.args.get("story",       "").strip() or None
     action_name_filter = request.args.get("action_name", "").strip() or None
+    session_filter     = request.args.get("session",     "").strip() or None
+    date_filter        = request.args.get("date",        "").strip() or None
+    hour_filter        = _to_int(request.args.get("hour_of_day", ""))
     duration_min       = _to_int(request.args.get("duration_min_ms", ""))
     duration_max       = _to_int(request.args.get("duration_max_ms", ""))
     limit              = min(_to_int(request.args.get("limit", "")) or 500, 5000)
 
-    filters_applied = {}
-    if user_filter:        filters_applied["user"]            = user_filter
-    if story_filter:       filters_applied["story"]           = story_filter
-    if action_name_filter: filters_applied["action_name"]     = action_name_filter
-    if duration_min:       filters_applied["duration_min_ms"] = duration_min
-    if duration_max:       filters_applied["duration_max_ms"] = duration_max
+    # Single source of truth: filter through the SAME engine the on-demand
+    # aggregation uses (query_engine.filter_rows), so a scoped count and this
+    # row list for the same query can never disagree. Entity matches are
+    # case-insensitive; duration bounds and hour/date are exact.
+    filter_spec = {
+        "user":            user_filter,
+        "story":           story_filter,
+        "action":          action_name_filter,
+        "session":         session_filter,
+        "date":            date_filter,
+        "hour_of_day":     hour_filter,
+        "duration_min_ms": duration_min,
+        "duration_max_ms": duration_max,
+    }
+    filters_applied = {k: v for k, v in filter_spec.items() if v is not None}
 
     # ── apply filters ──────────────────────────────────────────────────────────
-    # Entity matches are case-insensitive — a user typing "john" should match
-    # the stored "John". Duration bounds stay exact.
-    user_lc        = user_filter.lower()        if user_filter        else None
-    story_lc       = story_filter.lower()       if story_filter       else None
-    action_name_lc = action_name_filter.lower() if action_name_filter else None
-
-    def matches(row: dict) -> bool:
-        if user_lc        and (row.get("user")        or "").lower() != user_lc:        return False
-        if story_lc       and (row.get("story_name")  or "").lower() != story_lc:       return False
-        if action_name_lc and (row.get("action_name") or "").lower() != action_name_lc: return False
-        dur = row.get("action_duration_ms")
-        if duration_min is not None and (dur is None or dur < duration_min):    return False
-        if duration_max is not None and (dur is None or dur > duration_max):    return False
-        return True
-
-    filtered = [r for r in rows if matches(r)]
+    import query_engine as _qe
+    filtered = list(_qe.filter_rows(rows, filter_spec))
     total_matching = len(filtered)
 
     # Slowest first — most useful default for perf-analysis queries
-    filtered.sort(key=lambda r: r.get("action_duration_ms") or 0, reverse=True)
+    filtered.sort(key=lambda r: _qe._row_duration(r) or 0, reverse=True)
 
     log.info(
         "GET /api/actions  dataset=%s  filters=%s  matched=%d  returned=%d",

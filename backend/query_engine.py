@@ -56,13 +56,14 @@ _GROUP_BY_PATTERNS = [
      r"|busiest\s+day|peak\s+day|slowest\s+day|quietest\s+day|which\s+day|what\s+day)\b", "day"),
     (r"\b(monthly|by\s+month|per\s+month|busiest\s+month|which\s+month|what\s+month)\b", "month"),
     (r"\b(by\s+user|per\s+user|for\s+each\s+user|users?\s+breakdown|busiest\s+user"
-     r"|which\s+user|most\s+active\s+user|top\s+users?)\b", "user"),
-    (r"\b(by\s+story|per\s+story|for\s+each\s+story|busiest\s+story|which\s+story"
-     r"|top\s+stor(?:y|ies))\b", "story"),
-    (r"\b(by\s+action|per\s+action|for\s+each\s+action|which\s+action|top\s+actions?"
-     r"|most\s+(?:common|frequent)\s+action)\b", "action"),
+     r"|which\s+users?|what\s+users?|most\s+active\s+user|top\s+users?|who"
+     r"|active\s+users?|users?\s+active|list\s+(?:of\s+|all\s+)?users?)\b", "user"),
+    (r"\b(by\s+story|per\s+story|for\s+each\s+story|busiest\s+story|which\s+stor(?:y|ies)"
+     r"|what\s+stor(?:y|ies)|top\s+stor(?:y|ies)|active\s+stor(?:y|ies)|stor(?:y|ies)\s+active)\b", "story"),
+    (r"\b(by\s+action|per\s+action|for\s+each\s+action|which\s+action|what\s+actions?"
+     r"|top\s+actions?|most\s+(?:common|frequent)\s+action)\b", "action"),
     (r"\b(by\s+session|per\s+session|for\s+each\s+session|busiest\s+session"
-     r"|which\s+session|top\s+sessions?)\b", "session"),
+     r"|which\s+session|what\s+sessions?|top\s+sessions?)\b", "session"),
 ]
 
 # Stopwords reused from the detail-row parser semantics — words that follow
@@ -362,12 +363,19 @@ def _detect_date(question, rows):
 
 
 def _detect_hour(question):
-    """Parse an explicit clock hour like '3pm', '15:00', 'at 9 am'. Returns int or None."""
-    m = re.search(r"\b(\d{1,2})\s*(am|pm)\b", question.lower())
+    """Parse an explicit clock hour like '3pm', '15:00', 'at 9 am', 'hour 11'.
+    Returns int (0-23) or None."""
+    q = question.lower()
+    m = re.search(r"\b(\d{1,2})\s*(am|pm)\b", q)
     if m:
         h = int(m.group(1)) % 12
         return h + 12 if m.group(2) == "pm" else h
     m = re.search(r"\b(\d{1,2}):00\b", question)
+    if m and 0 <= int(m.group(1)) <= 23:
+        return int(m.group(1))
+    # "hour 11", "during hour 11", "in hour 11", "hr 13" (but not "hour-by-hour",
+    # "hour of day" — those have no digit immediately after the word)
+    m = re.search(r"\b(?:hour|hr)\s+(\d{1,2})\b", q)
     if m and 0 <= int(m.group(1)) <= 23:
         return int(m.group(1))
     return None
@@ -426,6 +434,41 @@ def parse_query(question, dataset_id):
 
 
 # ─── rendering the result for an LLM prompt ───────────────────────────────────
+
+def _fmt_filters(filters):
+    """Human-readable filter description, e.g. 'user=NROS, hour_of_day=11'."""
+    return ", ".join(f"{k}={v}" for k, v in (filters or {}).items())
+
+
+def format_answer(spec, agg):
+    """One authoritative, deterministic sentence answering the scoped query.
+
+    This is computed from the aggregation — never from any full-dataset ranking —
+    so the agent can open with it verbatim and cannot contradict the real count.
+    """
+    if not agg or not agg.get("groups"):
+        return ""
+    filters  = spec.get("filters", {})
+    group_by = agg.get("group_by")
+    total    = agg.get("total_matching", 0)
+    fdesc    = _fmt_filters(filters)
+    scope    = f" ({fdesc})" if fdesc else ""
+
+    if not group_by:
+        # Scalar scoped count — the single number that answers the question.
+        return f"{total} matching action{'s' if total != 1 else ''}{scope}."
+
+    groups = agg.get("groups", [])
+    label  = {"hour": "Hour", "day": "Date", "weekday": "Weekday",
+              "month": "Month", "user": "User", "story": "Story",
+              "action": "Action", "session": "Session"}.get(group_by, "Group")
+    if groups:
+        top = groups[0]
+        return (f"{total} matching action{'s' if total != 1 else ''}{scope} "
+                f"across {len(groups)} {group_by} group{'s' if len(groups) != 1 else ''}; "
+                f"top {label.lower()}: {top.get('group','?')} ({top.get('count',0)} actions).")
+    return f"{total} matching actions{scope}."
+
 
 def format_aggregation(spec, agg):
     """Render an aggregate_rows result as a compact markdown table for prompts."""
