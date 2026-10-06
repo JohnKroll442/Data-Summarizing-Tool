@@ -1051,8 +1051,20 @@ def run_root_cause_agent(rc_input: dict, question: str = "") -> dict:
     resp   = call_llm(get_skill("root_cause_agent"), json.dumps(llm_input, indent=2))
     result = _safe_json(resp, "root-cause-agent")
     prose  = _prose(resp)
-    directive = _root_cause_chart_directive(rc_input, result, question)
-    log.info("CHART-DEBUG root_cause: directive=%s fence_in_prose=%s", directive, _CHART_FENCE in (prose or ""))
+    # A chart belongs in a root-cause answer ONLY when the user explicitly asked
+    # for one (a viz verb, or a "worst/slowest" ask). Otherwise suppress BOTH our
+    # deterministic directive AND any fence the model emitted on its own (the
+    # shared preamble teaches every agent the chart contract, and its example is
+    # literally an "Open story" waterfall, which the model tends to parrot).
+    ql = _strip_context_tag(question or "").lower()
+    wants_chart = bool(_VIZ_VERB_RE.search(ql) or _WORST_RE.search(ql))
+    if wants_chart:
+        directive = _root_cause_chart_directive(rc_input, result, question)
+    else:
+        directive = None
+        prose = _CHART_FENCE_RE.sub("", prose).rstrip()
+    log.info("CHART-DEBUG root_cause: wants_chart=%s directive=%s fence_in_prose=%s",
+             wants_chart, directive, _CHART_FENCE in (prose or ""))
     result["_response_text"] = _ensure_chart(prose, directive)
     return result
 
@@ -2671,8 +2683,8 @@ def _trace_chart_directive(trace_input: dict, result: dict, question: str) -> di
 
 
 def _root_cause_chart_directive(rc_input: dict, result: dict, question: str) -> dict | None:
-    """Auto-attach an action_waterfall for the worst offending action when
-    row-level flagged actions exist."""
+    """Build an action_waterfall directive for the worst offending action.
+    The runner only calls this when the user actually asked for a chart."""
     flagged = list(rc_input.get("flagged_actions") or [])
     if not flagged:
         # flagged_by_type may hold the rows instead
