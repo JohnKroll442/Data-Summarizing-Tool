@@ -28,7 +28,7 @@ Environment variables (set in backend/.env):
   AI_CORE_MODEL   Model name (default: gpt-4o)
 
   # ── Shared ──────────────────────────────────────────────────────
-  AI_CORE_MAX_TOKENS  Max tokens per response (default: 4000)
+  AI_CORE_MAX_TOKENS  Max tokens per response (default: 8000)
   AI_CORE_TIMEOUT     Request timeout in seconds (default: 120)
 """
 
@@ -48,7 +48,7 @@ LLM_EFFORT         = os.getenv("LLM_EFFORT",     "low").strip().lower()
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL       = os.getenv("OPENAI_MODEL",   "gpt-4o")
 AI_CORE_MODEL      = os.getenv("AI_CORE_MODEL",  "gpt-4o")
-AI_CORE_MAX_TOKENS = int(os.getenv("AI_CORE_MAX_TOKENS", "4000"))
+AI_CORE_MAX_TOKENS = int(os.getenv("AI_CORE_MAX_TOKENS", "8000"))
 AI_CORE_TIMEOUT    = int(os.getenv("AI_CORE_TIMEOUT",    "120"))
 
 
@@ -160,6 +160,14 @@ def _call_openai(url: str, token: str, model: str,
         },
     )
     try:
+        if data["choices"][0].get("finish_reason") == "length":
+            log.warning(
+                "LLM response TRUNCATED — hit max_tokens=%s (finish_reason=length). "
+                "The returned text is incomplete; raise AI_CORE_MAX_TOKENS or reduce the "
+                "required output size in the agent prompt.", AI_CORE_MAX_TOKENS)
+    except (KeyError, IndexError):
+        pass
+    try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError) as exc:
         raise RuntimeError(
@@ -199,6 +207,11 @@ def _call_anthropic(url: str, token: str, model: str,
         },
     )
     _record_usage(data, model)
+    if data.get("stop_reason") == "max_tokens":
+        log.warning(
+            "LLM response TRUNCATED — hit max_tokens=%s (stop_reason=max_tokens). "
+            "The returned text is incomplete; raise AI_CORE_MAX_TOKENS or reduce the "
+            "required output size in the agent prompt.", AI_CORE_MAX_TOKENS)
     try:
         return data["content"][0]["text"]
     except (KeyError, IndexError) as exc:

@@ -149,32 +149,51 @@ Use `assets/root-cause-output-template.json`. Fill all arrays.
 Set `types_explained` to total count across all three arrays.
 Set `excluded_by_user: []` and `user_requested_drill: null`.
 
-### Step 5 — Emit the agent payload FIRST
+### Step 5 — Present the root cause tables FIRST
 
-Emit the ```json Output Contract (below) as the very FIRST block in your
-response. The backend strips this block from the human display wherever it
-appears, so emitting it first never changes what the user sees — it only
-guarantees the payload survives when many types are explained and the response
-runs long. Write `**Agent payload — passed to next agent:**` then the JSON in a
-code block labelled json. All fields must be present.
-
-### Step 6 — Present root cause tables (after the JSON)
-
-Keep the prose compact: the JSON already carries every field, so each table cell
-is a short digest, not a restatement of the full catalogue text.
+The human-readable tables are the answer the user sees — emit them FIRST, before
+the machine payload, so they always survive even if the response runs long and
+the trailing payload is cut off. Keep the prose compact: each table cell is a
+short digest, not a restatement of the full catalogue text.
 
 SECTION 1: ### Root Cause Analysis
 [total_flagged.actions] of [total_actions] actions flagged. Explaining [types_explained] active type(s).
 
 SECTION 2 (if performance_types not empty): **Performance issues:**
-Table columns: Type | Actions | Root Cause | What to Look For
+Emit a table with EXACTLY these three columns, in this order:
+`Type | Actions | Root Cause` — three columns, no more. Do NOT add a
+"What to Look For" column or any fourth column.
+- "Actions" cell: `<n> (<pct>%)` — e.g. `47 (2%)`.
+- "Root Cause" cell: **first sentence only** from the catalogue `root_cause` field (≤ 80 chars). Never paste the full paragraph.
+- `what_to_look_for` belongs only in the "tell me more about [type]" path (Step 7), never as a table column.
 
 SECTION 3 (if data_quality_types not empty):
 **Data quality flags** *(measurement issues, not performance problems):*
 Table columns: Type | Actions | What This Means
+- "What This Means" cell: the catalogue `data_quality_note` field, first sentence only.
 
 SECTION 4 (if active_phase_types not empty): **Where time went in slow actions:**
 Table columns: Phase | Actions | Root Cause
+- "Root Cause" cell: first sentence only from the catalogue `root_cause` field.
+
+After all sections, add one line:
+*Say "tell me more about [type]" for the full root cause explanation and what to look for.*
+
+### Step 6 — Emit the agent payload LAST
+
+After the tables, emit the ```json Output Contract (below) as the FINAL block in
+your response. Write `**Agent payload — passed to next agent:**` then the JSON in
+a code block labelled json. The backend strips this block from the human display,
+so it never changes what the user sees. Emitting it LAST means that if the
+response is ever cut off at the token limit, the loss falls on the invisible
+payload — never on the tables the user is reading. All fields must be present.
+
+**The payload carries COMPACT digests, never full catalogue paragraphs.** Each
+`root_cause`, `what_to_look_for`, and `data_quality_note` field is the FIRST
+SENTENCE ONLY of the catalogue text (≤120 chars). The full paragraphs live in
+the catalogue and reach the user only through the "tell me more about [type]"
+path (Step 7). Pasting full paragraphs into every field for every type bloats
+the payload past the output-token budget — keep every field a one-sentence digest.
 
 ### Step 7 — Pause for human review (REQUIRED)
 
@@ -184,10 +203,10 @@ Want to investigate any of these further, or does this give you what you need?"
 Do not proceed until the user responds.
 
 Accepted:
-- "looks good" / "done" / "continue" → `status: "CONFIRMED"`
-- "tell me more about [type]" → expand catalogue entry, re-ask
+- "looks good" / "done" / "continue" → re-emit the Output Contract payload with `status: "CONFIRMED"`. Terminal.
+- "tell me more about [type]" → quote the full `root_cause` paragraph AND the full `what_to_look_for` paragraph verbatim from the catalogue for that type. Then re-ask.
 - "what about [type not in results]" → "That type was not detected.", re-ask
-- Any row-level question (users, sessions, timestamps) → go to Step 8
+- Any row-level question (users, sessions, timestamps) → entering drill-down means the analysis is accepted: re-emit the Output Contract payload with `status: "CONFIRMED"` FIRST, THEN go to Step 8. Never enter Step 8 while the status is still non-terminal, so answering drill questions can never strand the status at `AWAITING_USER_DIRECTION`.
 - "stop" → `status: "HALTED"`
 
 ---
@@ -195,6 +214,10 @@ Accepted:
 ## Step 8 — Row-Level Queries (Conversational Loop)
 
 Pre-check: If `flagged_by_type` is absent: tell user to regenerate payload, re-ask.
+
+The CONFIRMED payload has ALREADY been emitted before this step begins (see Step 7).
+Row-level Q&A is supplementary and never regresses or re-opens the status — the
+session is already at the `CONFIRMED` terminal state while this loop runs.
 
 Identify the anomaly type being asked about. Match to a key in `flagged_by_type`.
 
@@ -216,13 +239,26 @@ Read from `flagged_actions[]`.
 Table: Action | Flags | User | Session ID | Timestamp | Duration
 
 After each table, ask: "Anything else to investigate, or does this give you what you need?"
-Loop continues until user says "done".
+
+**Termination / exit condition (REQUIRED — the loop MUST be able to end):**
+- "done" / "looks good" / "continue" / "that's all" / "nothing else" / no further
+  questions → stop looping. The payload is already at `status: "CONFIRMED"` (the
+  terminal state); confirm the session is complete. Do NOT re-emit a non-terminal
+  status.
+- "stop" → `status: "HALTED"`. Terminal.
+
+The workflow ALWAYS reaches a terminal state (`CONFIRMED`, or `HALTED` on "stop").
+Row-level drill-down can never leave the session hanging at `AWAITING_USER_DIRECTION`.
+
+**Backend (pipeline) mode:** per PIPELINE_OVERLAY, do NOT loop or pause for review.
+Run the analysis and emit the payload once with `status: "CONFIRMED"` in a single
+response — there is no interactive Step 7 / Step 8 round-trip in the backend.
 
 ---
 
 ## Output Contract
 
-Emit this block FIRST in your response (before the tables). All fields required.
+Emit this block LAST in your response (after the tables). All fields required.
 Never omit any field.
 
 ```json
@@ -234,14 +270,20 @@ Never omit any field.
   "types_explained": null,
   "root_causes": [
     { "type_key": "<string>", "type_label": "<string>", "nature": "performance",
-      "actions": 0, "pct": 0, "root_cause": "<string>", "what_to_look_for": "<string>" }
+      "actions": 0, "pct": 0,
+      "root_cause": "<digest — first sentence of the catalogue root_cause, ≤120 chars>",
+      "what_to_look_for": "<digest — first sentence of the catalogue what_to_look_for, ≤120 chars>" }
   ],
   "data_quality_flags": [
     { "type_key": "<string>", "type_label": "<string>", "nature": "data_quality",
-      "actions": 0, "pct": 0, "root_cause": "<string>", "data_quality_note": "<string>" }
+      "actions": 0, "pct": 0,
+      "root_cause": "<digest — first sentence, ≤120 chars>",
+      "what_to_look_for": "<digest — first sentence, ≤120 chars>",
+      "data_quality_note": "<digest — first sentence, ≤120 chars>" }
   ],
   "phase_context": [
-    { "type_key": "<string>", "type_label": "<string>", "actions": 0, "pct": 0, "root_cause": "<string>" }
+    { "type_key": "<string>", "type_label": "<string>", "actions": 0, "pct": 0,
+      "root_cause": "<digest — first sentence, ≤120 chars>" }
   ],
   "excluded_by_user": [],
   "user_requested_drill": null,
@@ -253,11 +295,13 @@ Never omit any field.
 
 ## Guard Rails
 
-- ALWAYS emit the JSON payload FIRST, then the tables
+- ALWAYS emit the tables FIRST, then the JSON payload LAST (the payload is invisible and must never crowd out the visible tables)
+- Payload prose fields (`root_cause`, `what_to_look_for`, `data_quality_note`) are ONE-SENTENCE digests (≤120 chars) — never full catalogue paragraphs
+- The performance table has EXACTLY three columns (`Type | Actions | Root Cause`) — never a "What to Look For" column
 - NEVER explain a type not in the input
 - NEVER write own root cause — always read from catalogue
 - NEVER mix performance and data quality in same table
 - NEVER omit `excluded_by_user`, `user_requested_drill`, or `session_notes`
-- Row-level queries (Step 8) do NOT change the output JSON
+- Row-level queries (Step 8) do NOT change the analysis fields of the output JSON — but the status MUST already be `CONFIRMED` before drill-down begins; never strand it at a non-terminal value
 - If `flagged_by_type` is missing — tell user to regenerate, do not guess
 - If asked "how do I fix this" → "Fix recommendations are not in my scope yet."

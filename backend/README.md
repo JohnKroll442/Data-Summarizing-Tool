@@ -29,7 +29,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 app:app
 | `AI_CORE_URL` | Yes | Full chat completions endpoint URL |
 | `AI_CORE_TOKEN` | Yes | Bearer token |
 | `AI_CORE_MODEL` | No | Model name (default: gpt-4o) |
-| `AI_CORE_MAX_TOKENS` | No | Max tokens per response (default: 4000) |
+| `AI_CORE_MAX_TOKENS` | No | Max tokens per response (default: 8000) |
 | `AI_CORE_TIMEOUT` | No | Request timeout seconds (default: 120) |
 | `PORT` | No | Server port (default: 5000) |
 | `DATASET_TTL_SEC` | No | Dataset cache TTL seconds (default: 3600) |
