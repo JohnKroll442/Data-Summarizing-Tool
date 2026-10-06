@@ -166,6 +166,33 @@ rows are already in your input. `user_filter` names the resolved entity.
 
 `detail_rows` is `[]` when the question named no specific entity.
 
+**Row cap / pagination (backend path).** `detail_rows` is capped at **500 rows**.
+When the backend indicates the filtered set exceeds the cap (the row count equals
+500 and/or a `detail_rows_total` / `has_more` field is present and larger), you
+MUST state the cap explicitly — e.g. "showing the first 500 of N matching actions;
+more rows exist" — and never present the capped page as the complete result. If
+the full count is not supplied, say "showing the first 500 (more may exist)".
+
+**Duration-filter units.** When a detail question filters on duration
+(`duration_min_ms` / `duration_max_ms`), these fields are **MILLISECONDS**. Human
+phrasings must be converted BEFORE filtering: minutes → ×60000, seconds → ×1000.
+E.g. "actions over 5 minutes" → `duration_min_ms = 300000` (NOT 5); "under 2
+seconds" → `duration_max_ms = 2000`. Never pass a human-unit number straight into
+a `_ms` field.
+
+**Interactive detail path (`GET /api/actions`) — Joule only, NOT the backend.**
+In the backend pipeline there is NO API call: the rows arrive pre-fetched in
+`detail_rows` and `user_filter` names the resolved entity. Only in interactive
+Joule use does the detail path hit `GET /api/actions`. On that path you MUST:
+- Check the HTTP status. A 4xx/5xx (e.g. a mistyped user) is an ERROR, not an
+  empty result — say so explicitly ("couldn't look up 'DVIJAYAN' — request failed
+  / entity not found"). NEVER report "0 actions found for X" as if it were a valid
+  empty answer when the request itself errored.
+- Distinguish a genuine empty result (HTTP 200 with an empty row set → "no actions
+  matched") from a lookup/request error (non-2xx → surface the error and the cause).
+- Honour pagination: pass `limit` / `offset`, read `has_more`, and when `has_more`
+  is true state that more rows exist rather than presenting one page as complete.
+
 **Cross-dimensional results (`cross_filter` + `cross_results`, cross mode)**
 
 Present when `mode == "cross"` (an entity-pair question). The backend resolved
@@ -212,10 +239,20 @@ groups by size) — do not re-sort. Durations are in milliseconds; convert to
 seconds (÷1000, 1 decimal) for display.
 
 **Cross-reference data (optional, present when payload includes it)**
+
+Each flagged row under a `<type_key>` carries the FULL set of fields below — not
+just `user` + `action_name`. Use `story_name` / `session_id` to resolve story-
+and session-scoped cross-references (a query like "flagged actions on story X" or
+"flagged actions in session Y" MUST match on these fields, not just the user).
+
 ```json
 {
   "flagged_by_type": {
-    "<type_key>": [ { "user": "<string>", "action_name": "<string>" } ]
+    "<type_key>": [
+      { "user": "<string>", "action_name": "<string>", "story_name": "<string>",
+        "session_id": "<string>", "action_timestamp": "<ISO-8601>",
+        "action_duration_ms": 0, "anomaly_types": [] }
+    ]
   }
 }
 ```
@@ -281,7 +318,10 @@ as if it answered the time question.
 
 ### Step 2 — Determine how many results to show (ranking mode only)
 
-Default: show all results from the array (no cap — all entities are included).
+Default: show all results from the array (no cap — all entities are included),
+EXCEPT apply the presentation-only overflow cap (top 50 + "… N more" note) when
+the table would exceed ~50 rows — see the Overflow Safety guard rail. The JSON
+payload always carries every entity regardless.
 If user specified a number ("top 5", "show me 3"): show only that many rows.
 If user asked about the single most frequent: show rank 1 prominently, note total count.
 
@@ -384,6 +424,12 @@ Add: *Want me to route to Root Cause Agent for the full breakdown on [entity]?*
 Write: **Agent payload — passed to next agent:**
 Then completed JSON in a code block labelled json. All fields must be present.
 
+Populate `question_answered` with a one-sentence restatement of what you actually
+answered (e.g. "Ranked all 42 users by activity; MHURTADO is most active with
+1,203 actions."). This field must NEVER be left null when you produced an answer —
+downstream consumers and follow-up resolution rely on it. Set it to null ONLY on
+the NO_DATA early exit.
+
 ### Step 7 — Pause for human review (REQUIRED)
 
 If cross_references not empty:
@@ -439,7 +485,16 @@ All fields required.
 Field rules:
 - `status` at Step 6 is always `"AWAITING_USER_DIRECTION"`
 - `dimension_explored` is one of: users, stories, actions, time, sessions, all
+- `question_answered` is a one-sentence restatement of what was answered; never
+  null when an answer was produced (null only on the NO_DATA early exit)
 - `top_results[]` populated from Layer 1 aggregation queries
+- `top_results[]` ranks are per `entity_type`: rank numbering restarts at 1 for
+  each entity type and is NOT a single global sequence. For `dimension: "all"`,
+  keep the three entity types as SEPARATE ranked groups — each row carries its own
+  `entity_type`, and a user ranked 1 and a story ranked 1 are both legitimately
+  "rank 1" within their own type. NEVER flatten the three arrays into one global
+  rank (which would produce duplicate or ambiguous rank numbers). Downstream
+  consumers disambiguate a rank by reading `entity_type` alongside `rank`.
 - `detail_results[]` populated from Layer 2 API calls, empty otherwise
 - `breakdown` mirrors the Layer 3 `aggregation` you were given (echo its
   `group_by` and `groups[]`); null when no time / session / drilldown breakdown
@@ -454,7 +509,22 @@ Field rules:
 
 - NEVER present JSON before the table
 - NEVER invent rankings not present in `data_summary` or `aggregation`
-- NEVER cap `by_user[]`, `by_story[]`, or `by_action[]` — show all entities
+- NEVER cap `by_user[]`, `by_story[]`, or `by_action[]` by DROPPING entities from
+  the JSON payload — the payload must always carry every entity so downstream
+  agents and the mesh store are never starved. The one exception is a context-
+  safety cap on the HUMAN-READABLE table only (see the overflow guard below)
+- OVERFLOW SAFETY (very large datasets): the tool-side row cap was removed, so a
+  multi-thousand-row human-readable table can overflow context and truncate the
+  response mid-table — which also breaks the trailing JSON so it never closes.
+  To prevent this, when a ranking/detail table would exceed ~50 rows, render only
+  the top 50 rows in the Markdown table and append a note:
+  "… N more (full data in the agent payload below)" where N is the remaining
+  count. This cap is PRESENTATION-ONLY — the JSON payload below still contains the
+  COMPLETE array. Always finish emitting and CLOSE the JSON payload; never let the
+  table consume so much space that the JSON is cut off. (This presentation cap is
+  independent of the backend's 500-row `detail_rows` cap: in detail mode you may
+  hit BOTH — i.e. show the first 50 of up-to-500 pre-fetched rows, and still state
+  that the underlying result was capped at 500 of N per the detail-mode rule.)
 - NEVER re-sort the arrays — they are pre-sorted by action_count descending
 - NEVER analyse anomaly types or root causes — surface and route only
 - When `aggregation` is present, ANSWER FROM IT — never say a time-of-day,

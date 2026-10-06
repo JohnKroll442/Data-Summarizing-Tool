@@ -1,0 +1,57 @@
+{
+  "dataset_id": "021587a2-59bf-4e73-a85e-97905f790841",
+  "kpi_p90": 22569.700000000026,
+  "kpi_p95": 40439.34999999997,
+  "kpi_median": 4552,
+  "kpi_over_threshold": 47,
+  "anomaly_flagged_count": 558,
+  "anomaly_flagged_pct": 27,
+  "anomaly_headline_types": [
+    "slow_action",
+    "large_offset",
+    "straggler",
+    "fragmented",
+    "offset_overrun",
+    "negative_phase",
+    "component_overrun"
+  ],
+  "root_cause_categories": [
+    "slow_action",
+    "large_offset",
+    "straggler",
+    "fragmented",
+    "offset_overrun",
+    "negative_phase",
+    "component_overrun"
+  ],
+  "top_user_by_frequency": [
+    {
+      "group": "MHURTADO",
+      "count": 266
+    },
+    {
+      "group": "SAP_SUPPORT_ACCESS9",
+      "count": 228
+    },
+    {
+      "group": "KIZUMI",
+      "count": 155
+    },
+    {
+      "group": "NROS",
+      "count": 139
+    },
+    {
+      "group": "SULMOHAMED",
+      "count": 113
+    }
+  ],
+  "busiest_hour": "2026-07-30 11",
+  "bottleneck_widget_worst_action": "Image",
+  "bottleneck_dominant_phase": "render",
+  "worst_action": {
+    "name": "Open story",
+    "action_key": "Open story::2026-07-30 08:46:43.227000000",
+    "duration_ms": 10368063
+  }
+}

@@ -78,6 +78,26 @@ For every key in `counts`:
 Sort both arrays by `actions` descending immediately. This sort is the
 single source of truth — both table and JSON use this order.
 
+**Element shape — each entry is an OBJECT, never a bare string.** Every item
+in `active_headline_types[]` and `active_phase_types[]` must be:
+
+```json
+{ "key": "<type_key>", "label": "<human label>", "actions": <int>, "pct": <int percent> }
+```
+
+Concrete example:
+
+```json
+"active_headline_types": [
+  { "key": "slow_action", "label": "Slow Action", "actions": 42, "pct": 18 },
+  { "key": "straggler",   "label": "Straggler",   "actions": 11, "pct": 5 }
+]
+```
+
+Never emit `["slow_action","straggler"]`. The Root Cause Agent reads `.key`,
+`.label`, `.actions`, and `.pct` off each element; a bare string yields
+`undefined`. `label` comes from Step 2; `pct` is the integer percentage.
+
 **Red flag — check before emitting `active_headline_types`:** if it contains
 `frontend_bound`, `network_bound`, or `backend_bound`, you have misrouted a
 phase-subgroup key. Move it to `active_phase_types`. `active_headline_types`
@@ -145,6 +165,21 @@ Accepted responses:
 - "tell me more about [type]" → quote label and description, re-ask
 - "stop" → set `status: "HALTED"`, return to Orchestrator
 
+**Re-emit the FULL payload (REQUIRED).** The JSON template defaults to
+`status: "READY_FOR_REVIEW"`. That value must NEVER be the last JSON block
+the orchestrator sees — it has no handler for it and will stall. When this
+step resolves you MUST re-emit the COMPLETE JSON payload (every field, not a
+diff) with `status` replaced by a terminal value:
+- `CONFIRMED` once review passes (or "continue"/"yes")
+- `NO_DATA` if the input carried no `anomalies` payload
+- `NO_ANOMALIES` per the Step 1 early-exit
+- `HALTED` on "stop"
+
+Backend note: the pipeline-overlay already mandates `CONFIRMED` and skips the
+human pause, so in the automated pipeline you re-emit the full payload with
+`status: "CONFIRMED"` directly — the emitted JSON is never left at
+`READY_FOR_REVIEW`.
+
 ---
 
 ## Output Contract
@@ -168,6 +203,16 @@ Return ONLY this JSON in the labelled code block. All fields required.
 
 `pct` is always an integer percentage.
 `session_notes` must always be present, even if empty.
+
+`active_headline_types[]` and `active_phase_types[]` are arrays of OBJECTS,
+never bare strings. Each element has EXACTLY this shape:
+
+```json
+{ "key": "<type_key>", "label": "<human label>", "actions": <int>, "pct": <int percent> }
+```
+
+The downstream Root Cause Agent reads `.key`, `.label`, `.actions`, and
+`.pct` off each element — emitting a string (e.g. `"slow_action"`) breaks it.
 
 ---
 

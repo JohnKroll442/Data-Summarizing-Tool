@@ -110,18 +110,72 @@ Each row represents one widget within one action:
 {
   "widget_id":   "<string>",
   "widget_name": "<string>",
-  "render":      "<number — exclusive ms (render − network)>",
-  "network":     "<number — exclusive ms (network − backend)>",
-  "backend":     "<number — innermost ms>",
+  "render":      "<number — exclusive render ms, ALREADY computed>",
+  "network":     "<number — exclusive network ms, ALREADY computed>",
+  "backend":     "<number — innermost server ms, ALREADY computed>",
   "offset":      "<number — pre-render wait ms>",
   "total":       "<number — render + network + backend>"
 }
 ```
 
-Phase nesting: render ⊇ network ⊇ backend. Values are EXCLUSIVE durations.
-Negative exclusive values = data quality issue (inner phase outran container).
+**These values are ALREADY exclusive per-phase durations — use them VERBATIM.**
+The annotations above are DESCRIPTIVE PROVENANCE, not compute instructions. The
+backend already performed any `render − network` / `network − backend`
+subtraction before handing you the input. Do NOT subtract anything: if the input
+says `render: 300`, the exclusive render IS 300 — never recompute it as
+`300 − network`. Treat `render`, `network`, and `backend` as final numbers.
+
+Phase nesting model (for interpretation only): render ⊇ network ⊇ backend.
+Negative values in these fields = data quality issue (inner phase outran
+container) — report them, do not "fix" them.
 
 See `references/widget-trace-patterns.md` for the pattern catalogue.
+
+---
+
+## Core Formulas (compute these yourself; do NOT re-derive phases)
+
+The `render`/`network`/`backend` values are already exclusive (see above). The
+only arithmetic you perform is the share and verification math below.
+
+### % of action (waterfall "% of Action" column + `pct_of_action`)
+
+```
+pct_of_action = widget.total / action_duration_ms × 100
+```
+
+- `widget.total` is the widget's `total` field; `action_duration_ms` is the
+  containing action's duration (from `top_actions`). It is NOT the widget's share
+  of the sum of all widget totals — divide by the ACTION duration, never by a
+  pool of widget totals.
+- **Zero/missing guard:** if `action_duration_ms` is 0, null, or missing, do NOT
+  divide. Show `pct_of_action` as `"n/a"` in BOTH the human table and the JSON
+  payload (never `Infinity`, `NaN`, or a number).
+
+### Dominant-phase %
+
+```
+dominant_phase_pct = max(render, network, backend) / widget.total × 100
+```
+The dominant phase = whichever of `render`/`network`/`backend` is largest for the
+bottleneck widget. Same zero guard: if `widget.total` is 0/null, show `"n/a"`.
+
+### Data-quality verification math (print the raw arithmetic)
+
+When an action carries a data-quality anomaly type, print the exact numbers so
+the impossibility is self-evident:
+
+- **component_overrun** — widget's phases exceed the action:
+  `render + network + backend = total (X ms) > action_duration_ms (Y ms) — overrun by (X − Y) ms`
+- **offset_overrun** — widget starts after the action ends:
+  `offset (X ms) > action_duration_ms (Y ms) — overrun by (X − Y) ms`
+- **negative_phase** — an exclusive phase is negative (inner phase outran its
+  container): print the offending field directly, e.g.
+  `render = -Z ms (NEGATIVE — inner phase outran container)` — report the
+  provided value as-is; do NOT subtract to "find" it.
+- **decomposition check** (sanity for any action): the parts must sum to the
+  total — `render + network + backend == total`; if they do not, flag it with
+  both sides shown.
 
 ---
 
@@ -135,6 +189,18 @@ If `top_actions` is empty AND `type_summary` is empty:
 ---
 
 ## Operating Modes
+
+### Mode Selection (decide FIRST)
+
+Pick exactly one mode using this rule:
+- **Mode 1 (single-action waterfall)** — the question targets ONE specific
+  action: a named action, "the slowest/worst action", or a single action
+  otherwise in scope.
+- **Mode 2 (cross-action patterns)** — the question asks about a PATTERN across
+  MULTIPLE actions of a type (e.g. "which widget is usually the bottleneck for
+  <type>", "what's the common pattern across the flagged actions").
+- **Tie-breaker** — if a type has exactly ONE action, or the scope resolves to a
+  single action, choose **Mode 1** (a waterfall of that one action), not Mode 2.
 
 ### Mode 1 — Single-Action Detail (waterfall)
 
@@ -165,10 +231,16 @@ Steps:
 1. Use `type_summary[<type_key>]` for the flagged-action count of that type.
 2. For each action in `top_actions` (optionally filtered to that type via its
    `anomaly_types`): read its widget rows from `widget_data[action_key]`.
-3. Build the cross-action summary table from the actions you have widget data for.
-4. Identify repeat offenders: widgets that are the bottleneck in >50% of actions.
-5. Report the pattern. If `type_summary` shows more actions of the type than the
-   3 in `top_actions`, note that you analysed the 3 worst by duration.
+3. **Cap the actions you analyze at the 10 worst by duration.** In the backend
+   this is already bounded — the input only supplies `top_actions` (top 3 by
+   duration) plus `widget_data` for those, so you never fetch more there.
+   Interactively, if more actions are reachable via the API, fetch and analyze at
+   most 10 (the worst by duration) — NEVER issue one call per action unbounded.
+4. Build the cross-action summary table from the actions you have widget data for.
+5. Identify repeat offenders: widgets that are the bottleneck in >50% of actions.
+6. Report the pattern. **NEVER silently truncate** — always state how many of how
+   many you covered, e.g. "analyzed the N worst by duration of M flagged
+   `<type>` actions" (M from `type_summary[<type_key>]`).
 
 ---
 
@@ -196,10 +268,14 @@ Steps:
 ### Single-action sections:
 
 SECTION 1: `### Widget Trace — [action_name]`
-`[user] · [action_duration_ms / 1000]s · [anomaly_types joined by ", "]`
+`[user] · [action_duration_ms formatted: <1000ms→Xms, 1000–59999ms→X.Xs, ≥60000ms→Xm Ys (omit seconds when 0)] · [anomaly_types joined by ", "]`
 
 SECTION 2: **Widget waterfall:**
 Table columns: Widget | Offset | Render | Network | Backend | Total | % of Action
+The "% of Action" column = `pct_of_action` (see Core Formulas:
+`widget.total / action_duration_ms × 100`; show `"n/a"` when `action_duration_ms`
+is 0/null/missing). Render/Network/Backend are printed verbatim from the input —
+no subtraction.
 Convert all ms values: ≥1000ms show as seconds with 1 decimal, <1000ms show as ms.
 Cap the table to the 15 widgets with the highest Total. If the action has more,
 add a final row: `… N more widgets (full list in the payload)`.
@@ -211,7 +287,9 @@ SECTION 4: **Loading pattern:**
 "Widgets loaded [sequentially|in parallel|mixed] — [observation]."
 
 SECTION 5 (if data quality flags): **Data quality verification:**
-Show the raw math for each applicable flag.
+Show the raw math for each applicable flag using the Core Formulas
+verification arithmetic (print the actual numbers for component_overrun /
+offset_overrun / negative_phase / decomposition check).
 
 ### Cross-action sections:
 
@@ -274,6 +352,6 @@ highest `total` so the payload always closes cleanly within the response budget.
 - NEVER invent widget data — only use what the API returns
 - NEVER explain root causes — that is the Root Cause Agent's domain
 - NEVER reference KPI values — that is the Stats Agent's domain
-- Convert durations for display: ≥ 1000ms → seconds (1 decimal), < 1000ms → ms
+- Convert durations for display — **widget table cells**: ≥1000ms → seconds (1 decimal), <1000ms → ms. **Section 1 header (action_duration_ms)**: three-tier — <1000ms→Xms, 1000–59999ms→X.Xs, ≥60000ms→Xm Ys (omit seconds when 0, e.g. 2m)
 - `session_notes` must always be present, even if empty
 - If user asks about anomaly counts → "That is an Anomaly Agent question. Want me to route it?"

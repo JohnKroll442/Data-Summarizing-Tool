@@ -88,6 +88,11 @@ If genuinely unclear, ask ONE clarifying question before routing.
 
 Record the intent and target agent in session state before proceeding.
 
+When the payload first arrives, immediately COPY `payload.meta` into
+`session_state.payload_meta`. Do this once, up front — the raw payload can
+scroll out of context on a long session, so every later phase must read meta
+from `session_state.payload_meta`, never from the raw payload.
+
 Same rule applies to follow-up messages — every message re-enters Phase 0.
 
 ---
@@ -113,10 +118,22 @@ See `references/agent-capability-catalogue.md` for full dispatch inputs.
 
 ### ROOT_CAUSE_ANALYSIS
 1. Dispatch Anomaly Agent with `payload.anomalies` section.
-2. After Anomaly Agent confirms, dispatch Root Cause Agent with:
-   - Anomaly Agent confirmed output
-   - `payload.anomalies.flagged_by_type`
-   - `payload.anomalies.flagged_actions`
+2. After Anomaly Agent confirms, dispatch Root Cause Agent. The Root Cause Agent
+   expects its anomaly fields FLAT at the root of its input — it reads
+   `active_headline_types`, `active_phase_types`, `total_flagged`, and
+   `total_actions` at the top level, and empty values trigger its early-exit
+   (returns NO_ANOMALIES). Do NOT pass the Anomaly Agent output as a nested
+   `anomaly_output` blob. EXTRACT/MERGE those fields up to the root:
+```json
+{
+  "active_headline_types": "<extracted from anomaly_output>",
+  "active_phase_types": "<extracted from anomaly_output>",
+  "total_flagged": "<extracted from anomaly_output>",
+  "total_actions": "<extracted from anomaly_output>",
+  "flagged_by_type": "<payload.anomalies.flagged_by_type>",
+  "flagged_actions": "<payload.anomalies.flagged_actions>"
+}
+```
 
 ### ANOMALY_SUMMARY
 Dispatch Anomaly Agent with `payload.anomalies` section.
@@ -127,7 +144,14 @@ Dispatch Stats Agent with `payload.kpis` array.
 ### FULL_ANALYSIS
 Dispatch Stats Agent AND Anomaly Agent in a SINGLE message with 2 parallel
 task calls. Pass `payload.kpis` to Stats Agent, `payload.anomalies` to
-Anomaly Agent. After both confirm, dispatch Narrator.
+Anomaly Agent.
+
+JOIN BARRIER: these two dispatches are independent human-in-the-loop
+checkpoints. Do NOT dispatch the Narrator when only one has confirmed —
+confirming Stats alone must NOT trigger the Narrator. Wait until BOTH
+`session_state.stats_output` AND `session_state.anomaly_output` are present
+and confirmed; only then dispatch the Narrator. Dispatching early feeds the
+Narrator a null anomaly (or stats) output.
 
 ### DATA_EXPLORATION
 Dispatch Explorer Agent with:
@@ -167,6 +191,14 @@ If the question cannot be answered from session state, re-classify.
 - `CONFIRMED` or `NO_DATA` or `NO_ANOMALIES` → proceed to Phase 4
 - `HALTED` → tell the user which agent halted. Ask: "Want to retry or skip it?"
 - `BLOCKED` → retry once. If still blocked, surface the blocker to the user.
+- `AWAITING_USER_DIRECTION` → do NOT advance to Phase 4. Pause and surface the
+  agent's question/options to the user, and wait for their direction before
+  dispatching anything further.
+- `DRILL_REQUESTED` → the agent is requesting a follow-up drill. Do NOT drop it.
+  Dispatch the requested drill (the agent names the target/parameters) and
+  collect its result before advancing.
+- `PARSE_ERROR` → do NOT proceed with null data. Surface the parse error to the
+  user and re-request / re-dispatch the agent rather than continuing.
 
 Carry all `session_notes[]` from agent outputs into session state.
 
@@ -179,10 +211,23 @@ For FULL_ANALYSIS: build the Narrator input package:
 {
   "stats":    "<stats_output>",
   "anomalies": "<anomaly_output>",
-  "meta": "<payload.meta>",
-  "top_flagged_action": "<payload.anomalies.flagged_actions[0] or null>"
+  "meta": "<session_state.payload_meta>",
+  "trace_output": "<session_state.trace_output or null>",
+  "top_flagged_action": "<flagged action with the MAXIMUM action_duration_ms, or null>"
 }
 ```
+Read `meta` from `session_state.payload_meta` (NOT the raw payload) so the
+Narrator heading never renders "null" on a long session.
+
+Select `top_flagged_action` as the flagged action with the MAXIMUM
+`action_duration_ms` — sort/scan `payload.anomalies.flagged_actions` by
+duration and take the largest. Never use `flagged_actions[0]` (array position),
+which reports the first-listed action rather than the actual worst performer.
+
+Include `trace_output` whenever `session_state.trace_output` is set (the Trace
+Agent has run). It lets the Narrator emit a "Trace findings" section instead of
+generic routing suggestions. If no Trace Agent output exists, pass `null`.
+
 Dispatch Narrator. Surface its output. Store full Narrator output in session state.
 
 For ROOT_CAUSE_ANALYSIS: surface Root Cause Agent output directly — no Narrator needed.
@@ -194,6 +239,14 @@ For ROOT_CAUSE_ANALYSIS: surface Root Cause Agent output directly — no Narrato
 After Phase 4, every subsequent message re-enters Phase 0.
 Session state persists — agent outputs are cached and reused.
 Do not re-dispatch an agent for a question answerable from cache.
+
+### Payload staleness check (every turn, BEFORE routing)
+
+Compare `meta.generated_at` in the incoming payload against `session_state.payload_meta.generated_at`:
+
+- **Match or null** → session state is current; "never re-run" guard applies normally
+- **Differ** → payload has changed; clear `stats_output`, `anomaly_output`, `root_cause_output`, `explorer_output`, `narrator_output`, `trace_output`; preserve `session_notes`; write the new `payload.meta` into `session_state.payload_meta`; then route fresh
+- **Fallback comparator** — if `generated_at` is absent, compare `meta.file_name`; treat as stale if neither field is available
 
 ---
 
@@ -225,6 +278,6 @@ propagates to the Narrator and is surfaced to the user at summary time.
 - Every message enters Phase 0 — no exceptions
 - Phase 1 is always one sentence — never a formal plan or JSON
 - Never show raw JSON to the user — tables and plain language only
-- Never re-run an agent if its output is already in session state
+- Never re-run an agent if its output is already in session state (run the staleness check first — see Phase 5)
 - If payload is missing, ask for it — do not fabricate data
 - If an agent is not yet built, fall back gracefully and tell the user

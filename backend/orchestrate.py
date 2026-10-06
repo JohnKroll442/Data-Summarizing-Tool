@@ -517,7 +517,7 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
     session_notes  = []
 
     if intent == "KPI_SUMMARY":
-        out = run_stats_agent(payload.get("kpis", []), question)
+        out = run_stats_agent(payload.get("kpis", []), question, payload.get("meta", {}))
         agent_outputs["stats"] = out
         response_parts.append(out.get("_response_text", ""))
         session_notes.extend(out.get("session_notes", []))
@@ -574,6 +574,7 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
             payload.get("kpis", []),
             payload.get("anomalies", {}),
             question,
+            payload.get("meta", {}),
         )
         agent_outputs["stats"]   = stats_out
         agent_outputs["anomaly"] = anomaly_out
@@ -674,7 +675,7 @@ def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
     response_text = ""
 
     if agent_key == "stats_agent":
-        out = run_stats_agent(payload.get("kpis", []), question)
+        out = run_stats_agent(payload.get("kpis", []), question, payload.get("meta", {}))
         agent_outputs["stats"] = out
         response_text = out.get("_response_text", "")
         session_notes.extend(out.get("session_notes", []))
@@ -732,6 +733,7 @@ def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
             payload.get("kpis", []),
             payload.get("anomalies", {}),
             question,
+            payload.get("meta", {}),
         )
         agent_outputs["stats"]   = stats_out
         agent_outputs["anomaly"] = anomaly_out
@@ -834,8 +836,13 @@ def classify_intent(question: str, payload: dict, llm_history: list = None) -> d
 
 # ─── individual agents ────────────────────────────────────────────────────────
 
-def run_stats_agent(kpis: list, question: str = "") -> dict:
+def run_stats_agent(kpis: list, question: str = "", meta: dict = None) -> dict:
     payload_in = {"kpis": kpis}
+    # Pass meta so the agent can derive threshold_label from
+    # meta.slow_action_threshold_ms (otherwise it emits threshold_label: null and
+    # the Narrator KPI table shows a blank threshold row). See stats-agent Step 2.
+    if meta:
+        payload_in["meta"] = meta
     if question:
         payload_in["user_request"] = question
     resp   = call_llm(get_skill("stats_agent"), json.dumps(payload_in, indent=2))
@@ -1084,10 +1091,10 @@ def run_trace_agent(trace_input: dict) -> dict:
     return result
 
 
-def _run_parallel(kpis: list, anomalies: dict, question: str = "") -> tuple:
+def _run_parallel(kpis: list, anomalies: dict, question: str = "", meta: dict = None) -> tuple:
     """Run Stats Agent and Anomaly Agent concurrently via ThreadPoolExecutor."""
     with ThreadPoolExecutor(max_workers=2) as pool:
-        f_stats   = pool.submit(run_stats_agent,   kpis,      question)
+        f_stats   = pool.submit(run_stats_agent,   kpis,      question, meta)
         f_anomaly = pool.submit(run_anomaly_agent, anomalies, question)
         return f_stats.result(), f_anomaly.result()
 
@@ -1394,7 +1401,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     # stop this, so remove the competing numbers from the input entirely: the
     # aggregation becomes the ONLY per-entity numeric source the model can see.
     scoped_agg = bool(aggregation and aggregation.get("filters"))
-    ds_out = _slim_data_summary(payload.get("data_summary", {}))
+    ds_out = payload.get("data_summary", {})  # pass full arrays — cap removed (see _slim_data_summary)
     if scoped_agg:
         displayed_user_ranking = displayed_story_ranking = displayed_action_ranking = []
         if ds_out:
@@ -1912,9 +1919,15 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
 
 def _slim_data_summary(ds: dict, cap: int = 20) -> dict:
     """
-    Cap the by_user / by_story / by_action activity arrays to `cap` rows.
-    These are activity-volume lists used only for "most active" questions.
-    Capping them from 48+ rows to 20 saves ~1,500 input tokens per call.
+    DEPRECATED — no longer called.
+
+    Previously capped by_user / by_story / by_action to `cap` rows to save
+    ~1,500 input tokens per call.  Removed because the Explorer Agent requires
+    COMPLETE lists to answer "most active" questions correctly: a 48-user dataset
+    truncated to 20 would report rank-21+ users as non-existent, producing silent
+    wrong answers.  The token cost is accepted; correctness is not negotiable.
+
+    Do not reinstate without also fixing the Explorer SKILL to handle partial arrays.
     """
     if not ds:
         return ds

@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Performance Analytics · Multi-Agent Architecture</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #EEF2F7;
+      padding: 32px;
+      min-width: 1100px;
+      color: #1E293B;
+    }
+
+    .page {
+      background: white;
+      border-radius: 14px;
+      padding: 36px 40px 28px;
+      margin-bottom: 48px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.09);
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 28px;
+      border-bottom: 1px solid #E2E8F0;
+      padding-bottom: 16px;
+    }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1E293B;
+    }
+
+    .badge {
+      margin-left: auto;
+      background: #0F766E;
+      color: white;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── BOX ── */
+    .box {
+      border-radius: 8px;
+      padding: 11px 14px 12px;
+    }
+    .box-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .box-sub {
+      font-size: 11px;
+      line-height: 1.5;
+      opacity: 0.78;
+    }
+
+    /* ── COLOURS ── */
+    .c-orch   { background: #EDE9FE; border: 1.5px solid #7C3AED; }
+    .c-orch   .box-title { color: #5B21B6; }
+
+    .c-agent  { background: #ECFDF5; border: 1.5px solid #059669; }
+    .c-agent  .box-title { color: #065F46; }
+
+    .c-analyst{ background: #FEF9C3; border: 1.5px solid #CA8A04; }
+    .c-analyst .box-title { color: #92400E; }
+
+    .c-hitl   { background: #FFF7ED; border: 2px solid #EA580C; }
+    .c-hitl   .box-title { color: #C2410C; }
+
+    .c-synth  { background: #EFF6FF; border: 1.5px solid #2563EB; }
+    .c-synth  .box-title { color: #1D4ED8; }
+
+    .c-out    { background: #1D4ED8; border: none; }
+    .c-out    .box-title { color: white; }
+    .c-out    .box-sub   { color: rgba(255,255,255,0.85); }
+
+    .c-infra  { background: #F8FAFC; border: 1.5px solid #CBD5E1; }
+    .c-infra  .box-title { color: #334155; }
+
+    /* ── TAGS ── */
+    .tag {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 6px;
+      margin-right: 3px;
+    }
+    .t-llm { background: #EDE9FE; color: #5B21B6; border: 1px solid #A78BFA; }
+    .t-ro  { background: #ECFDF5; color: #065F46; border: 1px solid #6EE7B7; }
+    .t-api { background: #EFF6FF; color: #1E40AF; border: 1px solid #93C5FD; }
+    .t-det { background: #FEF9C3; color: #92400E; border: 1px solid #FCD34D; }
+
+    /* ── FLOW HELPERS ── */
+    .divider {
+      text-align: center;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #94A3B8;
+      margin: 10px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #CBD5E1;
+    }
+
+    .row    { display: flex; align-items: flex-start; gap: 14px; }
+    .col    { display: flex; flex-direction: column; gap: 10px; }
+    .center { align-items: center; }
+
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .user-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+    .user-icon {
+      width: 46px;
+      height: 46px;
+      background: #E2E8F0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .user-label { font-size: 11px; color: #64748B; }
+
+    .arrow-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .arrow-line span { font-size: 10.5px; color: #94A3B8; font-style: italic; white-space: nowrap; }
+    .arrow-line svg  { display: block; }
+
+    .legend {
+      display: flex;
+      gap: 18px;
+      margin-top: 22px;
+      padding-top: 14px;
+      border-top: 1px solid #E2E8F0;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      color: #475569;
+    }
+    .ldot {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .intent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+      margin-top: 10px;
+    }
+    .intent-table th {
+      background: #F1F5F9;
+      padding: 6px 10px;
+      text-align: left;
+      font-weight: 700;
+      color: #475569;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .intent-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #F1F5F9;
+      vertical-align: top;
+    }
+    .intent-table tr:last-child td { border-bottom: none; }
+    .intent-key {
+      font-family: monospace;
+      font-size: 11px;
+      background: #EDE9FE;
+      color: #5B21B6;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    @media print {
+      .page:first-of-type { page-break-after: always; }
+      body { background: white; padding: 0; }
+      .page { box-shadow: none; border-radius: 0; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     PAGE 1 — AGENT DISPATCH FLOW
+     ═══════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Performance Analytics · Agent Dispatch Flow</div>
+    <div class="badge">COE Datasphere</div>
+  </div>
+
+  <!-- ROW 1: User → Orchestrator -->
+  <div class="row center" style="margin-bottom:4px;">
+    <div class="user-block">
+      <div class="user-icon">👤</div>
+      <div class="user-label">User</div>
+    </div>
+
+    <div class="arrow-line" style="width:90px;">
+      <span>planning request</span>
+      <svg width="80" height="14" viewBox="0 0 80 14">
+        <line x1="0" y1="7" x2="72" y2="7" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <polygon points="72,3 80,7 72,11" fill="#94A3B8"/>
+      </svg>
+    </div>
+
+    <div class="box c-orch" style="flex:1; max-width:420px;">
+      <div class="box-title">⚙ Orchestrator Agent</div>
+      <div class="box-sub">Reads question + payload · Classifies intent · Builds execution plan · Dispatches agents</div>
+      <span class="tag t-llm">LLM — 1 call</span>
+      <span class="tag t-api">Phase 0 classification</span>
+    </div>
+  </div>
+
+  <!-- HITL gate -->
+  <div class="divider">▼ PLAN RETURNED TO USER</div>
+
+  <div class="row center" style="justify-content:center; margin-bottom:4px;">
+    <div class="box c-hitl" style="width:420px; text-align:center;">
+      <div class="box-title">⏸ HITL Gate — Decision Required</div>
+      <div class="box-sub">User reviews the plan · Approves or requests changes · Revisions loop until satisfied · History kept</div>
+    </div>
+  </div>
+
+  <div class="divider">▼ CONFIRMED — DISPATCH AGENTS</div>
+
+  <!-- ROW 3: Agent grid -->
+  <div class="agents-grid" style="margin-bottom:4px;">
+
+    <div class="box c-agent">
+      <div class="box-title">📊 Stats Agent</div>
+      <div class="box-sub">Reads <code style="font-size:10px;">kpis[]</code> · Structures KPI table · Confirms values without interpretation</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-ro">read-only</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Format → Answer</div>
+    </div>
+
+    <div class="box c-agent">
+      <div class="box-title">🔍 Anomaly Agent</div>
+      <div class="box-sub">Reads anomaly counts · Identifies active types · Outputs structured count table</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-ro">read-only</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Detect → Answer</div>
+    </div>
+
+    <div class="box c-analyst">
+      <div class="box-title">🔎 Root Cause Agent</div>
+      <div class="box-sub">Reads anomaly output · Explains WHY each anomaly occurs · Separates performance vs data quality</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-det">analysis</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Analyse → Answer</div>
+    </div>
+
+    <div class="box c-agent">
+      <div class="box-title">🗂 Explorer Agent</div>
+      <div class="box-sub">Reads <code style="font-size:10px;">data_summary</code> · Rankings by user/story/action · Time-of-day & weekday trends</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-api">GET /api/actions</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Query → Rank → Answer</div>
+    </div>
+
+    <div class="box c-agent">
+      <div class="box-title">📡 Trace Agent</div>
+      <div class="box-sub">Reads widget rows · Bottleneck widget · Dominant phase (render / network / backend)</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-api">GET /api/widgets</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Trace → Answer</div>
+    </div>
+
+    <div class="box c-synth">
+      <div class="box-title">📝 Narrator</div>
+      <div class="box-sub">Synthesises Stats + Anomaly outputs · Unified headline table · Does NOT add new insights</div>
+      <span class="tag t-llm">LLM</span>
+      <span class="tag t-ro">synthesis only</span>
+      <div class="box-sub" style="margin-top:6px;">Think → Combine → Answer</div>
+    </div>
+
+  </div>
+
+  <!-- Final output -->
+  <div class="divider">▼ RESPONSE DELIVERED</div>
+
+  <div class="row center" style="justify-content:center;">
+    <div class="box c-out" style="width:480px; text-align:center;">
+      <div class="box-title">✅ Response Rendered in Chat Panel</div>
+      <div class="box-sub">Prose answer · ECharts chart directives · Session notes surfaced to user</div>
+    </div>
+  </div>
+
+  <!-- Intent routing table -->
+  <div class="divider" style="margin-top:24px;">INTENT → AGENT ROUTING</div>
+  <table class="intent-table">
+    <thead>
+      <tr>
+        <th>Intent</th>
+        <th>Agents Called</th>
+        <th>LLM Calls</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="intent-key">FULL_ANALYSIS</span></td>
+        <td>Stats + Anomaly (parallel) → Narrator</td>
+        <td>3</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">ROOT_CAUSE_ANALYSIS</span></td>
+        <td>Anomaly Agent → Root Cause Agent</td>
+        <td>2</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">DATA_EXPLORATION</span></td>
+        <td>query_engine (no LLM) + Explorer Agent</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">WIDGET_TRACE</span></td>
+        <td>Trace Agent</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">KPI_SUMMARY</span></td>
+        <td>Stats Agent</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">ANOMALY_SUMMARY</span></td>
+        <td>Anomaly Agent</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">CONVERSATIONAL</span></td>
+        <td>LLM with session history (no specialist agent)</td>
+        <td>1</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator</div>
+    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Agent (read-only)</div>
+    <div class="legend-item"><div class="ldot" style="background:#CA8A04;"></div> Analyst (analysis)</div>
+    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Synthesis / Output</div>
+    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Decision Required (HITL)</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     PAGE 2 — TECHNICAL SOLUTION
+     ═══════════════════════════════════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Performance Analytics · Technical Solution</div>
+    <div class="badge">COE Datasphere</div>
+  </div>
+
+  <div class="row" style="gap:20px; align-items:stretch;">
+
+    <!-- COLUMN 1: User + Frontend -->
+    <div class="col" style="width:210px; flex-shrink:0;">
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Frontend</div>
+
+      <div class="user-block" style="margin-bottom:4px;">
+        <div class="user-icon">👤</div>
+        <div class="user-label">User</div>
+      </div>
+
+      <div class="box c-infra">
+        <div class="box-title">Upload Page</div>
+        <div class="box-sub">parseCsvFile() · PapaParse chunk streaming · schema validation · IndexedDB cache</div>
+      </div>
+
+      <div class="box c-infra">
+        <div class="box-title">3 Analysis Views</div>
+        <div class="box-sub">Session View · Action View · Widget View</div>
+        <div class="box-sub" style="margin-top:4px;">aggregateByAction() · detectAnomalies() · KpiStrip · ECharts charts</div>
+      </div>
+
+      <div class="box c-infra">
+        <div class="box-title">buildAgentPayload()</div>
+        <div class="box-sub">Schema v1.1 · meta{} · kpis[] · anomalies{} · data_summary{} · session_summary{} · widget_summary{}</div>
+      </div>
+
+      <div class="box c-orch" style="border-style:dashed;">
+        <div class="box-title">AgentChatPanel</div>
+        <div class="box-sub">Phase 1 → POST /api/session → plan card shown</div>
+        <div class="box-sub" style="margin-top:3px;">User confirms → Phase 2 → POST /api/session/&lt;id&gt;/confirm</div>
+        <div class="box-sub" style="margin-top:3px;">Renders: prose · ChartBlock → resolveChartDirective() → ECharts</div>
+      </div>
+    </div>
+
+    <!-- COLUMN 2: Backend Core -->
+    <div class="col" style="flex:1;">
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Backend (Python Flask)</div>
+
+      <div class="row" style="gap:10px;">
+        <div class="box c-infra" style="flex:1;">
+          <div class="box-title">app.py — HTTP Server</div>
+          <div class="box-sub">Routes: /api/session · /session/&lt;id&gt;/confirm · /session/&lt;id&gt;/reject · /api/actions · /api/widgets · /api/chat · /api/health</div>
+        </div>
+        <div class="box c-infra" style="flex:1;">
+          <div class="box-title">mesh_store.py</div>
+          <div class="box-sub">Thread-safe in-memory store · datasets (TTL 1h) · sessions (TTL 4h) · agent_outputs · disk snapshots per dataset UUID</div>
+        </div>
+      </div>
+
+      <div class="box c-orch">
+        <div class="box-title">orchestrate.py — Multi-Agent Pipeline</div>
+        <div class="box-sub">plan_turn() → classify_intent() [1 LLM call] → _build_plan() → return to HITL</div>
+        <div class="box-sub" style="margin-top:4px;">orchestrate() → route by confirmed intent → run agents → _guard_store() → _ensure_chart() → _save_turn()</div>
+        <div class="row" style="gap:6px; margin-top:8px; flex-wrap:wrap;">
+          <span class="tag t-llm">parallel: stats + anomaly via ThreadPoolExecutor</span>
+          <span class="tag t-api">_resolve_followup_references() — entity lookup</span>
+          <span class="tag t-det">_build_explorer_input() — NL → query_engine</span>
+          <span class="tag t-ro">_build_trace_input() — widget row fetch</span>
+        </div>
+      </div>
+
+      <div class="row" style="gap:10px;">
+        <div class="box c-infra" style="flex:1;">
+          <div class="box-title">query_engine.py</div>
+          <div class="box-sub">Deterministic NL parsing · No LLM · parse_query() · filter_rows() · aggregate_rows() · time buckets (hour/day/weekday/month) · format_answer()</div>
+        </div>
+        <div class="box c-infra" style="flex:1;">
+          <div class="box-title">skills.py — Prompt Composer</div>
+          <div class="box-sub">preamble.md + pipeline-overlay.md + SKILL.md (frontmatter stripped) + inlined references/*.md = final system prompt per agent</div>
+        </div>
+      </div>
+
+      <div class="box c-synth">
+        <div class="box-title">llm.py — LLM Wrapper</div>
+        <div class="box-sub">Priority order: LLM_URL proxy → OpenAI direct → SAP AI Core · Default model: anthropic--claude-4.5-haiku · extract_json_from_response() · USAGE_RECORDS token accounting</div>
+      </div>
+    </div>
+
+    <!-- COLUMN 3: Skills + Schemas -->
+    <div class="col" style="width:190px; flex-shrink:0;">
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Agent Skills</div>
+
+      <div class="box c-agent">
+        <div class="box-title">skills/ directory</div>
+        <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+          <div style="font-size:11px;"><strong>⚙</strong> orchestrator — intent classifier</div>
+          <div style="font-size:11px;"><strong>📊</strong> stats-agent — KPI pass-through</div>
+          <div style="font-size:11px;"><strong>🔍</strong> anomaly-agent — count detector</div>
+          <div style="font-size:11px;"><strong>🔎</strong> root-cause-agent — WHY analyst</div>
+          <div style="font-size:11px;"><strong>🗂</strong> explorer-agent — distribution explorer</div>
+          <div style="font-size:11px;"><strong>📡</strong> trace-agent — widget timing drill</div>
+          <div style="font-size:11px;"><strong>📝</strong> narrator — synthesis writer</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Shared Schemas</div>
+      <div class="box c-infra">
+        <div class="box-title">shared/ JSON schemas</div>
+        <div style="font-size:11px; margin-top:5px; line-height:1.7;">
+          anomaly-types.json<br>
+          kpi-schema.json<br>
+          action-row-schema.json<br>
+          session-note-schema.json
+        </div>
+      </div>
+
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Persistence</div>
+      <div class="box c-infra">
+        <div class="box-title">backend/datasets/</div>
+        <div class="box-sub">JSON snapshot per upload UUID · audit trail · cache self-heal on expiry</div>
+      </div>
+
+      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Deploy</div>
+      <div class="box c-infra">
+        <div class="box-title">manifest.yml</div>
+        <div class="box-sub">Cloud Foundry · staticfile_buildpack · 64 MB · random-route</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator / HITL</div>
+    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Agent Skills</div>
+    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> LLM / Synthesis</div>
+    <div class="legend-item"><div class="ldot" style="background:#94A3B8;"></div> Infrastructure</div>
+    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Decision Required</div>
+  </div>
+</div>
+
+</body>
+</html>

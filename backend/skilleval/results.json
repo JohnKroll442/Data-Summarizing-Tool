@@ -1,0 +1,924 @@
+{
+  "overall_mean": 0.2991666666666667,
+  "reps": 3,
+  "per_agent": {
+    "trace-agent": {
+      "score": 0.2991666666666667,
+      "brittleness": 0.0057,
+      "entries": 2
+    }
+  },
+  "per_entry": {
+    "trace-bottleneck-widget": {
+      "owner": "trace-agent",
+      "mean": 0.3233333333333333,
+      "brittleness": 0.0013999999999999993,
+      "per_paraphrase": {
+        "which widget is the bottleneck in the slowest action?": 0.35,
+        "what's the slowest widget in the worst action?": 0.3333333333333333,
+        "which widget dominates the worst action?": 0.3333333333333333,
+        "biggest widget offender in the slowest action?": 0.25,
+        "what widget is eating the time in the worst action?": 0.35
+      }
+    },
+    "trace-dominant-phase": {
+      "owner": "trace-agent",
+      "mean": 0.275,
+      "brittleness": 0.010000000000000002,
+      "per_paraphrase": {
+        "is the slow widget render, network, or backend bound?": 0.075,
+        "what phase dominates the bottleneck widget?": 0.325,
+        "where is the time going in the slowest widget?": 0.325,
+        "which phase is the bottleneck widget spending time in?": 0.325,
+        "render, network, or backend for the worst widget?": 0.325
+      }
+    }
+  },
+  "rollouts": [
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget is the bottleneck in the slowest action?",
+      "rep": 0,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget is the bottleneck in the slowest action?",
+      "rep": 1,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget is the bottleneck in the slowest action?",
+      "rep": 2,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what's the slowest widget in the worst action?",
+      "rep": 0,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what's the slowest widget in the worst action?",
+      "rep": 1,
+      "total": 0.3,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.0,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what's the slowest widget in the worst action?",
+      "rep": 2,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget dominates the worst action?",
+      "rep": 0,
+      "total": 0.3,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.0,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget dominates the worst action?",
+      "rep": 1,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "which widget dominates the worst action?",
+      "rep": 2,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "biggest widget offender in the slowest action?",
+      "rep": 0,
+      "total": 0.3,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.0,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "biggest widget offender in the slowest action?",
+      "rep": 1,
+      "total": 0.09999999999999999,
+      "answer": 0.0,
+      "routing": 0.0,
+      "schema": 0.0,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": null,
+          "expected": "WIDGET_TRACE",
+          "score": 0.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 1.0,
+        "guard:tables_before_json": 0.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "biggest widget offender in the slowest action?",
+      "rep": 2,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what widget is eating the time in the worst action?",
+      "rep": 0,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what widget is eating the time in the worst action?",
+      "rep": 1,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "paraphrase": "what widget is eating the time in the worst action?",
+      "rep": 2,
+      "total": 0.35,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.6666666666666666,
+      "detail": {
+        "answer:bottleneck.widget_name": {
+          "actual": null,
+          "expected": "Image",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0,
+        "guard:tables_before_json": 1.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "is the slow widget render, network, or backend bound?",
+      "rep": 0,
+      "total": 0.075,
+      "answer": 0.0,
+      "routing": 0.0,
+      "schema": 0.0,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "ROOT_CAUSE_ANALYSIS",
+          "expected": "WIDGET_TRACE",
+          "score": 0.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "is the slow widget render, network, or backend bound?",
+      "rep": 1,
+      "total": 0.075,
+      "answer": 0.0,
+      "routing": 0.0,
+      "schema": 0.0,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "ROOT_CAUSE_ANALYSIS",
+          "expected": "WIDGET_TRACE",
+          "score": 0.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "is the slow widget render, network, or backend bound?",
+      "rep": 2,
+      "total": 0.075,
+      "answer": 0.0,
+      "routing": 0.0,
+      "schema": 0.0,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "ROOT_CAUSE_ANALYSIS",
+          "expected": "WIDGET_TRACE",
+          "score": 0.0
+        },
+        "schema": {
+          "score": 0.0
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "what phase dominates the bottleneck widget?",
+      "rep": 0,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "what phase dominates the bottleneck widget?",
+      "rep": 1,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "what phase dominates the bottleneck widget?",
+      "rep": 2,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "where is the time going in the slowest widget?",
+      "rep": 0,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "where is the time going in the slowest widget?",
+      "rep": 1,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "where is the time going in the slowest widget?",
+      "rep": 2,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "which phase is the bottleneck widget spending time in?",
+      "rep": 0,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "which phase is the bottleneck widget spending time in?",
+      "rep": 1,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "which phase is the bottleneck widget spending time in?",
+      "rep": 2,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "render, network, or backend for the worst widget?",
+      "rep": 0,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "render, network, or backend for the worst widget?",
+      "rep": 1,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    },
+    {
+      "entry": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "paraphrase": "render, network, or backend for the worst widget?",
+      "rep": 2,
+      "total": 0.325,
+      "answer": 0.0,
+      "routing": 1.0,
+      "schema": 0.3333333333333333,
+      "guardrail": 0.5,
+      "detail": {
+        "answer:bottleneck.dominant_phase": {
+          "actual": null,
+          "expected": "render",
+          "match": "exact",
+          "score": 0.0
+        },
+        "routing": {
+          "intent": "WIDGET_TRACE",
+          "expected": "WIDGET_TRACE",
+          "score": 1.0
+        },
+        "schema": {
+          "score": 0.3333333333333333
+        },
+        "guard:session_notes_present": 1.0,
+        "guard:no_kpi_values": 0.0
+      }
+    }
+  ]
+}

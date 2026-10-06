@@ -7,6 +7,7 @@
   "anomaly_output": null,
   "root_cause_output": null,
   "explorer_output": null,
+  "trace_output": null,
   "narrator_output": null,
   "session_notes": []
 }

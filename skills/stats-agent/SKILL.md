@@ -92,6 +92,16 @@ tell the Orchestrator "Stats Agent has no data to report.", STOP.
 Use the structure in `assets/stats-output-template.json`.
 Replace each placeholder with the mapped value. Do not add or remove fields.
 
+Field mapping for the template placeholders:
+- `kpis.*`, `keys_present`, `keys_missing` — from the Step 1 key mapping.
+- `threshold_label` — derive from `meta.slow_action_threshold_ms`: convert the
+  millisecond value to a human-readable label using the minute/second style
+  already used elsewhere in this SKILL (e.g. `120000` → `"2m"`, `90000` → `"90s"`).
+  If `meta` is absent/null or `slow_action_threshold_ms` is missing, set
+  `threshold_label` to `"not available"` — never leave it `null` when
+  `meta.slow_action_threshold_ms` is present.
+- `session_notes` — populated in Step 3.
+
 ### Step 3 — Session learning
 
 Before presenting, observe whether any value is notably extreme.

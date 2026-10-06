@@ -130,7 +130,13 @@ All entities are included (no top-N cap). Arrays are pre-sorted by `action_count
 
 **Cannot answer:** new analysis, root causes, user rankings, any finding not produced by upstream agents
 
-**Dispatch input:** Stats + Anomaly confirmed outputs + meta + top_flagged_action
+**Dispatch input:** Stats + Anomaly confirmed outputs + meta + trace_output + top_flagged_action
+
+- `trace_output` — from `session_state.trace_output`; present when the Trace
+  Agent has run. Enables the Narrator's "Trace findings" section; pass `null`
+  when no Trace Agent output exists.
+- `top_flagged_action` — the flagged action with the MAXIMUM `action_duration_ms`
+  (not the first array element).
 
 ---
 

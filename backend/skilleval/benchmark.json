@@ -1,0 +1,177 @@
+{
+  "_comment": "Phase 0 benchmark. Each entry: paraphrase FAMILY (grow freely), the owner agent, the JSON answer field(s), a truth spec resolved at scoring time from the fixed dataset (never a hardcoded value), a match rule, and guardrail tokens. Rollouts run in AUTO mode (real classifier) so routing (0.20) is scored honestly alongside answer/schema/guardrail. expected_intent is the classifier target for the routing check.",
+  "dataset_id": "021587a2-59bf-4e73-a85e-97905f790841",
+  "entries": [
+    {
+      "id": "stats-p90",
+      "owner": "stats-agent",
+      "expected_intent": "KPI_SUMMARY",
+      "answer_fields": [{"path": "kpis.p90_duration", "truth": {"fn": "kpi_p90"}, "match": "numeric"}],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "what's the p90 action duration?",
+        "90th percentile latency?",
+        "how slow are the worst 10% of actions?",
+        "give me the p90 duration",
+        "what duration do 90% of actions come in under?"
+      ]
+    },
+    {
+      "id": "stats-over-threshold",
+      "owner": "stats-agent",
+      "expected_intent": "KPI_SUMMARY",
+      "answer_fields": [{"path": "kpis.over_threshold", "truth": {"fn": "kpi_over_threshold"}, "match": "count"}],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "how many actions are over the threshold?",
+        "count of slow actions",
+        "how many actions exceeded the limit?",
+        "number of actions above the duration threshold",
+        "how many actions are too slow?"
+      ]
+    },
+    {
+      "id": "anomaly-flagged-count",
+      "owner": "anomaly-agent",
+      "expected_intent": "ANOMALY_SUMMARY",
+      "answer_fields": [
+        {"path": "total_flagged.actions", "truth": {"fn": "anomaly_flagged_count"}, "match": "count"},
+        {"path": "total_flagged.pct", "truth": {"fn": "anomaly_flagged_pct"}, "match": "pct"}
+      ],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "how many actions were flagged as anomalies?",
+        "how many anomalies did you find?",
+        "count of flagged actions",
+        "number of anomalous actions",
+        "how many actions look abnormal?"
+      ]
+    },
+    {
+      "id": "anomaly-active-types",
+      "owner": "anomaly-agent",
+      "expected_intent": "ANOMALY_SUMMARY",
+      "answer_fields": [{"path": "active_headline_types", "truth": {"fn": "anomaly_headline_types"}, "match": "set_f1"}],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "which anomaly types are present?",
+        "what kinds of anomalies show up?",
+        "what anomaly categories were detected?",
+        "which types of issues are flagged?",
+        "what sorts of anomalies are in this data?"
+      ]
+    },
+    {
+      "id": "root-cause-categories",
+      "owner": "root-cause-agent",
+      "expected_intent": "ROOT_CAUSE_ANALYSIS",
+      "answer_fields": [{"path": "root_causes[].type_key", "truth": {"fn": "root_cause_categories"}, "match": "set_f1"}],
+      "guardrails": ["session_notes_present", "prose_faithful_judge"],
+      "paraphrases": [
+        "why are these actions slow?",
+        "what's causing the anomalies?",
+        "root cause of the slow actions?",
+        "explain what's behind the flagged actions",
+        "what's driving the slowdowns?"
+      ]
+    },
+    {
+      "id": "explorer-top-user",
+      "owner": "explorer-agent",
+      "expected_intent": "DATA_EXPLORATION",
+      "answer_fields": [{"path": "top_results", "truth": {"fn": "top_user_by_frequency", "args": {"k": 5}}, "match": "top1_and_overlap", "k": 5}],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "which user has the most actions?",
+        "who's the most active user?",
+        "top user by number of actions",
+        "which user shows up most?",
+        "who ran the most actions?"
+      ]
+    },
+    {
+      "id": "explorer-busiest-hour",
+      "owner": "explorer-agent",
+      "expected_intent": "DATA_EXPLORATION",
+      "answer_fields": [{"path": "top_results[0].entity_value", "truth": {"fn": "busiest_hour"}, "match": "exact"}],
+      "guardrails": ["session_notes_present"],
+      "paraphrases": [
+        "which hour is busiest?",
+        "when do we see the most activity?",
+        "peak time of day for actions?",
+        "what time are most actions happening?",
+        "what hour of day has the most actions?"
+      ]
+    },
+    {
+      "id": "trace-bottleneck-widget",
+      "owner": "trace-agent",
+      "expected_intent": "WIDGET_TRACE",
+      "answer_fields": [{"path": "bottleneck.widget_name", "truth": {"fn": "bottleneck_widget_worst_action"}, "match": "exact"}],
+      "guardrails": ["session_notes_present", "no_kpi_values", "tables_before_json"],
+      "paraphrases": [
+        "which widget is the bottleneck in the slowest action?",
+        "what's the slowest widget in the worst action?",
+        "which widget dominates the worst action?",
+        "biggest widget offender in the slowest action?",
+        "what widget is eating the time in the worst action?"
+      ]
+    },
+    {
+      "id": "trace-dominant-phase",
+      "owner": "trace-agent",
+      "expected_intent": "WIDGET_TRACE",
+      "answer_fields": [{"path": "bottleneck.dominant_phase", "truth": {"fn": "bottleneck_dominant_phase"}, "match": "exact"}],
+      "guardrails": ["session_notes_present", "no_kpi_values"],
+      "paraphrases": [
+        "is the slow widget render, network, or backend bound?",
+        "what phase dominates the bottleneck widget?",
+        "where is the time going in the slowest widget?",
+        "which phase is the bottleneck widget spending time in?",
+        "render, network, or backend for the worst widget?"
+      ]
+    },
+    {
+      "id": "narrator-faithful-kpi",
+      "owner": "narrator",
+      "expected_intent": "FULL_ANALYSIS",
+      "answer_fields": [{"path": "kpi_summary.p90_duration", "truth": {"fn": "kpi_p90"}, "match": "numeric"}],
+      "guardrails": ["session_notes_present", "no_fabricated_numbers", "headline_faithful_judge"],
+      "paraphrases": [
+        "give me a full summary",
+        "summarize all the findings",
+        "full analysis please",
+        "complete overview of this dataset",
+        "run the full analysis and wrap it up"
+      ]
+    },
+    {
+      "id": "route-kpi-to-stats",
+      "owner": "orchestrator",
+      "expected_intent": "KPI_SUMMARY",
+      "answer_fields": [{"path": "agents_run", "truth": {"fn": "expected_agents", "args": {"agents": ["stats-agent"]}}, "match": "set_f1"}],
+      "guardrails": [],
+      "paraphrases": [
+        "what are the latency percentiles?",
+        "show me the KPIs",
+        "how's overall performance?",
+        "give me the summary stats",
+        "what are the headline numbers?"
+      ]
+    },
+    {
+      "id": "route-widget-to-trace",
+      "owner": "orchestrator",
+      "expected_intent": "WIDGET_TRACE",
+      "answer_fields": [{"path": "agents_run", "truth": {"fn": "expected_agents", "args": {"agents": ["trace-agent"]}}, "match": "set_f1"}],
+      "guardrails": [],
+      "paraphrases": [
+        "break down the widgets in the slowest action",
+        "which widget is slow inside that action?",
+        "show me the widget-level timing",
+        "what's the waterfall for the worst action?",
+        "drill into the widgets of the slow action"
+      ]
+    }
+  ]
+}

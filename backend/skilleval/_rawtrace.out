@@ -1,0 +1,8 @@
+JSON parse failed for trace-agent: No valid JSON found in LLM response. First 300 chars: The worst action "Open story" (08:46:43.227, 10368.1 seconds) is bottlenecked by **Text_34.onClick** with an offset of 10,368,040 ms (99.98% of the action duration), making it the critical path. However, this is a data quality anomaly — the widget renders in only 22 ms but starts after the action ha
+Refusing to store PARSE_ERROR output for trace-agent — downstream agents would receive broken data
+intent WIDGET_TRACE
+MAX_TOKENS= 2000
+--- syslen 6276  resplen 286 | has ```json: True | has brace: True
+--- syslen 17102 <-TRACE resplen 4102 | has ```json: False | has brace: False
+LAST 400 CHARS:
+ ') — a strong indicator of measurement artifact or event-timestamp misalignment.\n\n#### Loading Pattern\n\nWidgets loaded in **staggered parallel** — most widgets cluster with offsets between 949–1,052 ms, indicating near-simultaneous initialization. Click handlers scatter across the timeline (7.6 s, 2867 s, 5046 s, 10368 s), suggesting event-driven execution rather than page-load rendering. The final'

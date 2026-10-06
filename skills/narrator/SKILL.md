@@ -90,9 +90,11 @@ Output order: JSON payload → heading → anomaly table → KPI table → worst
 
 ### Step 1 — Build the headline
 
-If `anomalies.total_actions` is 0 or null: "No actions in the current view."
-If `anomalies.total_flagged.actions` is 0: "No performance anomalies detected across [total_actions] actions."
-If `anomalies.total_flagged.actions` > 0: "[total_flagged.actions] of [total_actions] actions ([pct]%) had performance anomalies."
+Check these conditions IN ORDER — the null guard MUST come first so you never dereference a field on a null input:
+1. If `anomalies` is null or absent (no anomaly data — e.g. the NO_ANOMALIES flow): "No anomaly data available for the current view." Do NOT read any field on `anomalies` after this point.
+2. Else if `anomalies.total_actions` is 0 or null: "No actions in the current view."
+3. Else if `anomalies.total_flagged.actions` is 0: "No performance anomalies detected across [total_actions] actions."
+4. Else (`anomalies.total_flagged.actions` > 0): "[total_flagged.actions] of [total_actions] actions ([pct]%) had performance anomalies."
 
 ### Step 2 — Cap the top types
 
@@ -112,6 +114,11 @@ If null: `worst_offender` is null.
 | negative_phase | trace-agent | Timestamp inconsistency — trace can verify the phase measurements |
 | offset_overrun | trace-agent | Widget wait exceeds action — trace shows the wait chain |
 | component_overrun | trace-agent | Widget phases exceed action — trace validates the measurements |
+| slow_action | trace-agent | Action exceeds duration threshold — trace pinpoints the slow widget-level timing |
+| large_offset | root-cause-agent | Large start offset before work begins — root cause explains the pre-work delay |
+| frontend_bound | trace-agent | Frontend dominates the phase mix — trace shows the slow rendering/scripting widgets |
+| network_bound | root-cause-agent | Network dominates the phase mix — root cause explains the transfer/latency bottleneck |
+| backend_bound | root-cause-agent | Backend dominates the phase mix — root cause explains the server-side bottleneck |
 
 Merge entries that share the same suggested_agent into one.
 
@@ -194,7 +201,13 @@ All 12 fields required. Use null or [] for empty values.
     "median_duration": null, "p90_duration": null,
     "p95_duration": null, "threshold_label": null
   },
-  "worst_offender": null,
+  "worst_offender": {
+    "action_name": null,
+    "action_timestamp": null,
+    "user": null,
+    "duration_ms": null,
+    "flags": []
+  },
   "routing_suggestions": [],
   "excluded_by_user": [],
   "user_requested_drill": null,
@@ -206,6 +219,7 @@ Field rules:
 - `status` at Step 7 time is always `"AWAITING_USER_DIRECTION"`
 - `kpi_summary` is the field name — never `kpis`
 - `session_notes` carries through all upstream notes — always present
+- `worst_offender` is either the object shape shown above or `null` when `top_flagged_action` was null. Its `duration_ms` is RAW MILLISECONDS as an integer (NOT seconds) — e.g. `185432` means 185.432 s. Consumers must divide by 1000 before displaying a seconds value; the Narrator never pre-divides this field.
 
 ---
 
