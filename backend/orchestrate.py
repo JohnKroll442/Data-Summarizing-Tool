@@ -1749,17 +1749,17 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
     import mesh_store as _ms
 
     if not dataset_id:
-        return {"by_action": [], "by_story": [], "by_user": [], "available": False}
+        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
 
     entry = _ms.get_dataset(dataset_id)
     if not entry:
-        return {"by_action": [], "by_story": [], "by_user": [], "available": False}
+        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
 
     widget_rows = entry.get("widget_rows", [])
     action_rows = entry.get("rows", [])
 
     if not widget_rows:
-        return {"by_action": [], "by_story": [], "by_user": [], "available": False}
+        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
 
     # Build lookup: action_key ("action_name::timestamp") → {story_name, user}
     action_key_meta: dict = {}
@@ -1775,6 +1775,7 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
     action_data: dict = {}
     story_data:  dict = {}
     user_data:   dict = {}
+    widget_data_agg: dict = {}   # widget_name → summed phase timings (per-widget ranking)
 
     for w in widget_rows:
         action_key  = w.get("action_key", "")
@@ -1783,6 +1784,7 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
         meta       = action_key_meta.get(action_key, {})
         story_name = meta.get("story_name", "unknown")
         user       = meta.get("user",       "unknown")
+        widget_name = w.get("widget_name") or "(unnamed)"
 
         offset_ms  = float(w.get("offset",  0) or 0)
         render_ms  = float(w.get("render",  0) or 0)
@@ -1790,9 +1792,10 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
         backend_ms = float(w.get("backend", 0) or 0)
 
         for bucket, key in [
-            (action_data, action_name),
-            (story_data,  story_name),
-            (user_data,   user),
+            (action_data,     action_name),
+            (story_data,      story_name),
+            (user_data,       user),
+            (widget_data_agg, widget_name),
         ]:
             if key not in bucket:
                 bucket[key] = {"offset": 0.0, "render": 0.0,
@@ -1920,11 +1923,32 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
         for i, (sid, d) in enumerate(session_ranked)
     ]
 
+    # ── Per-widget ranking (by widget_name, sorted by render) ────────────────
+    # Answers "which widget had the most render time" and similar per-widget
+    # questions. widget_count here = number of widget INSTANCES carrying that
+    # name across all actions (not an action count).
+    by_widget = [
+        {
+            "rank":             i + 1,
+            "widget_name":      name,
+            "total_render_ms":  round(data["render"]),
+            "total_network_ms": round(data["network"]),
+            "total_backend_ms": round(data["backend"]),
+            "total_offset_ms":  round(data["offset"]),
+            "avg_render_ms":    round(data["render"] / data["count"]) if data["count"] else 0,
+            "widget_count":     data["count"],
+        }
+        for i, (name, data) in enumerate(
+            sorted(widget_data_agg.items(), key=lambda x: x[1]["render"], reverse=True)
+        )
+    ]
+
     return {
         "by_action":  by_action_merged,
         "by_story":   by_story_merged,
         "by_user":    by_user_merged,
         "by_session": by_session,
+        "by_widget":  by_widget,
         "available":  True,
     }
 
@@ -2118,41 +2142,71 @@ def _sorted_flagged(flagged: list) -> list:
     return out
 
 
+_TRACE_SCOPED_TOP_N = 5  # slowest actions to trace for a targeted user/action query
+
+
 def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
     """
     Build trace-agent input — mesh-native, token-controlled.
 
     In pipeline mode the LLM can't make HTTP calls, so we fetch widget data
     from the dataset store and include it. We aggressively trim to stay under
-    token limits:
-      - Only the TOP 3 flagged actions (by duration, descending)
-      - Widget rows for those 3 actions only
-      - Slim type summary instead of full flagged_by_type arrays
-      - Compact mesh outputs (just the fields the trace agent uses)
+    token limits.
+
+    Two scopes:
+      - TARGETED: the question names a specific user/action/story/session
+        (parsed deterministically by query_engine). We trace that entity's
+        SLOWEST N actions from the full stored rows — not just anomaly-flagged
+        ones — so any action with widget data can be asked about.
+      - GENERIC (fallback): no entity named → the top 3 flagged actions by
+        duration, as before.
+
+    In both cases we include widget rows only for the chosen actions, a slim
+    type summary, and compact mesh outputs.
     """
     import mesh_store
+    import query_engine
 
     anomalies = payload.get("anomalies", {})
     flagged_actions = anomalies.get("flagged_actions", [])
 
-    # Sort by duration descending, take top 3 — the trace agent investigates
-    # the worst actions, not all of them.
-    top_actions = sorted(
-        flagged_actions,
-        key=lambda a: a.get("action_duration_ms") or 0,
-        reverse=True,
-    )[:3]
-
-    # Slim each action to just what the trace agent needs (drop session_id etc.)
+    # ── Targeted scope: did the user name a specific entity? ──────────────────
+    scoped = False
     slim_actions = []
-    for a in top_actions:
-        slim_actions.append({
-            "action_name":        a.get("action_name", ""),
-            "action_timestamp":   a.get("action_timestamp", ""),
-            "user":               a.get("user", ""),
-            "action_duration_ms": a.get("action_duration_ms", 0),
-            "anomaly_types":      a.get("anomaly_types", []),
-        })
+    spec = query_engine.parse_query(question, dataset_id) if dataset_id else None
+    scope_filters = (spec or {}).get("filters", {})
+    # Only user/action/story/session make this an action-trace query; a bare
+    # date/hour filter is an explorer-style breakdown, not a widget trace.
+    if any(scope_filters.get(k) for k in ("user", "action", "story", "session")):
+        entry = mesh_store.get_dataset(dataset_id)
+        rows = (entry or {}).get("rows", []) or []
+        matched = query_engine.filter_rows(rows, scope_filters)
+        matched.sort(key=lambda r: r.get("action_duration_ms") or 0, reverse=True)
+        for a in matched[:_TRACE_SCOPED_TOP_N]:
+            slim_actions.append({
+                "action_name":        a.get("action_name", ""),
+                "action_timestamp":   a.get("action_timestamp", ""),
+                "user":               a.get("user", ""),
+                "action_duration_ms": a.get("action_duration_ms", 0),
+                "anomaly_types":      a.get("anomaly_types", []),
+            })
+        scoped = bool(slim_actions)
+
+    # ── Generic fallback: top 3 flagged actions by duration ───────────────────
+    if not scoped:
+        top_actions = sorted(
+            flagged_actions,
+            key=lambda a: a.get("action_duration_ms") or 0,
+            reverse=True,
+        )[:3]
+        for a in top_actions:
+            slim_actions.append({
+                "action_name":        a.get("action_name", ""),
+                "action_timestamp":   a.get("action_timestamp", ""),
+                "user":               a.get("user", ""),
+                "action_duration_ms": a.get("action_duration_ms", 0),
+                "anomaly_types":      a.get("anomaly_types", []),
+            })
 
     # Build a compact type summary: { type_key: action_count } instead of full arrays
     flagged_by_type = anomalies.get("flagged_by_type", {})
@@ -2209,6 +2263,8 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
     return {
         "dataset_id":        dataset_id,
         "question":          question,
+        "scope":             "targeted" if scoped else "flagged",
+        "scope_filters":     scope_filters if scoped else {},
         "type_summary":      type_summary,
         "top_actions":       slim_actions,
         "widget_data":       widget_data,

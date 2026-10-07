@@ -191,6 +191,7 @@ def filter_rows(rows, filters):
     """Apply a filter spec to action rows. Unknown/None filters are ignored."""
     filters = filters or {}
     user    = filters.get("user")
+    users   = filters.get("users")           # list — comparison across several users
     story   = filters.get("story")
     action  = filters.get("action")
     session = filters.get("session")
@@ -199,8 +200,12 @@ def filter_rows(rows, filters):
     dmin    = filters.get("duration_min_ms")
     dmax    = filters.get("duration_max_ms")
 
+    user_set = {str(u).strip().lower() for u in users if u} if users else None
+
     out = []
     for r in rows:
+        if user_set is not None and str(r.get("user") or "").strip().lower() not in user_set:
+            continue
         if not _match(r.get("user"), user):            continue
         if not _match(r.get("story_name"), story):     continue
         if not _match(r.get("action_name"), action):   continue
@@ -299,6 +304,31 @@ def _detect_entity(question, known_values):
         if vs.lower() in q_lower:
             return val
     return None
+
+
+def _detect_users(question, known_users):
+    """Return EVERY known user named in the question (comparison questions name
+    more than one, e.g. 'compare MHURTADO and KIZUMI'). Longest name first so a
+    short name that is a substring of a longer one does not double-match the
+    same span. Case-insensitive whole-substring match against the question."""
+    if not known_users:
+        return []
+    q_lower = question.lower()
+    found = []
+    claimed = []  # (start, end) spans already consumed by a longer match
+    for u in sorted((x for x in known_users if x), key=lambda s: -len(str(s))):
+        us = str(u).strip()
+        if len(us) < 2:
+            continue
+        start = q_lower.find(us.lower())
+        if start == -1:
+            continue
+        end = start + len(us)
+        if any(s <= start and end <= e for s, e in claimed):
+            continue  # inside an already-matched longer name
+        found.append(u)
+        claimed.append((start, end))
+    return found
 
 
 def _detect_user(question, known_users):
@@ -406,9 +436,15 @@ def parse_query(question, dataset_id):
     known_sessions = {r.get("session_id") for r in rows if r.get("session_id")}
 
     filters = {}
-    user = _detect_user(question, known_users)
-    if user:
-        filters["user"] = user
+    users = _detect_users(question, known_users)
+    if len(users) >= 2:
+        filters["users"] = users          # comparison across several users
+    elif len(users) == 1:
+        filters["user"] = users[0]
+    else:
+        user = _detect_user(question, known_users)  # possessive / prefix phrasings
+        if user:
+            filters["user"] = user
     story = _detect_entity(question, known_stories)
     if story:
         filters["story"] = story
@@ -426,6 +462,10 @@ def parse_query(question, dataset_id):
         filters["hour_of_day"] = hour
 
     group_by = _detect_group_by(question.lower())
+    # A multi-user comparison with no explicit breakdown → group by user so the
+    # aggregation yields one row of stats per named user (not a single blended slice).
+    if filters.get("users") and not group_by:
+        group_by = "user"
 
     if not filters and not group_by:
         return None
@@ -437,7 +477,13 @@ def parse_query(question, dataset_id):
 
 def _fmt_filters(filters):
     """Human-readable filter description, e.g. 'user=NROS, hour_of_day=11'."""
-    return ", ".join(f"{k}={v}" for k, v in (filters or {}).items())
+    parts = []
+    for k, v in (filters or {}).items():
+        if isinstance(v, (list, tuple)):
+            parts.append(f"{k}={', '.join(str(x) for x in v)}")
+        else:
+            parts.append(f"{k}={v}")
+    return ", ".join(parts)
 
 
 def format_answer(spec, agg):
@@ -478,7 +524,7 @@ def format_aggregation(spec, agg):
     group_by = agg.get("group_by")
     parts = ["## On-demand breakdown (computed from the full dataset)"]
     if filters:
-        desc = ", ".join(f"{k}={v}" for k, v in filters.items())
+        desc = _fmt_filters(filters)
         parts.append(f"Filters: {desc}")
     parts.append(f"Matching actions: {agg.get('total_matching', 0)}")
     label = {"hour": "Hour", "day": "Date", "weekday": "Weekday",

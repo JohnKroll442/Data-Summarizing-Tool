@@ -94,8 +94,10 @@ everything — there are NO separate `flagged_by_type` / `flagged_actions` /
 
 - `type_summary` maps each active anomaly type key to its flagged-action COUNT
   (an integer, not the row list).
-- `top_actions` are the 3 worst flagged actions by duration (descending) — your
-  primary investigation targets.
+- `top_actions` are your primary investigation targets, chosen by `scope` (see
+  Input Scope above): for `flagged`, the worst anomaly-flagged actions by
+  duration; for `targeted`, the named entity's slowest actions by duration
+  (flagged or not). Either way, sorted worst-first.
 - `widget_data` is keyed by `action_name::action_timestamp` (the action_key).
   The rows for a given action are `widget_data["<action_name>::<action_timestamp>"]`.
 - `anomaly_context` and `root_cause_context` are OPTIONAL enrichment — null when
@@ -179,11 +181,23 @@ the impossibility is self-evident:
 
 ---
 
+## Input Scope (read `scope` FIRST)
+
+The input carries a `scope` field telling you WHERE `top_actions` came from:
+- `scope: "targeted"` — the user named a specific user/action/story/session
+  (see `scope_filters`). `top_actions` are that entity's SLOWEST actions from the
+  FULL dataset — they are NOT necessarily anomaly-flagged. Answer about that
+  entity ("MHURTADO's slowest action was…"), and never say the entity has "no
+  data" or is "not flagged" — if `top_actions` is populated, you have their data.
+- `scope: "flagged"` — generic trace; `top_actions` are the worst anomaly-flagged
+  actions, as usual.
+
 ## Early-Exit Check
 
 If `top_actions` is empty AND `type_summary` is empty:
 - Return `status: "NO_DATA"` immediately
-- Tell Orchestrator: "No flagged actions to investigate."
+- Message depends on `scope`: for `targeted`, say "No actions with widget data
+  found for <scope_filters>." For `flagged`, say "No flagged actions to investigate."
 - STOP.
 
 ---

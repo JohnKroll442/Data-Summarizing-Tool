@@ -130,7 +130,17 @@ question — see Layer 3.)
 
 Present when widget timing data exists (`metric_rankings.available == true`).
 Use for "highest offset", "slowest-loading widgets by story", "most render /
-network / backend time" questions. Pre-sorted by `total_offset_ms` descending.
+network / backend time" questions. `by_action` / `by_story` / `by_user` are
+pre-sorted by `total_offset_ms` descending; `by_widget` is pre-sorted by
+`total_render_ms` descending.
+
+**Per-widget questions ("which widget had the most render time", "slowest
+widget", "top widgets by network time") → use `by_widget`.** It aggregates every
+widget instance by `widget_name` across ALL actions, so it is the ONLY list that
+answers questions about an individual widget's identity. `by_action`/`by_story`/
+`by_user` sum ALL widgets within that entity — they are NOT per-widget and must
+never be used to answer "which widget". If `by_widget` is present you HAVE
+per-widget data; never claim widget-level timing is unavailable.
 
 ```json
 {
@@ -138,10 +148,14 @@ network / backend time" questions. Pre-sorted by `total_offset_ms` descending.
     "available": true,
     "by_action": [ { "rank": 1, "action_name": "<string>", "total_offset_ms": 0, "avg_offset_ms": 0, "total_render_ms": 0, "total_network_ms": 0, "total_backend_ms": 0, "widget_count": 0 } ],
     "by_story":  [ { "rank": 1, "story_name": "<string>", "...": 0 } ],
-    "by_user":   [ { "rank": 1, "user": "<string>",       "...": 0 } ]
+    "by_user":   [ { "rank": 1, "user": "<string>",       "...": 0 } ],
+    "by_widget": [ { "rank": 1, "widget_name": "<string>", "total_render_ms": 0, "total_network_ms": 0, "total_backend_ms": 0, "total_offset_ms": 0, "avg_render_ms": 0, "widget_count": 0 } ]
   }
 }
 ```
+
+In `by_widget`, `widget_count` is the number of widget INSTANCES carrying that
+name across all actions (not an action count).
 
 `metric_rankings` is `null` for a scoped question (see Layer 3). All ms values →
 seconds (÷1000, 1 decimal) for display.
@@ -286,6 +300,9 @@ the question and populated exactly the fields you need. Match the case:
   question from `flagged_*_ranking`.
 - WIDGET TIMING ("highest offset", "slowest-loading", "most render/network/
   backend time") → `metric_rankings.by_action` / `by_story` / `by_user`
+- PER-WIDGET ("which widget had the most render time", "slowest widget", "top
+  widgets by network/backend/offset") → `metric_rankings.by_widget` (the only
+  list keyed by `widget_name`; the others sum all widgets within an entity)
 - Count questions ("how many unique users") → answer from `total_unique_*`
 
 **Detail mode (`mode: "detail"`)** — the rows are already in `detail_rows` for
@@ -393,6 +410,11 @@ For a WIDGET-TIMING question, present the matching `metric_rankings` list:
 Write: **[Actions|Stories|Users] by widget timing — top [N]:**
 Table columns: Rank | [Action|Story|User] | Offset | Render | Network | Backend | Widgets
 Convert ms → seconds (÷1000, 1 decimal). `widget_count` is the last column.
+
+For a PER-WIDGET question, present `metric_rankings.by_widget`:
+Write: **Widgets by [render|network|backend|offset] time — top [N]:**
+Table columns: Rank | Widget | Render | Network | Backend | Offset | Instances
+Convert ms → seconds (÷1000, 1 decimal). `widget_count` is the Instances column.
 
 For cross mode, present `cross_results`:
 Write: **[result_dimension] with flagged actions on [filter_value] — [N]:**
