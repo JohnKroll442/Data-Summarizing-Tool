@@ -47,7 +47,7 @@ import uuid
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from orchestrate import orchestrate, plan_turn
+from orchestrate import orchestrate
 from skills import AVAILABLE_SKILLS
 import mesh_store
 
@@ -486,19 +486,11 @@ def list_agent_outputs(dataset_id):
     })
 
 
-# ─── Session routes (multi-turn conversation with HITL) ───────────────────────
+# ─── Session routes (multi-turn conversation) ─────────────────────────────────
 #
-# Every question goes through two phases:
-#
-#   Phase 1 — Plan     POST /api/session  or  POST /api/session/<id>/continue
-#     Classifies the intent and returns a plan (agents + LLM call count).
-#     No agents run. Response status = "awaiting_confirmation".
-#
-#   Phase 2 — Execute  POST /api/session/<id>/confirm
-#     Runs the agents. Response is the full analysis result.
-#
-#   Cancel             POST /api/session/<id>/reject
-#     Clears the pending turn; session stays alive for a new question.
+#   POST /api/session                   Start a session, run the first question.
+#   POST /api/session/<id>/continue     Ask a follow-up in an existing session.
+#     Both classify the intent, run the agents, and return the full result.
 #
 # Read-only:
 #   GET    /api/session/<id>            Session state + history (payload excluded)
@@ -509,10 +501,8 @@ def list_agent_outputs(dataset_id):
 @app.route("/api/session", methods=["POST"])
 def create_session_route():
     """
-    HITL Phase 1 — Start a new session and classify the first question.
-
-    Returns an execution plan for the user to review. No agents run yet.
-    Call POST /api/session/<id>/confirm to execute, or /reject to cancel.
+    Start a new session, classify the first question, run the agents, and
+    return the full analysis result.
 
     Request body:
       {
@@ -523,18 +513,14 @@ def create_session_route():
         "agent":       "<optional direct agent key>"
       }
 
-    Response:
+    Response: full analysis result
       {
-        "status":          "awaiting_confirmation",
-        "session_id":      "<uuid>",
-        "intent":          "<classified intent>",
-        "acknowledgement": "<friendly description>",
-        "plan": {
-          "description":         "<what will run>",
-          "steps":               [ {step, agents, description}, ... ],
-          "estimated_llm_calls": N
-        },
-        "turn": 1
+        "intent":        "<classified intent>",
+        "response_text": "<agent output>",
+        "agent_outputs": { ... },
+        "session_id":    "<uuid>",
+        "turn":          1,
+        ...
       }
     """
     body         = request.get_json(force=True, silent=True) or {}
@@ -575,18 +561,24 @@ def create_session_route():
     mesh_store.create_session(session_id, dataset_id, question, payload,
                                intent="pending", steps=[])
 
-    # ── Phase 1: classify intent and return plan (no agents run yet) ──────────
-    result = plan_turn(question, payload, dataset_id,
-                       session_id=session_id, direct_agent=direct_agent)
-    return jsonify(result), 200
+    # ── Classify intent and run the agent pipeline, returning the result ──────
+    try:
+        result = orchestrate(question, payload, dataset_id,
+                             direct_agent=direct_agent, session_id=session_id)
+        return jsonify(result), 200
+    except RuntimeError as exc:
+        log.error("Session error (session=%s): %s", session_id, exc)
+        return jsonify({"error": str(exc), "session_id": session_id}), 502
+    except Exception as exc:  # noqa: BLE001 — never leak a raw 500/traceback
+        log.exception("Unexpected session failure (session=%s)", session_id)
+        return jsonify({"error": f"Internal error: {exc}", "session_id": session_id}), 500
 
 
 @app.route("/api/session/<session_id>/continue", methods=["POST"])
 def continue_session(session_id):
     """
-    HITL Phase 1 — Ask a follow-up question in an existing session.
-
-    Returns a plan for confirmation. Call /confirm to run agents.
+    Ask a follow-up question in an existing session, run the agents, and
+    return the full analysis result.
 
     Request body:
       {
@@ -595,7 +587,6 @@ def continue_session(session_id):
       }
 
     Response: same shape as POST /api/session
-      { "status": "awaiting_confirmation", "plan": {...}, "turn": N, ... }
     """
     session = mesh_store.get_session(session_id)
     if session is None:
@@ -612,115 +603,16 @@ def continue_session(session_id):
     payload    = session["payload"]
     dataset_id = session.get("dataset_id")
 
-    # Phase 1: classify and return plan — do NOT run agents yet
-    result = plan_turn(question, payload, dataset_id,
-                       session_id=session_id, direct_agent=direct_agent)
-    return jsonify(result), 200
-
-
-@app.route("/api/session/<session_id>/confirm", methods=["POST"])
-def confirm_session(session_id):
-    """
-    HITL Phase 2 — Execute the pending turn after user confirmation.
-
-    The session must be in 'awaiting_confirmation' status. The pending
-    question and agent key are read from the session — no body required.
-
-    Optional body:
-      { "agent": "<override agent key>" }   (rarely needed)
-
-    Response: full analysis result
-      {
-        "intent":        "<intent>",
-        "response_text": "<agent output>",
-        "agent_outputs": { ... },
-        "session_id":    "<uuid>",
-        "turn":          N,
-        ...
-      }
-    """
-    session = mesh_store.get_session(session_id)
-    if session is None:
-        return jsonify({"error": f"Session '{session_id}' not found or expired"}), 404
-
-    if session.get("status") != "awaiting_confirmation":
-        return jsonify({
-            "error":   "Session is not awaiting confirmation.",
-            "status":  session.get("status"),
-            "hint":    "Call /continue with a question first, then /confirm to execute.",
-        }), 409
-
-    question     = session.get("pending_question", "")
-    payload      = session["payload"]
-    dataset_id   = session.get("dataset_id")
-    direct_agent = session.get("pending_direct_agent", "auto")
-
-    if not question:
-        return jsonify({
-            "error": "No pending question found. Call /continue with a question first."
-        }), 400
-
-    # Allow an optional agent override in the body
-    body = request.get_json(force=True, silent=True) or {}
-    if body.get("agent"):
-        direct_agent = body["agent"].strip() or direct_agent
-
-    mesh_store.update_session(session_id, status="running")
     try:
         result = orchestrate(question, payload, dataset_id,
                              direct_agent=direct_agent, session_id=session_id)
-        mesh_store.update_session(session_id, status="active",
-                                  pending_question=None, pending_direct_agent=None)
         return jsonify(result), 200
     except RuntimeError as exc:
-        mesh_store.update_session(session_id, status="error")
-        log.error("Session confirm error (session=%s): %s", session_id, exc)
+        log.error("Session continue error (session=%s): %s", session_id, exc)
         return jsonify({"error": str(exc), "session_id": session_id}), 502
-    except Exception as exc:  # noqa: BLE001 — reset status so the session isn't stuck "running"
-        mesh_store.update_session(session_id, status="error")
-        log.exception("Unexpected session confirm failure (session=%s)", session_id)
+    except Exception as exc:  # noqa: BLE001 — never leak a raw 500/traceback
+        log.exception("Unexpected session continue failure (session=%s)", session_id)
         return jsonify({"error": f"Internal error: {exc}", "session_id": session_id}), 500
-
-
-@app.route("/api/session/<session_id>/reject", methods=["POST"])
-def reject_session(session_id):
-    """
-    Cancel a pending turn without running any agents.
-
-    The session is reset to 'active' — the original dataset and full
-    conversation history are preserved. The user can call /continue with
-    a different question afterwards.
-
-    Optional body:
-      { "reason": "<optional note for logging>" }
-
-    Response:
-      {
-        "session_id": "<uuid>",
-        "status":     "active",
-        "message":    "Turn rejected. Ask a new question via /continue."
-      }
-    """
-    session = mesh_store.get_session(session_id)
-    if session is None:
-        return jsonify({"error": f"Session '{session_id}' not found or expired"}), 404
-
-    body   = request.get_json(force=True, silent=True) or {}
-    reason = body.get("reason", "")
-    log.info("Session %s: turn rejected%s", session_id,
-             f" — {reason}" if reason else "")
-
-    mesh_store.update_session(
-        session_id,
-        status               = "active",
-        pending_question     = None,
-        pending_direct_agent = None,
-    )
-    return jsonify({
-        "session_id": session_id,
-        "status":     "active",
-        "message":    "Turn rejected. Ask a new question via /continue.",
-    }), 200
 
 
 @app.route("/api/session/<session_id>", methods=["GET"])

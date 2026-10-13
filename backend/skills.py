@@ -10,7 +10,7 @@ The public API is identical to the old monolithic skills.py:
 
     from skills_loader import get_skill, AVAILABLE_SKILLS
 
-    prompt = get_skill("stats_agent")
+    prompt = get_skill("unified_agent")
     skills = AVAILABLE_SKILLS
 
 To switch over: rename this file to skills.py (replacing the old monolith).
@@ -98,13 +98,12 @@ _PIPELINE_OVERLAY = _read(_SHARED_DIR / "pipeline-overlay.md")
 # Maps the snake_case keys used by get_skill() to the kebab-case directory names.
 
 _SKILL_MAP = {
-    "orchestrator":     {"dir": "orchestrator",     "scope_filter": False},
-    "stats_agent":      {"dir": "stats-agent",      "scope_filter": True},
-    "anomaly_agent":    {"dir": "anomaly-agent",    "scope_filter": True},
-    "root_cause_agent": {"dir": "root-cause-agent", "scope_filter": True},
-    "explorer_agent":   {"dir": "explorer-agent",   "scope_filter": True},
-    "narrator":         {"dir": "narrator",         "scope_filter": True},
-    "trace_agent":      {"dir": "trace-agent",      "scope_filter": False},
+    "orchestrator":  {"dir": "orchestrator",  "scope_filter": False},
+    # Single merged analyst — replaces the six former specialist skills
+    # (stats/anomaly/root-cause/explorer/trace/narrator). It performs one mode
+    # per call, selected by the `agent_mode` field the backend injects into the
+    # input. See skills/unified-agent/SKILL.md.
+    "unified_agent": {"dir": "unified-agent", "scope_filter": True},
 }
 
 
@@ -136,17 +135,76 @@ for _key, _cfg in _SKILL_MAP.items():
         SKILLS[_key] = _PREAMBLE + "\n\n" + _PIPELINE_OVERLAY + "\n\n" + _body
 
 
+# ── Mode-specific unified prompts (token optimization) ────────────────────────
+# The unified agent's full prompt contains all SIX `## MODE:` sections plus all
+# four reference catalogues (~27k tokens). But the orchestrator ALWAYS resolves
+# the mode BEFORE the analyst runs, so only one section is ever used per call.
+# We pre-assemble a trimmed prompt per mode: shared preamble + overlay + the
+# dispatch header + that ONE mode section + only the references that section
+# cites. This cuts the system prompt 3–6× per call with zero behaviour change
+# (the model received all six modes before but was told to follow only one).
+# The full prompt stays in SKILLS["unified_agent"] as a fallback.
+
+_MODE_SECTION_RE = re.compile(r"^={6,}\n## MODE: (\w+)\n={6,}", re.MULTILINE)
+
+
+def _split_unified_body(body: str):
+    """Split the unified SKILL body into (header, {mode_name: section_text}).
+
+    header  — everything before the first `## MODE:` marker (dispatch rules and
+              shared contract); prepended to every mode prompt.
+    section — each `======\\n## MODE: X\\n======` block through to the next marker
+              (or end-of-body for the last mode).
+    Returns (None, {}) when the markers aren't found so callers fall back to the
+    full prompt rather than emitting an empty one.
+    """
+    marks = list(_MODE_SECTION_RE.finditer(body))
+    if not marks:
+        return None, {}
+    header = body[:marks[0].start()]
+    sections = {}
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
+        sections[m.group(1)] = body[m.start():end]
+    return header, sections
+
+
+def _build_mode_skills(skill_dir_name: str) -> dict:
+    """Pre-assemble a trimmed system prompt for each MODE of the unified skill."""
+    body = _load_skill_body(skill_dir_name)
+    header, sections = _split_unified_body(body)
+    if header is None:
+        return {}
+    out = {}
+    for mode, section in sections.items():
+        mode_body = _inline_references(skill_dir_name, header + section)
+        out[mode] = _PREAMBLE + "\n\n" + _PIPELINE_OVERLAY + "\n\n" + mode_body
+    return out
+
+
+UNIFIED_MODE_SKILLS = _build_mode_skills("unified-agent")
+
+
+def get_skill_for_mode(mode: str) -> str:
+    """Return the trimmed unified prompt for one `agent_mode`.
+
+    Falls back to the full unified prompt for an unknown or missing mode, so a
+    newly added mode can never yield an empty/wrong prompt — it just costs the
+    old (full) token count until a section is added for it.
+    """
+    prompt = UNIFIED_MODE_SKILLS.get(mode)
+    return prompt if prompt is not None else get_skill("unified_agent")
+
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
-# Shown in the frontend dropdown — order matches a natural workflow
+# Shown in the frontend dropdown. The six specialist agents were merged into one
+# unified agent; "auto" (orchestrator classifies, unified agent answers) is the
+# normal path. The explicit unified entry lets a user force the analyst directly.
 AVAILABLE_SKILLS = [
-    {"key": "auto",            "label": "Auto — AI decides route"},
-    {"key": "stats_agent",     "label": "Stats Agent — KPIs & latency"},
-    {"key": "anomaly_agent",   "label": "Anomaly Agent — detected types"},
-    {"key": "root_cause_agent","label": "Root Cause Agent — why anomalies occur"},
-    {"key": "explorer_agent",  "label": "Explorer Agent — user & story rankings"},
-    {"key": "trace_agent",     "label": "Trace Agent — widget-level drill (mesh)"},
-    {"key": "narrator",        "label": "Narrator — full summary"},
+    {"key": "auto",          "label": "Auto — AI decides route"},
+    {"key": "unified_agent", "label": "Unified Agent — full analysis"},
 ]
 
 

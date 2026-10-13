@@ -28,7 +28,7 @@ Environment variables (set in backend/.env):
   AI_CORE_MODEL   Model name (default: gpt-4o)
 
   # ── Shared ──────────────────────────────────────────────────────
-  AI_CORE_MAX_TOKENS  Max tokens per response (default: 8000)
+  AI_CORE_MAX_TOKENS  Max tokens per response (default: 64000)
   AI_CORE_TIMEOUT     Request timeout in seconds (default: 120)
 """
 
@@ -48,8 +48,44 @@ LLM_EFFORT         = os.getenv("LLM_EFFORT",     "low").strip().lower()
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL       = os.getenv("OPENAI_MODEL",   "gpt-4o")
 AI_CORE_MODEL      = os.getenv("AI_CORE_MODEL",  "gpt-4o")
-AI_CORE_MAX_TOKENS = int(os.getenv("AI_CORE_MAX_TOKENS", "8000"))
+AI_CORE_MAX_TOKENS = int(os.getenv("AI_CORE_MAX_TOKENS", "64000"))
 AI_CORE_TIMEOUT    = int(os.getenv("AI_CORE_TIMEOUT",    "120"))
+
+
+# ─── history token-budget guard ─────────────────────────────────────────────────
+# The model's hard input limit is 200k tokens. With 64k reserved for output and
+# a safety margin, we target ~130k input tokens max. Each JSON payload message
+# can be 10–50k tokens, so even 4 history turns can overflow the budget.
+# _trim_history() drops the *oldest* turns first (keeping the most-recent context
+# for follow-up resolution) until the estimated char count fits safely.
+
+_INPUT_TOKEN_BUDGET = 130_000   # conservative input ceiling (hard limit 200k)
+_CHARS_PER_TOKEN    = 4         # rough heuristic; English+JSON ≈ 3.5–4 chars/token
+
+
+def _trim_history(system_prompt: str, user_message: str, history: list) -> list:
+    """Drop oldest history turns until the estimated total fits within budget."""
+    if not history:
+        return history
+    budget_chars = _INPUT_TOKEN_BUDGET * _CHARS_PER_TOKEN
+    fixed_chars  = len(system_prompt) + len(user_message)
+    avail        = budget_chars - fixed_chars
+    if avail <= 0:
+        log.warning("System prompt + user message alone (~%dk chars) exceed token budget; "
+                    "dropping all history.", fixed_chars // 1000)
+        return []
+    kept = []
+    for msg in reversed(history):
+        cost = len(msg.get("content", ""))
+        if avail - cost < 0:
+            break
+        avail -= cost
+        kept.append(msg)
+    trimmed = len(history) - len(kept)
+    if trimmed:
+        log.warning("Trimmed %d oldest history message(s) to stay within ~130k-token input budget.",
+                    trimmed)
+    return list(reversed(kept))
 
 
 # ─── token-usage accounting ─────────────────────────────────────────────────────
@@ -233,6 +269,10 @@ def call_llm(system_prompt: str, user_message: str,
     Pass this for multi-turn / conversational calls so the model has
     context from earlier turns in the same session.
     """
+    # Guard: trim history to stay within the model's input token budget.
+    if history:
+        history = _trim_history(system_prompt, user_message, history)
+
     # ── Option 1: custom proxy (HyperSpace, etc.) ────────────────────────────
     if LLM_URL and LLM_API_KEY:
         log.info("LLM → proxy  provider=%s  url=%s  model=%s",

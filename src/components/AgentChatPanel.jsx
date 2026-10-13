@@ -1,16 +1,10 @@
 /**
- * AgentChatPanel — HITL AI assistant chat panel.
+ * AgentChatPanel — AI assistant chat panel.
  *
- * Every question goes through two explicit phases:
- *
- *   Phase 1 — Plan  (POST /api/session  or /api/session/<id>/continue)
- *     Classifies intent, returns a plan card. NO agents run at this stage.
- *
- *   Phase 2 — Execute  (POST /api/session/<id>/confirm)
- *     User clicks "Confirm". Agents run, results are rendered.
- *
- *   Reject  (POST /api/session/<id>/reject)
- *     User clicks "Reject". Pending turn is cleared; they can rephrase.
+ * Each question runs the full pipeline in one round-trip:
+ *   POST /api/session                 — first question (uploads the dataset)
+ *   POST /api/session/<id>/continue   — follow-up questions
+ * The backend classifies intent, runs the agents, and returns the answer.
  *
  * Props
  * -----
@@ -51,19 +45,17 @@ const EXAMPLE_PROMPTS = [
 ]
 
 // Stable, unique key for each message so React reconciles by identity, not by
-// list position — the plan → confirming → response swap replaces the last item
-// in place, and index keys would let one component's state leak into the next.
+// list position.
 let _msgSeq = 0
 const stampMsg = (msg) => ({ id: `m${++_msgSeq}`, ...msg })
 
 export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, widgetRows, fileName, isOpen, onClose }) {
   // Flat message list. Each item: { type, text?, data? }
-  // types: 'user' | 'plan' | 'confirming' | 'response' | 'rejected'
+  // types: 'user' | 'response'
   const [messages,   setMessages]   = useState([])
   const [sessionId,  setSessionId]  = useState(null)
   const [question,   setQuestion]   = useState('')
-  const [loading,    setLoading]    = useState(false)    // Phase 1: classifying
-  const [confirming, setConfirming] = useState(false)   // Phase 2: executing
+  const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
 
   const inputRef  = useRef(null)
@@ -82,7 +74,7 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
     if (!el) return
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
     if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length, loading, confirming])
+  }, [messages.length, loading])
 
   // Escape closes the panel while it's open.
   useEffect(() => {
@@ -106,40 +98,17 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
     setSessionId(null); setMessages([]); setQuestion(''); setError(null)
   }, [fileName, sessionId])
 
-  // True when the last message is a plan card awaiting confirm/reject.
-  // The input stays ENABLED while a plan is pending — typing a new question
-  // is treated as an implicit rejection of that plan (see submitQuestion).
-  const hasPendingPlan  = messages.at?.(-1)?.type === 'plan'
-  const isInputDisabled = loading || confirming
+  const isInputDisabled = loading
 
   // ── Core API call — shared by handleSubmit and handleSuggestion ────────────
   // Extracted so suggestion chips can submit a pre-set question directly
   // without going through React state (which is async).
   const submitQuestion = useCallback(async (q) => {
-    if (!q || loading || confirming) return
-
-    // If a plan is awaiting confirmation and the user types a new question
-    // instead of clicking Confirm/Reject, treat it as an implicit rejection:
-    // clear the pending turn on the backend, mark the plan card rejected, then
-    // submit the new question as a fresh turn.
-    const rejectingPending = messages.at?.(-1)?.type === 'plan'
-    if (rejectingPending && sessionId) {
-      try {
-        await fetchWithTimeout(`${BACKEND}/api/session/${sessionId}/reject`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-        }, 10000)
-      } catch (_) { /* best-effort — plan_turn re-plans this session anyway */ }
-    }
+    if (!q || loading) return
 
     setLoading(true)
     setError(null)
-    setMessages((m) => {
-      const base = m.at?.(-1)?.type === 'plan'
-        ? [...m.slice(0, -1),
-           stampMsg({ type: 'rejected', text: 'Plan rejected — asking a new question instead.' })]
-        : m
-      return [...base, stampMsg({ type: 'user', text: q })]
-    })
+    setMessages((m) => [...m, stampMsg({ type: 'user', text: q })])
 
     try {
       let res, data
@@ -175,11 +144,7 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
         return
       }
 
-      if (data.status === 'awaiting_confirmation') {
-        setMessages((m) => [...m, stampMsg({ type: 'plan', data })])
-      } else {
-        setMessages((m) => [...m, stampMsg({ type: 'response', data })])
-      }
+      setMessages((m) => [...m, stampMsg({ type: 'response', data })])
     } catch (err) {
       setError(
         err.name === 'AbortError'
@@ -192,9 +157,9 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
     } finally {
       setLoading(false)
     }
-  }, [loading, confirming, sessionId, buildPayload, aggRows, widgetRows, messages])
+  }, [loading, sessionId, buildPayload, aggRows, widgetRows])
 
-  // ── Phase 1: submit from the text input ────────────────────────────────────
+  // ── Submit from the text input ─────────────────────────────────────────────
   const handleSubmit = useCallback(async (e) => {
     e?.preventDefault()
     const q = question.trim()
@@ -207,59 +172,6 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
   const handleSuggestion = useCallback((suggestedQuestion) => {
     submitQuestion(suggestedQuestion)
   }, [submitQuestion])
-
-  // ── Phase 2: execute the confirmed plan ───────────────────────────────────
-  const handleConfirm = useCallback(async () => {
-    if (!sessionId || confirming) return
-    setConfirming(true)
-    setError(null)
-    // Capture the plan card before swapping it for the running indicator, so a
-    // failed run can restore it — otherwise the plan is lost and the user has
-    // no way to retry Confirm or Reject (FH3).
-    let planMsg = null
-    setMessages((m) => {
-      if (m.at?.(-1)?.type === 'plan') planMsg = m.at(-1)
-      return [...m.slice(0, -1), stampMsg({ type: 'confirming' })]
-    })
-    const restorePlan = () =>
-      setMessages((m) => [...m.slice(0, -1), ...(planMsg ? [planMsg] : [])])
-    try {
-      const res  = await fetchWithTimeout(`${BACKEND}/api/session/${sessionId}/confirm`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || `Server error ${res.status}`)
-        restorePlan()
-        return
-      }
-      setMessages((m) => [...m.slice(0, -1), stampMsg({ type: 'response', data })])
-    } catch (err) {
-      setError(
-        err.name === 'AbortError'
-          ? 'The analysis took too long to respond (over 60s). You can try running it again.'
-          : err.message,
-      )
-      restorePlan()
-    } finally {
-      setConfirming(false)
-    }
-  }, [sessionId, confirming])
-
-  // ── Reject / cancel the pending plan ──────────────────────────────────────
-  const handleReject = useCallback(async () => {
-    if (sessionId) {
-      try {
-        await fetchWithTimeout(`${BACKEND}/api/session/${sessionId}/reject`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-        }, 10000)
-      } catch (_) { /* best-effort */ }
-    }
-    setMessages((m) => [
-      ...m.slice(0, -1),
-      stampMsg({ type: 'rejected', text: 'Plan rejected. Ask a different question below.' }),
-    ])
-  }, [sessionId])
 
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }
 
@@ -301,7 +213,7 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
 
         <div className="ai-chat-header-actions">
           {messages.length > 0 && (
-            <button type="button" className="ai-chat-clear-btn" onClick={handleClear} disabled={loading || confirming}>
+            <button type="button" className="ai-chat-clear-btn" onClick={handleClear} disabled={loading}>
               Clear history
             </button>
           )}
@@ -324,7 +236,7 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
               <div className="ai-chat-empty-icon">💬</div>
               <h3>Ask anything about your data</h3>
               <p className="ai-chat-empty-sub">
-                The assistant shows you a plan first — you confirm before any analysis runs.
+                Ask a question and the assistant analyzes your data and answers directly.
               </p>
               <div className="ai-chat-empty-prompts">
                 {EXAMPLE_PROMPTS.map((p) => (
@@ -349,22 +261,6 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
                 <div className="ai-chat-bubble">{msg.text}</div>
               </div>
             )
-            if (msg.type === 'plan') return (
-              <div key={msg.id} className="ai-chat-message ai-chat-message--ai">
-                <PlanCard
-                  data={msg.data}
-                  onConfirm={handleConfirm}
-                  onReject={handleReject}
-                  disabled={confirming}
-                />
-              </div>
-            )
-            if (msg.type === 'confirming') return (
-              <div key={msg.id} className="ai-chat-loading">
-                <div className="ai-chat-loading-dots"><span/><span/><span/></div>
-                Running agent pipeline…
-              </div>
-            )
             if (msg.type === 'response') return (
               <div key={msg.id} className="ai-chat-message ai-chat-message--ai">
                 <AiResponseBody response={msg.data} />
@@ -377,20 +273,15 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
                 )}
               </div>
             )
-            if (msg.type === 'rejected') return (
-              <div key={msg.id} className="ai-chat-message ai-chat-message--ai">
-                <div className="ai-chat-bubble ai-chat-bubble--rejected">{msg.text}</div>
-              </div>
-            )
             return null
           })}
           </ChartDataContext.Provider>
 
-          {/* Phase 1 loading indicator */}
+          {/* Loading indicator */}
           {loading && (
             <div className="ai-chat-loading">
               <div className="ai-chat-loading-dots"><span/><span/><span/></div>
-              Classifying intent…
+              Analyzing your data…
             </div>
           )}
 
@@ -408,20 +299,11 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
 
       {/* ── Input footer ── */}
       <div className="ai-chat-footer">
-        {hasPendingPlan && (
-          <div className="ai-chat-awaiting-hint">
-            Confirm or reject the plan above — or just type a new question to replace it.
-          </div>
-        )}
         <form className="ai-chat-input-form" onSubmit={handleSubmit}>
           <textarea
             ref={inputRef}
             className="ai-chat-input"
-            placeholder={
-              hasPendingPlan
-                ? 'Type a new question to replace the plan above…'
-                : 'Ask about anomalies, KPIs, users, stories… (Enter to send)'
-            }
+            placeholder="Ask about anomalies, KPIs, users, stories… (Enter to send)"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -434,55 +316,9 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
             className="ai-chat-send-btn"
             disabled={isInputDisabled || !question.trim()}
           >
-            {loading ? 'Thinking…' : confirming ? 'Running…' : 'Ask'}
+            {loading ? 'Thinking…' : 'Ask'}
           </button>
         </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Plan card ─────────────────────────────────────────────────────────────────
-
-function PlanCard({ data, onConfirm, onReject, disabled }) {
-  const { intent, acknowledgement, plan } = data || {}
-  const badge = intent?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-  // The plan object (and its steps) can be missing or malformed if the backend
-  // returns a partial payload — render what's present rather than crashing (FH1).
-  const steps = Array.isArray(plan?.steps) ? plan.steps : []
-  const calls = plan?.estimated_llm_calls
-  return (
-    <div className="ai-chat-plan-card">
-      <div className="ai-chat-plan-header">
-        {badge && <span className="ai-chat-intent-badge">{badge}</span>}
-        {acknowledgement && <p className="ai-chat-plan-ack">{acknowledgement}</p>}
-      </div>
-      <div className="ai-chat-plan-body">
-        {plan?.description && <p className="ai-chat-plan-desc">{plan.description}</p>}
-        {steps.length > 0 && (
-          <ol className="ai-chat-plan-steps">
-            {steps.map((s, i) => (
-              <li key={s.step ?? i} className="ai-chat-plan-step">
-                <span className="ai-chat-plan-step-agents">{(s.agents || []).join(', ')}</span>
-                <span className="ai-chat-plan-step-sep"> — </span>
-                <span className="ai-chat-plan-step-desc">{s.description}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-        {typeof calls === 'number' && (
-          <p className="ai-chat-plan-cost">
-            Estimated: <strong>{calls} LLM {calls === 1 ? 'call' : 'calls'}</strong>
-          </p>
-        )}
-      </div>
-      <div className="ai-chat-plan-actions">
-        <button type="button" className="ai-chat-confirm-btn" onClick={onConfirm} disabled={disabled}>
-          {disabled ? 'Running…' : 'Confirm — Run analysis'}
-        </button>
-        <button type="button" className="ai-chat-reject-btn" onClick={onReject} disabled={disabled}>
-          Reject — Rephrase
-        </button>
       </div>
     </div>
   )

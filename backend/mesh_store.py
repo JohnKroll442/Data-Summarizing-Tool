@@ -63,7 +63,7 @@ agent_outputs: dict[str, dict[str, dict]] = {}
 #       "current_step":      int,          # index into the step sequence
 #       "steps":             list[dict],   # ordered step definitions
 #       "completed_agents":  list[str],    # agents that have run
-#       "status":            str,          # awaiting_confirmation | complete | error
+#       "status":            str,          # active | error
 #       "last_response":     dict | None,  # most recent step response
 #       "stored_at":         float,
 #   }
@@ -74,6 +74,13 @@ DATASET_TTL_SEC = 3600   # overridden by app.py at startup
 SESSION_TTL_SEC = 14400  # 4 hours — sessions live longer than dataset memory TTL
                          # so conversations survive across dataset cache evictions.
                          # Only applies when disk persistence keeps the dataset alive.
+
+# Max prior turns (user+assistant pairs) replayed to the LLM per call. The full
+# history is still stored for the UI and follow-up resolution; only the slice
+# sent as LLM context is capped. Older turns rarely inform a new question, and
+# replaying all of them makes input tokens (and cost) grow unbounded with
+# session length. Env-overridable. One turn = 2 messages, so N turns = 2N msgs.
+LLM_HISTORY_MAX_TURNS = int(os.getenv("LLM_HISTORY_MAX_TURNS", "8"))
 
 # ─── disk persistence ────────────────────────────────────────────────────────
 #
@@ -418,14 +425,23 @@ def get_llm_history(session_id: str) -> list:
 
     The metadata fields (agent, intent, turn) are stripped — only the role
     and content fields that the LLM API expects are returned.
+
+    Only the last LLM_HISTORY_MAX_TURNS turns are returned (one turn = a
+    user+assistant pair) to bound input tokens on long sessions. The slice is
+    taken on the pair boundary so the result still starts with a user message,
+    which the Anthropic API requires.
     """
     session = sessions.get(session_id)
     if not session:
         return []
-    return [
+    history = [
         {"role": h["role"], "content": h["content"]}
         for h in session.get("conversation_history", [])
     ]
+    max_msgs = LLM_HISTORY_MAX_TURNS * 2
+    if max_msgs > 0 and len(history) > max_msgs:
+        history = history[-max_msgs:]
+    return history
 
 
 def get_turn_count(session_id: str) -> int:

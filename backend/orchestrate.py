@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from llm import call_llm, extract_json_from_response
-from skills import get_skill
+from skills import get_skill, get_skill_for_mode
 
 log = logging.getLogger(__name__)
 
@@ -55,113 +55,11 @@ from mesh_store import store_agent_output, read_agent_output
 import mesh_store as _mesh
 
 
-# ─── HITL intent plan catalogue ──────────────────────────────────────────────
-#
-# One entry per intent. Shown to the user before any agent runs so they can
-# confirm or reject the proposed action. estimated_llm_calls is informational.
-
-_INTENT_PLANS: dict = {
-    "FULL_ANALYSIS": {
-        "description": "Full pipeline — KPI stats + anomaly detection in parallel, then a Narrator synthesis",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Stats Agent", "Anomaly Agent"],
-                "description": "Compute KPI percentiles and detect active anomaly types (2 LLM calls, run in parallel)",
-            },
-            {
-                "step": 2,
-                "agents": ["Narrator"],
-                "description": "Synthesise KPI + anomaly findings into a headline summary (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 3,
-    },
-    "KPI_SUMMARY": {
-        "description": "KPI and latency statistics",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Stats Agent"],
-                "description": "Report total actions, threshold breaches, and duration percentiles (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 1,
-    },
-    "ANOMALY_SUMMARY": {
-        "description": "Anomaly type detection and flagging",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Anomaly Agent"],
-                "description": "Identify which anomaly types are active and how many actions were flagged per type (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 1,
-    },
-    "ROOT_CAUSE_ANALYSIS": {
-        "description": "Root cause analysis of active anomaly types",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Anomaly Agent"],
-                "description": "Detect active anomaly types (1 LLM call)",
-            },
-            {
-                "step": 2,
-                "agents": ["Root Cause Agent"],
-                "description": "Explain why each type occurs and surface specific actions and users involved (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 2,
-    },
-    "DATA_EXPLORATION": {
-        "description": "Full-dataset frequency rankings and row-level exploration",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Explorer Agent"],
-                "description": "Rank users, stories, and actions by frequency; fetch row-level detail for named entities (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 1,
-    },
-    "WIDGET_TRACE": {
-        "description": "Widget-level timing trace for the slowest actions",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Trace Agent"],
-                "description": "Identify the bottleneck widget, break down render/network/backend phases, and check loading patterns (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 1,
-    },
-    "CONVERSATIONAL": {
-        "description": "Conversational answer using session context",
-        "steps": [
-            {
-                "step": 1,
-                "agents": ["Conversational"],
-                "description": "Answer the follow-up question by synthesising prior findings from this session (1 LLM call)",
-            },
-        ],
-        "estimated_llm_calls": 1,
-    },
-}
-
-
-def _build_plan(intent: str) -> dict:
-    """Return a copy of the execution plan for the given intent."""
-    return dict(_INTENT_PLANS.get(intent, _INTENT_PLANS["FULL_ANALYSIS"]))
-
-
 # ─── Post-response next-step suggestions ──────────────────────────────────────
 #
 # Shown after every completed turn. Each entry is a list of
 # { "label": str, "question": str } objects the frontend renders as
-# clickable chips. Clicking one auto-submits the question through
-# the HITL plan flow (plan → confirm → result).
+# clickable chips. Clicking one auto-submits the question.
 
 _INTENT_NEXT_STEPS: dict = {
     "FULL_ANALYSIS": [
@@ -349,81 +247,7 @@ def _resolve_followup_references(question: str, dataset_id) -> str:
     return question
 
 
-def plan_turn(question: str, payload: dict, dataset_id=None,
-              session_id: str = None, direct_agent: str = None) -> dict:
-    """
-    Phase 1 of the human-in-the-loop flow.
-
-    Classifies the intent and builds an execution plan, but does NOT run any
-    agents. Returns the plan for the user to review. The caller should then
-    call orchestrate() (Phase 2) only after the user confirms.
-
-    Stores the pending question and agent key in the session so the confirm
-    endpoint can execute without the client re-sending the full payload.
-
-    Returns:
-      {
-        "status":          "awaiting_confirmation",
-        "session_id":      str | None,
-        "intent":          str,
-        "acknowledgement": str,
-        "plan": {
-          "description":        str,
-          "steps":              [ {step, agents, description}, ... ],
-          "estimated_llm_calls": int
-        },
-        "turn": int
-      }
-    """
-    # ── Resolve follow-up references before any routing ──────────────────────
-    question = _resolve_followup_references(question, dataset_id)
-
-    log.info("Planning turn: %s (direct_agent=%s, session=%s)",
-             question[:100], direct_agent, session_id)
-
-    llm_history = _mesh.get_llm_history(session_id) if session_id else []
-    turn        = _mesh.get_turn_count(session_id) + 1 if session_id else 1
-
-    # Determine intent — either from the direct_agent override or the classifier
-    if direct_agent and direct_agent != "auto":
-        intent = _DIRECT_AGENT_INTENT_MAP.get(direct_agent, "FULL_ANALYSIS")
-        ack    = f"Running {direct_agent.replace('_', ' ').title()} directly."
-    else:
-        intent_result = classify_intent(question, payload, llm_history=llm_history)
-        intent = intent_result.get("intent", "FULL_ANALYSIS")
-        ack    = intent_result.get("acknowledgement", "Analysing your dataset...")
-
-    plan = _build_plan(intent)
-
-    # Persist pending state so the confirm endpoint has everything it needs.
-    # pending_intent / pending_ack are stored so orchestrate() can skip
-    # re-classifying the same question — eliminating one wasted LLM call.
-    if session_id:
-        _mesh.update_session(
-            session_id,
-            intent               = intent,
-            steps                = plan["steps"],
-            status               = "awaiting_confirmation",
-            pending_question     = question,
-            pending_direct_agent = direct_agent or "auto",
-            pending_intent       = intent,   # ← consumed by orchestrate() on confirm
-            pending_ack          = ack,      # ← consumed by orchestrate() on confirm
-        )
-
-    log.info("Plan ready — intent=%s  steps=%d  est_calls=%d",
-             intent, len(plan["steps"]), plan["estimated_llm_calls"])
-
-    return {
-        "status":          "awaiting_confirmation",
-        "session_id":      session_id,
-        "intent":          intent,
-        "acknowledgement": ack,
-        "plan":            plan,
-        "turn":            turn,
-    }
-
-
-# ─── HITL Phase 2: execute (runs agents, called after confirmation) ───────────
+# ─── Run the multi-agent pipeline ─────────────────────────────────────────────
 
 def orchestrate(question: str, payload: dict, dataset_id=None,
                 direct_agent: str = None, session_id: str = None) -> dict:
@@ -453,35 +277,11 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         "turn":            int
       }
     """
-    # ── HITL check: if plan_turn already resolved references, don't re-resolve ─
-    # In the HITL flow, plan_turn() already called _resolve_followup_references()
-    # and stored the enriched question as pending_question. The confirm endpoint
-    # reads it and passes it here. Re-resolving would double-inject context tags
-    # (e.g. "[Previous: ...] [Previous: ...] show me rank 2"), corrupting the
-    # question string for every downstream agent.
-    #
-    # We detect the HITL-confirm path by checking for pending_intent — if it
-    # exists, plan_turn already ran and the question is already resolved.
-    # The non-HITL path (POST /api/chat) has no session, so resolution runs once.
-    _pending_intent = None
-    _pending_ack    = None
-    _from_plan_turn = False
-    if session_id:
-        _s = _mesh.get_session(session_id)
-        if _s:
-            _pending_intent = _s.get("pending_intent")
-            _pending_ack    = _s.get("pending_ack")
-            if _pending_intent:
-                _from_plan_turn = True
-                # Clear the pending fields now that we're consuming them
-                _mesh.update_session(session_id, pending_intent=None, pending_ack=None)
+    # ── Resolve follow-up references before any routing ──────────────────────
+    question = _resolve_followup_references(question, dataset_id)
 
-    if not _from_plan_turn:
-        # Only resolve references when NOT coming from plan_turn (which already did)
-        question = _resolve_followup_references(question, dataset_id)
-
-    log.info("Orchestrating: %s (direct_agent=%s, session=%s, from_plan=%s)",
-             question[:100], direct_agent, session_id, _from_plan_turn)
+    log.info("Orchestrating: %s (direct_agent=%s, session=%s)",
+             question[:100], direct_agent, session_id)
 
     # ── Load conversation history from the session ─────────────────────────────
     llm_history = _mesh.get_llm_history(session_id) if session_id else []
@@ -497,18 +297,10 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         result["turn"]       = turn
         return result
 
-    # ── Intent classification — reuse plan_turn result when available ──────────
-    # In the HITL flow, plan_turn already classified the intent and stored it in
-    # the session as pending_intent. Reusing it skips one full LLM call per turn.
-
-    if _pending_intent:
-        intent = _pending_intent
-        ack    = _pending_ack or "Analysing your dataset..."
-        log.info("Intent reused from plan_turn: %s (classify_intent skipped)", intent)
-    else:
-        intent_result = classify_intent(question, payload, llm_history=llm_history)
-        intent        = intent_result.get("intent", "FULL_ANALYSIS")
-        ack           = intent_result.get("acknowledgement", "Analysing your dataset...")
+    # ── Intent classification ──────────────────────────────────────────────────
+    intent_result = classify_intent(question, payload, llm_history=llm_history)
+    intent        = intent_result.get("intent", "FULL_ANALYSIS")
+    ack           = intent_result.get("acknowledgement", "Analysing your dataset...")
 
     log.info("Intent: %s", intent)
 
@@ -516,113 +308,28 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
     response_parts = [ack, ""]
     session_notes  = []
 
-    if intent == "KPI_SUMMARY":
-        out = run_stats_agent(payload.get("kpis", []), question, payload.get("meta", {}))
-        agent_outputs["stats"] = out
-        response_parts.append(out.get("_response_text", ""))
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "stats-agent", out)
-
-    elif intent == "ANOMALY_SUMMARY":
-        out = run_anomaly_agent(payload.get("anomalies", {}), question)
-        agent_outputs["anomaly"] = out
-        response_parts.append(out.get("_response_text", ""))
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "anomaly-agent", out)
-
-    elif intent == "ROOT_CAUSE_ANALYSIS":
-        anomaly_out = run_anomaly_agent(payload.get("anomalies", {}), question)
-        agent_outputs["anomaly"] = anomaly_out
-        _guard_store(dataset_id, "anomaly-agent", anomaly_out)
-        # Phase 3 mesh pattern: Root Cause reads anomaly output from store
-        # (store_agent_output was called above after anomaly agent ran)
-        # Cap flagged_actions to the 50 slowest — the agent needs representative
-        # examples, not all 300+ rows. flagged_by_type is also slimmed: only the
-        # first 10 actions per type (enough for pattern identification).
-        _all_flagged   = payload.get("anomalies", {}).get("flagged_actions", [])
-        _flagged_by_t  = payload.get("anomalies", {}).get("flagged_by_type", {})
-        _top_flagged   = _sorted_flagged(_all_flagged)[:50]
-
-        rc_input = {
-            "active_headline_types": anomaly_out.get("active_headline_types", []),
-            "active_phase_types":    anomaly_out.get("active_phase_types",    []),
-            "total_flagged":         anomaly_out.get("total_flagged",         {}),
-            "total_actions":         anomaly_out.get("total_actions",          0),
-            "flagged_by_type":       _flagged_by_t,   # full — runner slims for the LLM
-            "flagged_actions":       _top_flagged,    # top 50 by duration
-            # Mesh enrichment: other agents' outputs (if available from prior runs)
-            "trace_output":          read_agent_output(dataset_id, "trace-agent"),
-            "explorer_context":      _get_explorer_context(dataset_id),
-        }
-        rc_out = run_root_cause_agent(rc_input, question)
-        agent_outputs["root_cause"] = rc_out
-        response_parts.append(rc_out.get("_response_text", ""))
-        session_notes.extend(rc_out.get("session_notes", []))
-        _guard_store(dataset_id, "root-cause-agent", rc_out)
-
-    elif intent == "DATA_EXPLORATION":
-        explorer_input = _build_explorer_input(question, payload, dataset_id,
-                                               llm_history=llm_history)
-        out = run_explorer_agent(explorer_input)
-        agent_outputs["explorer"] = out
-        response_parts.append(out.get("_response_text", ""))
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "explorer-agent", out)
-
-    elif intent == "FULL_ANALYSIS":
-        stats_out, anomaly_out = _run_parallel(
-            payload.get("kpis", []),
-            payload.get("anomalies", {}),
-            question,
-            payload.get("meta", {}),
-        )
-        agent_outputs["stats"]   = stats_out
-        agent_outputs["anomaly"] = anomaly_out
-        session_notes.extend(stats_out.get("session_notes",   []))
-        session_notes.extend(anomaly_out.get("session_notes", []))
-        _guard_store(dataset_id, "stats-agent", stats_out)
-        _guard_store(dataset_id, "anomaly-agent", anomaly_out)
-
-        flagged = _sorted_flagged(payload.get("anomalies", {}).get("flagged_actions", []))
-        narrator_input = {
-            "stats":              stats_out,
-            "anomalies":          anomaly_out,
-            "meta":               payload.get("meta", {}),
-            "top_flagged_action": flagged[0] if flagged else None,
-            # Phase 4 mesh: include any trace findings if available
-            "trace_output":       read_agent_output(dataset_id, "trace-agent"),
-        }
-        narrator_out = run_narrator(narrator_input, question)
-        agent_outputs["narrator"] = narrator_out
-        response_parts.append(narrator_out.get("_response_text", ""))
-        session_notes.extend(narrator_out.get("session_notes", []))
-        _guard_store(dataset_id, "narrator", narrator_out)
-
-    elif intent == "WIDGET_TRACE":
-        # Mesh-native: trace agent reads from store + API, not hand-assembled packages
-        trace_input = _build_trace_input(question, payload, dataset_id)
-        out = run_trace_agent(trace_input)
-        agent_outputs["trace"] = out
-        response_parts.append(out.get("_response_text", ""))
-        session_notes.extend(out.get("session_notes", []))
-        # Phase 2: store output for mesh consumption
-        _guard_store(dataset_id, "trace-agent", out)
-
-    elif intent == "CONVERSATIONAL":
+    if intent == "CONVERSATIONAL":
         response_parts.append(
             _conversational_answer(question, payload, llm_history=llm_history,
                                    dataset_id=dataset_id)
         )
-
     else:
-        # Unknown intent — fall back to the cheapest single-call path (one LLM
-        # call) rather than the 4-call FULL_ANALYSIS pipeline.
-        log.warning("Unknown intent '%s' — falling back to ANOMALY_SUMMARY (1 call)", intent)
-        out = run_anomaly_agent(payload.get("anomalies", {}), question)
-        agent_outputs["anomaly"] = out
+        # Every analysis intent is now answered by the single unified agent.
+        # _build_unified_input maps the intent → agent_mode and assembles the
+        # right data slice (reusing the former per-intent builders); unknown
+        # intents fall back to anomaly_summary.
+        if intent not in _ANALYSIS_INTENTS:
+            log.warning("Unknown intent '%s' — falling back to ANOMALY_SUMMARY", intent)
+            intent = "ANOMALY_SUMMARY"
+        unified_input = _build_unified_input(question, payload, dataset_id, intent,
+                                             llm_history=llm_history)
+        agent_mode = unified_input["agent_mode"]
+        out = run_unified_agent(unified_input, question)
+        store_name, out_key = _MODE_MESH[agent_mode]
+        agent_outputs[out_key] = out
         response_parts.append(out.get("_response_text", ""))
         session_notes.extend(out.get("session_notes", []))
-        intent = "ANOMALY_SUMMARY"
+        _guard_store(dataset_id, store_name, out)
 
     final_response = "\n".join(p for p in response_parts if p)
 
@@ -666,7 +373,11 @@ _DIRECT_AGENT_INTENT_MAP = {
 
 def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
                       session_id: str = None, llm_history: list = None) -> dict:
-    """Call a specific agent directly, bypassing intent classification."""
+    """Call the analyst directly, bypassing intent classification.
+
+    `agent_key` may be the new "unified_agent" or any of the former specialist
+    keys (kept in _DIRECT_AGENT_INTENT_MAP for backward compatibility). Each maps
+    to an intent → agent_mode, then runs the single unified agent."""
     intent = _DIRECT_AGENT_INTENT_MAP.get(agent_key, "FULL_ANALYSIS")
     log.info("Direct dispatch to %s (intent: %s)", agent_key, intent)
 
@@ -674,85 +385,22 @@ def _run_direct_agent(question: str, payload: dict, dataset_id, agent_key: str,
     session_notes = []
     response_text = ""
 
-    if agent_key == "stats_agent":
-        out = run_stats_agent(payload.get("kpis", []), question, payload.get("meta", {}))
-        agent_outputs["stats"] = out
+    if intent == "CONVERSATIONAL":
+        response_text = _conversational_answer(question, payload,
+                                               llm_history=llm_history,
+                                               dataset_id=dataset_id)
+    else:
+        if intent not in _ANALYSIS_INTENTS:
+            intent = "FULL_ANALYSIS"
+        unified_input = _build_unified_input(question, payload, dataset_id, intent,
+                                             llm_history=llm_history)
+        agent_mode = unified_input["agent_mode"]
+        out = run_unified_agent(unified_input, question)
+        store_name, out_key = _MODE_MESH[agent_mode]
+        agent_outputs[out_key] = out
         response_text = out.get("_response_text", "")
         session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "stats-agent", out)
-
-    elif agent_key == "anomaly_agent":
-        out = run_anomaly_agent(payload.get("anomalies", {}), question)
-        agent_outputs["anomaly"] = out
-        response_text = out.get("_response_text", "")
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "anomaly-agent", out)
-
-    elif agent_key == "root_cause_agent":
-        anomaly_out = run_anomaly_agent(payload.get("anomalies", {}), question)
-        agent_outputs["anomaly"] = anomaly_out
-        _guard_store(dataset_id, "anomaly-agent", anomaly_out)
-        _all_flagged = payload.get("anomalies", {}).get("flagged_actions", [])
-        _flagged_by_t = payload.get("anomalies", {}).get("flagged_by_type", {})
-        rc_input = {
-            "active_headline_types": anomaly_out.get("active_headline_types", []),
-            "active_phase_types":    anomaly_out.get("active_phase_types",    []),
-            "total_flagged":         anomaly_out.get("total_flagged",         {}),
-            "total_actions":         anomaly_out.get("total_actions",          0),
-            "flagged_by_type":       _flagged_by_t,   # full — runner slims for the LLM
-            "flagged_actions":       sorted(_all_flagged, key=lambda a: a.get("action_duration_ms") or 0, reverse=True)[:50],
-            # Mesh enrichment: other agents' outputs from prior runs
-            "trace_output":          read_agent_output(dataset_id, "trace-agent"),
-            "explorer_context":      _get_explorer_context(dataset_id),
-        }
-        out = run_root_cause_agent(rc_input, question)
-        agent_outputs["root_cause"] = out
-        response_text = out.get("_response_text", "")
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "root-cause-agent", out)
-
-    elif agent_key == "explorer_agent":
-        explorer_input = _build_explorer_input(question, payload, dataset_id,
-                                               llm_history=llm_history)
-        out = run_explorer_agent(explorer_input)
-        agent_outputs["explorer"] = out
-        response_text = out.get("_response_text", "")
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "explorer-agent", out)
-
-    elif agent_key == "trace_agent":
-        trace_input = _build_trace_input(question, payload, dataset_id)
-        out = run_trace_agent(trace_input)
-        agent_outputs["trace"] = out
-        response_text = out.get("_response_text", "")
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "trace-agent", out)
-
-    elif agent_key == "narrator":
-        stats_out, anomaly_out = _run_parallel(
-            payload.get("kpis", []),
-            payload.get("anomalies", {}),
-            question,
-            payload.get("meta", {}),
-        )
-        agent_outputs["stats"]   = stats_out
-        agent_outputs["anomaly"] = anomaly_out
-        _guard_store(dataset_id, "stats-agent",   stats_out)
-        _guard_store(dataset_id, "anomaly-agent", anomaly_out)
-        flagged = _sorted_flagged(payload.get("anomalies", {}).get("flagged_actions", []))
-        narrator_input = {
-            "stats":              stats_out,
-            "anomalies":          anomaly_out,
-            "meta":               payload.get("meta", {}),
-            "top_flagged_action": flagged[0] if flagged else None,
-            # Mesh enrichment: trace findings if available from a prior run
-            "trace_output":       read_agent_output(dataset_id, "trace-agent"),
-        }
-        out = run_narrator(narrator_input, question)
-        agent_outputs["narrator"] = out
-        response_text = out.get("_response_text", "")
-        session_notes.extend(out.get("session_notes", []))
-        _guard_store(dataset_id, "narrator", out)
+        _guard_store(dataset_id, store_name, out)
 
     return {
         "intent":          intent,
@@ -836,35 +484,417 @@ def classify_intent(question: str, payload: dict, llm_history: list = None) -> d
 
 # ─── individual agents ────────────────────────────────────────────────────────
 
-def run_stats_agent(kpis: list, question: str = "", meta: dict = None) -> dict:
-    payload_in = {"kpis": kpis}
-    # Pass meta so the agent can derive threshold_label from
-    # meta.slow_action_threshold_ms (otherwise it emits threshold_label: null and
-    # the Narrator KPI table shows a blank threshold row). See stats-agent Step 2.
-    if meta:
-        payload_in["meta"] = meta
-    if question:
-        payload_in["user_request"] = question
-    resp   = call_llm(get_skill("stats_agent"), json.dumps(payload_in, indent=2))
-    result = _safe_json(resp, "stats-agent")
-    result["_response_text"] = _prose(resp)
-    return result
+# ─── unified agent: deterministic prep (replaces stats/anomaly pre-passes) ────
+# The former Stats and Anomaly agents were pass-through formatters — they ran no
+# analysis, only reshaped kpis[]/counts for the next agent. We reproduce that
+# reshaping in code so ROOT_CAUSE and FULL_ANALYSIS no longer need those extra
+# LLM calls.
+
+# Canonical anomaly type labels — mirrors
+# skills/unified-agent/references/anomaly-type-reference.md (single source of
+# truth). Keep in sync if the catalogue changes.
+_ANOMALY_LABELS = {
+    "slow_action":       "Slow action",
+    "large_offset":      "Large offset",
+    "straggler":         "Straggler widget",
+    "fragmented":        "Fragmented",
+    "offset_overrun":    "Offset > Duration",
+    "negative_phase":    "Negative phase",
+    "component_overrun": "Component overrun",
+    "frontend_bound":    "Frontend",
+    "network_bound":     "Network",
+    "backend_bound":     "Backend",
+}
+_PHASE_KEYS = {"frontend_bound", "network_bound", "backend_bound"}
+
+# Natural-language phrasings → canonical anomaly type key. Lets DATA_EXPLORATION
+# scope a count / ranking / listing to one anomaly type ("how many straggler
+# actions did X have", "which hour had the most backend-bound actions"). Flags
+# are not stored on rows, so this scope is computed from the payload's
+# flagged_by_type buckets, not from query_engine row filters.
+_ANOMALY_SYNONYMS = {
+    "slow_action":       ["slow action", "slow_action", "slow-action", "slow actions"],
+    "large_offset":      ["large offset", "large_offset", "large-offset"],
+    "straggler":         ["straggler", "stragglers"],
+    "fragmented":        ["fragmented", "fragmentation"],
+    "offset_overrun":    ["offset overrun", "offset_overrun", "offset > duration",
+                          "offset exceed", "offset-overrun"],
+    "negative_phase":    ["negative phase", "negative_phase", "negative-phase"],
+    "component_overrun": ["component overrun", "component_overrun", "component-overrun"],
+    "frontend_bound":    ["frontend bound", "frontend-bound", "frontend_bound",
+                          "frontend bottleneck", "render bound", "render-bound",
+                          "frontend dominant", "frontend-dominant", "dominant frontend",
+                          "frontend heavy", "frontend-heavy", "frontend phase dominant"],
+    "network_bound":     ["network bound", "network-bound", "network_bound",
+                          "network bottleneck",
+                          "network dominant", "network-dominant", "dominant network",
+                          "network heavy", "network-heavy", "network phase dominant"],
+    "backend_bound":     ["backend bound", "backend-bound", "backend_bound",
+                          "backend bottleneck",
+                          "backend dominant", "backend-dominant", "dominant backend",
+                          "backend heavy", "backend-heavy", "backend phase dominant"],
+}
+# Longest synonym first so "backend bound" wins over a bare "backend".
+_ANOMALY_SYN_ORDERED = sorted(
+    ((syn, key) for key, syns in _ANOMALY_SYNONYMS.items() for syn in syns),
+    key=lambda sk: -len(sk[0]),
+)
 
 
-def run_anomaly_agent(anomalies: dict, question: str = "") -> dict:
-    # Send ONLY the fields the Anomaly Agent's input contract uses. Callers pass
-    # the whole anomalies blob (which also carries flagged_actions[] and
-    # flagged_by_type{} — often thousands of tokens the agent never reads).
-    slim = {
-        "counts":        anomalies.get("counts", {}),
-        "total_flagged": anomalies.get("total_flagged", {}),
-        "total_actions": anomalies.get("total_actions", 0),
+def _detect_anomaly_type(question: str) -> str | None:
+    """Return the canonical anomaly type key named in the question, or None."""
+    q = (question or "").lower()
+    for syn, key in _ANOMALY_SYN_ORDERED:
+        if syn in q:
+            return key
+    return None
+
+
+def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
+                                scoped_user=None, scoped_story=None,
+                                scoped_action=None, scoped_session=None) -> dict | None:
+    """Authoritative anomaly-type-scoped view built from flagged_by_type.
+
+    flagged_by_type[type] holds every flagged action of that type (each listed
+    once per type), so it is the only source that can answer "how many <type>
+    actions" / "which <dimension> has the most <type> actions" / "list the
+    <type> actions" — stored rows carry flags=null. Optionally narrows to a
+    user / story / action / session the question also names. Dedups defensively
+    by (action_name, action_timestamp, session_id) and returns per-dimension and
+    per-hour breakdowns plus a capped sample list.
+    """
+    acts = raw_fbt.get(anomaly_type)
+    if not isinstance(acts, list):
+        return None
+
+    def _keep(a):
+        if scoped_user    and a.get("user")        != scoped_user:    return False
+        if scoped_story   and a.get("story_name")  != scoped_story:   return False
+        if scoped_action  and a.get("action_name") != scoped_action:  return False
+        if scoped_session and a.get("session_id")  != scoped_session: return False
+        return True
+
+    seen, uniq = set(), []
+    for a in acts:
+        if not _keep(a):
+            continue
+        k = (a.get("action_name", ""), a.get("action_timestamp", ""),
+             a.get("session_id", ""))
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(a)
+
+    def _rank(field):
+        counts = {}
+        for a in uniq:
+            counts[a.get(field) or "unknown"] = counts.get(a.get(field) or "unknown", 0) + 1
+        return [{field: name, "count": n}
+                for name, n in sorted(counts.items(), key=lambda kv: -kv[1])][:20]
+
+    import query_engine as _qe
+    by_hour = {}
+    for a in uniq:
+        dt = _qe.parse_ts(a.get("action_timestamp"))
+        if dt is not None:
+            by_hour[dt.hour] = by_hour.get(dt.hour, 0) + 1
+
+    scope = {k: v for k, v in (("user", scoped_user), ("story", scoped_story),
+                               ("action", scoped_action), ("session", scoped_session)) if v}
+    return {
+        "anomaly_type": anomaly_type,
+        "label":        _ANOMALY_LABELS.get(anomaly_type, anomaly_type),
+        "total":        len(uniq),
+        "scoped_to":    scope or None,
+        "by_user":      _rank("user"),
+        "by_story":     _rank("story_name"),
+        "by_action":    _rank("action_name"),
+        "by_session":   _rank("session_id"),
+        "by_hour":      [{"hour": f"{h:02d}:00", "count": n}
+                         for h, n in sorted(by_hour.items())],
+        "actions":      uniq[:20],
     }
-    payload_in = {"anomalies": slim}
-    if question:
-        payload_in["user_request"] = question
-    resp   = call_llm(get_skill("anomaly_agent"), json.dumps(payload_in, indent=2))
-    result = _safe_json(resp, "anomaly-agent")
+_KPI_KEYMAP = {
+    "total_actions":   "total_actions",
+    "over_2m":         "over_threshold",
+    "median_duration": "median_duration",
+    "p90_duration":    "p90_duration",
+    "p95_duration":    "p95_duration",
+}
+
+
+def _threshold_label(meta: dict | None) -> str:
+    ms = (meta or {}).get("slow_action_threshold_ms")
+    if not ms:
+        return "not available"
+    try:
+        ms = int(ms)
+    except (TypeError, ValueError):
+        return "not available"
+    return f"{ms // 60000}m" if ms % 60000 == 0 else f"{ms // 1000}s"
+
+
+def _map_kpis_to_stats_output(kpis: list, meta: dict | None) -> dict:
+    """Deterministic equivalent of the former Stats Agent (no analysis — maps
+    kpis[] into the stats-agent output shape the narrator/full_summary expects)."""
+    out = {"total_actions": None, "over_threshold": None, "median_duration": None,
+           "p90_duration": None, "p95_duration": None}
+    for item in kpis or []:
+        okey = _KPI_KEYMAP.get(item.get("key"))
+        if not okey:
+            continue
+        val = item.get("value")
+        out[okey] = None if val in (None, "", "—") else val
+    present = [k for k, v in out.items() if v is not None]
+    missing = [k for k, v in out.items() if v is None]
+    return {"agent": "stats-agent", "status": "CONFIRMED", "kpis": out,
+            "keys_present": present, "keys_missing": missing,
+            "threshold_label": _threshold_label(meta), "session_notes": []}
+
+
+def _derive_active_types(counts: dict) -> tuple[list, list]:
+    """Deterministic equivalent of the former Anomaly Agent typing step. Returns
+    (active_headline_types, active_phase_types) — objects sorted by actions desc,
+    labels from _ANOMALY_LABELS, pct as integer percent."""
+    headline, phase = [], []
+    for key, v in (counts or {}).items():
+        if not isinstance(v, dict):
+            continue
+        actions = v.get("actions", 0) or 0
+        if actions <= 0:
+            continue
+        pct = v.get("pct", 0) or 0
+        pct_int = round(pct * 100) if pct <= 1 else round(pct)
+        entry = {"key": key, "label": _ANOMALY_LABELS.get(key, key),
+                 "actions": actions, "pct": pct_int}
+        (phase if key in _PHASE_KEYS else headline).append(entry)
+    headline.sort(key=lambda e: -e["actions"])
+    phase.sort(key=lambda e: -e["actions"])
+    return headline, phase
+
+
+def _build_anomaly_output(anom: dict) -> dict:
+    """Deterministic anomaly-agent output shape (for the full_summary input)."""
+    headline, phase = _derive_active_types(anom.get("counts", {}))
+    return {"agent": "anomaly-agent", "status": "CONFIRMED",
+            "total_actions": anom.get("total_actions", 0),
+            "total_flagged": anom.get("total_flagged", {}),
+            "active_headline_types": headline, "active_phase_types": phase,
+            "excluded_by_user": [], "types_checked": 10,
+            "types_active": len(headline), "session_notes": []}
+
+
+# agent_mode → (mesh store name, agent_outputs key). Keeping the former per-agent
+# names means all cross-agent mesh enrichment and follow-up resolution keep
+# working unchanged after the merge.
+_MODE_MESH = {
+    "kpi_summary":      ("stats-agent",      "stats"),
+    "anomaly_summary":  ("anomaly-agent",    "anomaly"),
+    "root_cause":       ("root-cause-agent", "root_cause"),
+    "data_exploration": ("explorer-agent",   "explorer"),
+    "widget_trace":     ("trace-agent",      "trace"),
+    "full_summary":     ("narrator",         "narrator"),
+}
+
+# Analysis intents the unified agent handles (CONVERSATIONAL is handled separately).
+_ANALYSIS_INTENTS = {
+    "KPI_SUMMARY", "ANOMALY_SUMMARY", "ROOT_CAUSE_ANALYSIS",
+    "DATA_EXPLORATION", "WIDGET_TRACE", "FULL_ANALYSIS",
+}
+
+
+def _build_unified_input(question, payload, dataset_id, intent, llm_history=None) -> dict:
+    """Assemble the single analyst input for an intent. Reuses the existing
+    per-intent builders and adds `agent_mode`; deterministic prep replaces the
+    former stats/anomaly pre-call agents."""
+    anom = payload.get("anomalies", {}) if isinstance(payload, dict) else {}
+
+    if intent == "KPI_SUMMARY":
+        return {"agent_mode": "kpi_summary",
+                "kpis": payload.get("kpis", []),
+                "meta": payload.get("meta", {}),
+                "user_request": question}
+
+    if intent == "ANOMALY_SUMMARY":
+        return {"agent_mode": "anomaly_summary",
+                "anomalies": {"counts":        anom.get("counts", {}),
+                              "total_flagged": anom.get("total_flagged", {}),
+                              "total_actions": anom.get("total_actions", 0)},
+                "user_request": question}
+
+    if intent == "ROOT_CAUSE_ANALYSIS":
+        headline, phase = _derive_active_types(anom.get("counts", {}))
+        return {
+            "agent_mode":            "root_cause",
+            "active_headline_types": headline,
+            "active_phase_types":    phase,
+            "total_flagged":         anom.get("total_flagged", {}),
+            "total_actions":         anom.get("total_actions", 0),
+            "flagged_by_type":       anom.get("flagged_by_type", {}),   # FULL — runner slims for LLM
+            "flagged_actions":       _sorted_flagged(anom.get("flagged_actions", []))[:50],
+            "trace_output":          read_agent_output(dataset_id, "trace-agent"),
+            "explorer_context":      _get_explorer_context(dataset_id),
+            "user_request":          question,
+        }
+
+    if intent == "DATA_EXPLORATION":
+        ei = _build_explorer_input(question, payload, dataset_id, llm_history=llm_history)
+        ei["agent_mode"] = "data_exploration"
+        ei.setdefault("user_request", question)
+        return ei
+
+    if intent == "WIDGET_TRACE":
+        ti = _build_trace_input(question, payload, dataset_id)
+        ti["agent_mode"] = "widget_trace"
+        return ti
+
+    if intent == "FULL_ANALYSIS":
+        flagged = _sorted_flagged(anom.get("flagged_actions", []))
+        return {
+            "agent_mode":         "full_summary",
+            "stats":              _map_kpis_to_stats_output(payload.get("kpis", []),
+                                                            payload.get("meta", {})),
+            "anomalies":          _build_anomaly_output(anom),
+            "meta":               payload.get("meta", {}),
+            "top_flagged_action": flagged[0] if flagged else None,
+            "trace_output":       read_agent_output(dataset_id, "trace-agent"),
+            "user_request":       question,
+        }
+
+    # Fallback → anomaly summary
+    return {"agent_mode": "anomaly_summary",
+            "anomalies": {"counts":        anom.get("counts", {}),
+                          "total_flagged": anom.get("total_flagged", {}),
+                          "total_actions": anom.get("total_actions", 0)},
+            "user_request": question}
+
+
+# ── Analyst input token-budget backstop ──────────────────────────────────────
+# The model's hard input limit is 200k tokens. The system prompt (~15k) and the
+# response share that budget, so we cap the serialized analyst input at ~110k
+# tokens (~440k chars at ~4 chars/token). The per-section caps in the builders
+# keep a normal input well under this; this is the catch-all that guarantees a
+# single call can never overflow — on any mode, and as the dataset grows — by
+# trimming the heaviest list sections (least→most essential) until it fits.
+# Scoped summaries, aggregation, anomaly_type_scope totals and the *_total count
+# fields are never trimmed: they carry the authoritative numbers.
+_INPUT_CHAR_BUDGET = 440_000
+
+_BUDGET_TRIMS = (
+    # (top-level key, nested key or None → cap each list under it, cap items)
+    ("metric_rankings",              "by_widget",  25),
+    ("metric_rankings",              "by_session", 25),
+    ("metric_rankings",              "by_action",  25),
+    ("metric_rankings",              "by_story",   25),
+    ("metric_rankings",              "by_user",    25),
+    ("flagged_by_type",              None,          3),
+    ("flagged_action_types_ranking", None,         25),
+    ("flagged_stories_ranking",      None,         25),
+    ("flagged_users_ranking",        None,         25),
+    ("detail_rows",                  None,         50),
+)
+
+
+def _trim_section(obj, cap):
+    """Cap a list, or every list value inside a dict, to `cap` items."""
+    if isinstance(obj, list):
+        return obj[:cap]
+    if isinstance(obj, dict):
+        return {k: (v[:cap] if isinstance(v, list) else v) for k, v in obj.items()}
+    return obj
+
+
+def _fit_input_to_budget(d: dict) -> dict:
+    """Trim the heaviest sections of an analyst input until it fits the budget."""
+    if not isinstance(d, dict):
+        return d
+    size = len(json.dumps(d, default=str))
+    if size <= _INPUT_CHAR_BUDGET:
+        return d
+    log.warning("Analyst input ~%dk chars exceeds budget (~%dk) — trimming heavy sections.",
+                size // 1000, _INPUT_CHAR_BUDGET // 1000)
+    out = dict(d)
+    for top, nested, cap in _BUDGET_TRIMS:
+        if size <= _INPUT_CHAR_BUDGET:
+            break
+        sect = out.get(top)
+        if not isinstance(sect, (list, dict)):
+            continue
+        before = len(json.dumps(sect, default=str))
+        if nested is None:
+            out[top] = _trim_section(sect, cap)
+        elif isinstance(sect, dict) and isinstance(sect.get(nested), list):
+            sect = dict(sect)
+            sect[nested] = sect[nested][:cap]
+            out[top] = sect
+        else:
+            continue
+        after = len(json.dumps(out[top], default=str))
+        if after < before:
+            log.warning("  trimmed %s%s to %d items (-%dk chars)",
+                        top, f".{nested}" if nested else "", cap, (before - after) // 1000)
+        size = len(json.dumps(out, default=str))
+    if size > _INPUT_CHAR_BUDGET:
+        log.warning("Analyst input still ~%dk chars after trimming — proceeding; the LLM "
+                    "call may fail if the total exceeds the 200k hard limit.", size // 1000)
+    return out
+
+
+def run_unified_agent(unified_input: dict, question: str = "") -> dict:
+    """Single analyst call. `agent_mode` selects the behaviour. Each branch
+    mirrors the former agent's post-processing (phase-drill fast path, chart
+    directives) but calls the one merged skill prompt. The output is tagged with
+    the former agent name so mesh enrichment is unchanged."""
+    mode = unified_input.get("agent_mode")
+    skill = get_skill_for_mode(mode)
+    unified_input = _fit_input_to_budget(unified_input)
+
+    # ── Root cause: deterministic phase-scoped fast path (no LLM) ─────────────
+    if mode == "root_cause":
+        full_fbt = unified_input.get("flagged_by_type", {}) or {}
+        drill = _build_phase_drill(question, full_fbt)
+        if drill is not None:
+            return _phase_scoped_result(drill, unified_input)
+        # Normal path: slim flagged_by_type to 10/type for the LLM.
+        llm_input = {**unified_input,
+                     "flagged_by_type": {k: v[:10] for k, v in full_fbt.items()
+                                         if isinstance(v, list)}}
+        resp   = call_llm(skill, json.dumps(llm_input, indent=2))
+        result = _safe_json(resp, "root-cause-agent")
+        prose  = _prose(resp)
+        ql = _strip_context_tag(question or "").lower()
+        wants_chart = bool(_VIZ_VERB_RE.search(ql) or _WORST_RE.search(ql))
+        if wants_chart:
+            directive = _root_cause_chart_directive(unified_input, result, question)
+        else:
+            directive = None
+            prose = _CHART_FENCE_RE.sub("", prose).rstrip()
+        result["_response_text"] = _ensure_chart(prose, directive)
+        return result
+
+    resp   = call_llm(skill, json.dumps(unified_input, indent=2))
+
+    if mode == "data_exploration":
+        result = _safe_json(resp, "explorer-agent")
+        prose  = _prose(resp)
+        directive = _explorer_chart_directive(unified_input, result,
+                                              unified_input.get("user_request")
+                                              or unified_input.get("question", ""))
+        result["_response_text"] = _ensure_chart(prose, directive)
+        return result
+
+    if mode == "widget_trace":
+        result = _safe_json(resp, "trace-agent")
+        prose  = _prose(resp)
+        directive = _trace_chart_directive(unified_input, result,
+                                           unified_input.get("question", ""))
+        # replace=True: our deterministic directive overrides the model's fence.
+        result["_response_text"] = _ensure_chart(prose, directive, replace=True)
+        return result
+
+    # kpi_summary / anomaly_summary / full_summary — no chart post-processing.
+    store_name = _MODE_MESH.get(mode, ("unified-agent", ""))[0]
+    result = _safe_json(resp, store_name)
     result["_response_text"] = _prose(resp)
     return result
 
@@ -1028,87 +1058,33 @@ def _phase_scoped_result(drill: dict, rc_input: dict) -> dict:
 
 
 def run_root_cause_agent(rc_input: dict, question: str = "") -> dict:
-    if question and "user_request" not in rc_input:
-        rc_input = {**rc_input, "user_request": question}
-
-    # ── Phase-scoped fast path ────────────────────────────────────────────────
-    # "show me actions flagged by frontend", "network issues only", etc.
-    # The LLM only ever sees 10 slimmed rows per type, so it can't produce an
-    # accurate per-action ranking, and it has repeatedly failed to suppress the
-    # non-matching sections. When the question names exactly one phase we build
-    # the whole answer deterministically in code from the FULL flagged rows and
-    # skip the model entirely — guaranteed accurate counts, guaranteed scope.
-    full_fbt = rc_input.get("flagged_by_type", {}) or {}
-    drill = _build_phase_drill(question, full_fbt)
-    if drill is not None:
-        return _phase_scoped_result(drill, rc_input)
-
-    # ── Normal path ───────────────────────────────────────────────────────────
-    # Slim flagged_by_type to 10 examples per type for the LLM (pattern ID only).
-    llm_input = {**rc_input,
-                 "flagged_by_type": {k: v[:10] for k, v in full_fbt.items()
-                                     if isinstance(v, list)}}
-    resp   = call_llm(get_skill("root_cause_agent"), json.dumps(llm_input, indent=2))
-    result = _safe_json(resp, "root-cause-agent")
-    prose  = _prose(resp)
-    # A chart belongs in a root-cause answer ONLY when the user explicitly asked
-    # for one (a viz verb, or a "worst/slowest" ask). Otherwise suppress BOTH our
-    # deterministic directive AND any fence the model emitted on its own (the
-    # shared preamble teaches every agent the chart contract, and its example is
-    # literally an "Open story" waterfall, which the model tends to parrot).
-    ql = _strip_context_tag(question or "").lower()
-    wants_chart = bool(_VIZ_VERB_RE.search(ql) or _WORST_RE.search(ql))
-    if wants_chart:
-        directive = _root_cause_chart_directive(rc_input, result, question)
-    else:
-        directive = None
-        prose = _CHART_FENCE_RE.sub("", prose).rstrip()
-    log.info("CHART-DEBUG root_cause: wants_chart=%s directive=%s fence_in_prose=%s",
-             wants_chart, directive, _CHART_FENCE in (prose or ""))
-    result["_response_text"] = _ensure_chart(prose, directive)
-    return result
+    """Back-compat shim — delegates to the unified agent in root_cause mode.
+    (The former standalone root-cause skill is merged into skills/unified-agent.)"""
+    ui = {**rc_input, "agent_mode": "root_cause"}
+    if question and "user_request" not in ui:
+        ui["user_request"] = question
+    return run_unified_agent(ui, question)
 
 
 def run_explorer_agent(explorer_input: dict) -> dict:
-    resp   = call_llm(get_skill("explorer_agent"), json.dumps(explorer_input, indent=2))
-    result = _safe_json(resp, "explorer-agent")
-    prose  = _prose(resp)
-    directive = _explorer_chart_directive(explorer_input, result,
-                                          explorer_input.get("user_request")
-                                          or explorer_input.get("question", ""))
-    log.info("CHART-DEBUG explorer: directive=%s fence_in_prose=%s", directive, _CHART_FENCE in (prose or ""))
-    result["_response_text"] = _ensure_chart(prose, directive)
-    return result
+    """Back-compat shim — delegates to the unified agent in data_exploration mode."""
+    ui = {**explorer_input, "agent_mode": "data_exploration"}
+    ui.setdefault("user_request", explorer_input.get("question", ""))
+    return run_unified_agent(ui, explorer_input.get("question", ""))
 
 
 def run_narrator(narrator_input: dict, question: str = "") -> dict:
-    if question and "user_request" not in narrator_input:
-        narrator_input = {**narrator_input, "user_request": question}
-    resp   = call_llm(get_skill("narrator"), json.dumps(narrator_input, indent=2))
-    result = _safe_json(resp, "narrator")
-    result["_response_text"] = _prose(resp)
-    return result
+    """Back-compat shim — delegates to the unified agent in full_summary mode."""
+    ui = {**narrator_input, "agent_mode": "full_summary"}
+    if question and "user_request" not in ui:
+        ui["user_request"] = question
+    return run_unified_agent(ui, question)
 
 
 def run_trace_agent(trace_input: dict) -> dict:
-    resp   = call_llm(get_skill("trace_agent"), json.dumps(trace_input, indent=2))
-    result = _safe_json(resp, "trace-agent")
-    prose  = _prose(resp)
-    directive = _trace_chart_directive(trace_input, result, trace_input.get("question", ""))
-    log.info("CHART-DEBUG trace: directive=%s widgets_found=%s fence_in_prose=%s",
-             directive, (result or {}).get("widgets_found"), _CHART_FENCE in (prose or ""))
-    # replace=True: our deterministic directive is authoritative — override the
-    # model's own (often malformed) fence rather than deferring to it.
-    result["_response_text"] = _ensure_chart(prose, directive, replace=True)
-    return result
-
-
-def _run_parallel(kpis: list, anomalies: dict, question: str = "", meta: dict = None) -> tuple:
-    """Run Stats Agent and Anomaly Agent concurrently via ThreadPoolExecutor."""
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f_stats   = pool.submit(run_stats_agent,   kpis,      question, meta)
-        f_anomaly = pool.submit(run_anomaly_agent, anomalies, question)
-        return f_stats.result(), f_anomaly.result()
+    """Back-compat shim — delegates to the unified agent in widget_trace mode."""
+    ui = {**trace_input, "agent_mode": "widget_trace"}
+    return run_unified_agent(ui, trace_input.get("question", ""))
 
 
 # ─── explorer detail fetch ────────────────────────────────────────────────────
@@ -1339,22 +1315,11 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
                     user_filter = detail_rows[0].get("user")
             mode = "detail" if user_filter else "ranking"
 
-    # ── Scope flagged_by_type only in user detail mode ────────────────────────
+    # raw flagged_by_type from the fresh payload (full arrays, pre-cap). Scoping
+    # to the queried entity and capping to a few samples happen AFTER the scoped
+    # entity is resolved below — so a bare-username question ("how many flags does
+    # SUBHADRA have?") scopes correctly even when _fetch_detail_rows missed it.
     raw_fbt = payload.get("anomalies", {}).get("flagged_by_type", {})
-    if user_filter:
-        flagged_by_type = {
-            type_key: [
-                a for a in (actions if isinstance(actions, list) else [])
-                if a.get("user") == user_filter
-            ]
-            for type_key, actions in raw_fbt.items()
-            if any(a.get("user") == user_filter
-                   for a in (actions if isinstance(actions, list) else []))
-        }
-    else:
-        # Ranking / cross mode: slim to max 5 examples per type to save tokens
-        flagged_by_type = {k: v[:5] for k, v in raw_fbt.items()
-                           if isinstance(v, list)}
 
     # ── Slice each ranking to the requested count (only for its own dimension) ─
     # In cross mode ranking_request is None — pass full rankings as context.
@@ -1420,17 +1385,174 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
             ds_out = {k: v for k, v in ds_out.items()
                       if k not in ("by_user", "by_story", "by_action")}
 
+    # ── Resolve the scoped entity (unify the two user detectors) ──────────────
+    # Gap fix: _fetch_detail_rows (which sets user_filter) only matches
+    # possessive / "for X" / "by X" / "show me X" phrasings, but
+    # query_engine._detect_users (which drives scoped_agg) matches a bare
+    # username anywhere ("how many flagged does SUBHADRA have?"). When they
+    # disagree the ranking gets stripped yet NO authoritative count is built, so
+    # the true flagged count vanishes from the input and the model fabricates
+    # one (reported 0 for SUBHADRA whose real count is 9). Treat the
+    # aggregation's filter as the canonical scope and reconcile both detectors.
+    _agg_filters   = (aggregation or {}).get("filters", {}) if scoped_agg else {}
+    scoped_user    = user_filter or _agg_filters.get("user")
+    scoped_story   = _agg_filters.get("story")
+    scoped_action  = _agg_filters.get("action")
+    scoped_session = _agg_filters.get("session")
+    _agg_total     = (aggregation or {}).get("total_matching") if scoped_agg else None
+
+    # ── Anomaly-type scope (GAP: anomaly type as a filter dimension) ──────────
+    # When the question names an anomaly type ("how many straggler actions",
+    # "which hour had the most backend-bound actions", "list negative_phase
+    # actions for story X"), build its authoritative view from flagged_by_type —
+    # the only flag-aware source — optionally narrowed to the entity the
+    # question also scopes to.
+    _anom_type = _detect_anomaly_type(scoped_question)
+    anomaly_type_scope = (
+        _compute_anomaly_type_scope(raw_fbt, _anom_type, scoped_user,
+                                    scoped_story, scoped_action, scoped_session)
+        if _anom_type else None
+    )
+
+    # ── Single-source enforcement for anomaly-typed dimension questions ───────
+    # "Which users have the most straggler actions?" has TWO ranking sources:
+    # anomaly_type_scope.by_user (scoped to that type — correct) and the
+    # full-dataset flagged_users_ranking (every anomaly type — wrong for this
+    # question). Mirror the scoped_agg strip: when an anomaly type is named AND a
+    # dimension is asked, remove the competing full-dataset ranking so
+    # anomaly_type_scope.by_<dim> is the only ranked flagged-count source. The
+    # target dimension comes from either detector OR the parsed group_by
+    # (parse_query reliably maps "which users/stories/actions" → group_by), since
+    # _detect_dimension_and_rank misses some anomaly-typed phrasings.
+    if anomaly_type_scope:
+        _gb_dim = {"user": "users", "story": "stories",
+                   "action": "action_types"}.get((aggregation or {}).get("group_by"))
+        _typed_dim = dimension or _gb_dim
+        if _typed_dim == "users":
+            displayed_user_ranking = []
+        elif _typed_dim == "stories":
+            displayed_story_ranking = []
+        elif _typed_dim == "action_types":
+            displayed_action_ranking = []
+
+    # ── Scope flagged_by_type + authoritative per-type totals ─────────────────
+    # flagged_by_type indexes each flagged action under EACH of its anomaly
+    # types, so a type bucket's length IS that type's true count (no cross-type
+    # double counting within a single type). The buckets are capped to a few
+    # samples below for tokens, so we ALSO pass flagged_type_totals as the
+    # authoritative numbers — without them the model counts the truncated
+    # arrays and reports "5 per type → 47 total" (true dataset total is 558).
+    if scoped_user or scoped_session:
+        def _in_scope(a):
+            if scoped_user    and a.get("user")       != scoped_user:    return False
+            if scoped_session and a.get("session_id") != scoped_session: return False
+            return True
+        _scoped_fbt = {
+            tk: [a for a in (acts if isinstance(acts, list) else []) if _in_scope(a)]
+            for tk, acts in raw_fbt.items()
+        }
+        _scoped_fbt = {tk: v for tk, v in _scoped_fbt.items() if v}
+        flagged_type_totals = {tk: len(v) for tk, v in _scoped_fbt.items()}
+        flagged_by_type     = {tk: v[:5] for tk, v in _scoped_fbt.items()}
+    else:
+        flagged_type_totals = {tk: len(v) for tk, v in raw_fbt.items()
+                               if isinstance(v, list)}
+        flagged_by_type     = {tk: v[:5] for tk, v in raw_fbt.items()
+                               if isinstance(v, list)}
+
+    # ── Authoritative scoped flagged summaries (survive the ranking strip) ────
+    # Sourced from _compute_flagged_rankings — derived from the fresh payload's
+    # flagged_actions, deduplicated by (action_name, timestamp, session_id) —
+    # NOT from stored rows, which carry flags=null. For a scoped entity we
+    # surface its one true flagged count so the model quotes it instead of
+    # recomputing from buckets (double counts) or stored rows (always 0). An
+    # entity absent from the ranking genuinely has 0 flagged actions — that 0 is
+    # authoritative, not a guess.
+    def _flag_summary(ranked, key, name, total):
+        hit = next((e for e in ranked if e.get(key) == name), None)
+        return {
+            key:             name,
+            "flagged_count": hit["flagged_count"]       if hit else 0,
+            "flagged_pct":   hit.get("flagged_pct")     if hit else 0.0,
+            "anomaly_types": hit.get("anomaly_types", []) if hit else [],
+            "total_actions": total,
+        }
+
+    user_flagged_summary = None
+    if scoped_user:
+        _utotal = _agg_total if _agg_total is not None else (
+            len(detail_rows) if detail_rows else None)
+        user_flagged_summary = _flag_summary(all_ranked_users, "user",
+                                             scoped_user, _utotal)
+        # keep the legacy key name the SKILL prompt references
+        user_flagged_summary["total_user_actions"] = user_flagged_summary["total_actions"]
+
+    story_flagged_summary = (
+        _flag_summary(all_ranked_stories, "story_name", scoped_story, _agg_total)
+        if scoped_story else None
+    )
+    action_flagged_summary = (
+        _flag_summary(all_ranked_action_types, "action_name", scoped_action, _agg_total)
+        if scoped_action else None
+    )
+
+    # Session has no entry in _compute_flagged_rankings (that helper ranks users /
+    # stories / action types only), so build the session's authoritative flagged
+    # count directly from the fresh payload's flagged_actions, deduped by
+    # (action_name, timestamp, session_id) — the same key used everywhere else.
+    session_flagged_summary = None
+    if scoped_session:
+        _seen, _cnt, _types = set(), 0, set()
+        for a in payload.get("anomalies", {}).get("flagged_actions", []):
+            if a.get("session_id") != scoped_session:
+                continue
+            k = (a.get("action_name", ""), a.get("action_timestamp", ""),
+                 a.get("session_id", ""))
+            if k in _seen:
+                continue
+            _seen.add(k)
+            _cnt += 1
+            for t in (a.get("anomaly_types") or []):
+                _types.add(t)
+        session_flagged_summary = {
+            "session_id":    scoped_session,
+            "flagged_count": _cnt,
+            "anomaly_types": sorted(_types),
+            "total_actions": _agg_total,
+        }
+
+    # Stored action rows (detail_rows, aggregation input) carry flags=null, so no
+    # flag count may be derived from them — the *_flagged_summary fields are the
+    # single authoritative source. This note is model-visible so the rule holds
+    # even if the system prompt is stale.
+    scoped_any = bool(scoped_user or scoped_story or scoped_action or scoped_session)
+    detail_rows_note = (
+        "detail_rows, aggregation, and all stored action rows carry flags=null "
+        "(flags are frontend-computed and not stored server-side). NEVER count "
+        "flagged actions from them, and never read a flagged count off the "
+        "aggregation's activity total. Use the *_flagged_summary.flagged_count "
+        "fields and flagged_type_totals — these are authoritative and already "
+        "deduplicated."
+    ) if scoped_any else None
+
     return {
         "data_summary":                 ds_out,
         "flagged_users_ranking":        displayed_user_ranking,
         "flagged_stories_ranking":      displayed_story_ranking,
         "flagged_action_types_ranking": displayed_action_ranking,
         "flagged_by_type":              flagged_by_type,
+        "flagged_type_totals":          flagged_type_totals,
         "question":                     question,
         "user_request":                 question,       # for _SCOPE_FILTER consistency
         "anomaly_context":              _get_anomaly_context(dataset_id),
         "detail_rows":                  detail_rows,
+        "detail_rows_note":             detail_rows_note,
+        "anomaly_type_scope":           anomaly_type_scope,
         "user_filter":                  user_filter,
+        "user_flagged_summary":         user_flagged_summary,
+        "story_flagged_summary":        story_flagged_summary,
+        "action_flagged_summary":       action_flagged_summary,
+        "session_flagged_summary":      session_flagged_summary,
         "mode":                         mode,           # "ranking" | "detail" | "cross"
         "dimension":                    dimension,
         "ranking_request":              ranking_request,
@@ -1943,13 +2065,24 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
         )
     ]
 
+    # Cap the two long-tail rankings. by_session (one row per session) and
+    # by_widget (one row per distinct widget name) scale with the dataset — a
+    # 2k-row upload yields ~340 sessions and ~800 widget names, together ~240KB
+    # of JSON (~60k tokens) that would be fed to the LLM on EVERY exploration
+    # question regardless of relevance. Both are pre-sorted by their primary
+    # metric, so the top 50 answers any "which session/widget has the most X"
+    # question; deep per-widget analysis is the widget_trace mode's job. The
+    # pre-cap totals are kept so "how many sessions/widgets" stays answerable.
+    _SESSION_CAP = _WIDGET_CAP = 50
     return {
-        "by_action":  by_action_merged,
-        "by_story":   by_story_merged,
-        "by_user":    by_user_merged,
-        "by_session": by_session,
-        "by_widget":  by_widget,
-        "available":  True,
+        "by_action":        by_action_merged,
+        "by_story":         by_story_merged,
+        "by_user":          by_user_merged,
+        "by_session":       by_session[:_SESSION_CAP],
+        "by_session_total": len(by_session),
+        "by_widget":        by_widget[:_WIDGET_CAP],
+        "by_widget_total":  len(by_widget),
+        "available":        True,
     }
 
 

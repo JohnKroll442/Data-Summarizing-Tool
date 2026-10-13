@@ -29,6 +29,41 @@ SLOW_ACTION_THRESHOLD_MS = 120000  # mirrors the frontend default (buildMeta)
 _TS_FIELDS       = ("action_timestamp", "_action_timestamp")
 _DURATION_FIELDS = ("action_duration_ms", "action_duration")
 
+# Per-action phase busy-time maxima stored on every row (ms). Historically these
+# were never aggregated or exposed, so phase questions ("median backend time by
+# user", "sort by network time") could not be answered. (row field, short name).
+_PHASE_FIELDS = (
+    ("max_frontend", "frontend"),
+    ("max_network",  "network"),
+    ("max_backend",  "backend"),
+)
+
+# Natural-language duration units → milliseconds. Longest spellings win in the
+# regex alternation below so 'ms' beats 's' and 'minutes' beats 'min'/'m'.
+_DUR_UNIT_MS = {
+    "ms": 1, "msec": 1, "msecs": 1, "millisecond": 1, "milliseconds": 1,
+    "s": 1000, "sec": 1000, "secs": 1000, "second": 1000, "seconds": 1000,
+    "m": 60000, "min": 60000, "mins": 60000, "minute": 60000, "minutes": 60000,
+    "h": 3600000, "hr": 3600000, "hrs": 3600000, "hour": 3600000, "hours": 3600000,
+}
+_DUR_UNIT_ALT = "|".join(
+    re.escape(u) for u in sorted(_DUR_UNIT_MS, key=len, reverse=True)
+)
+# "longer than 5 minutes", "over 500ms", "at least 1 hour", ">= 90s" → min bound.
+_DUR_MIN_RE = re.compile(
+    r"(?:longer than|more than|greater than|at least|no (?:less|fewer) than|"
+    r"over|above|exceed(?:s|ing)?|>=?|≥)\s*"
+    r"(\d[\d,]*\.?\d*)\s*(" + _DUR_UNIT_ALT + r")\b",
+    re.IGNORECASE,
+)
+# "shorter than 2 seconds", "under 1 min", "at most 30s", "<= 100ms" → max bound.
+_DUR_MAX_RE = re.compile(
+    r"(?:shorter than|less than|faster than|quicker than|at most|no (?:more|longer) than|"
+    r"under|below|within|<=?|≤)\s*"
+    r"(\d[\d,]*\.?\d*)\s*(" + _DUR_UNIT_ALT + r")\b",
+    re.IGNORECASE,
+)
+
 _MONTHS = {
     "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
     "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
@@ -64,6 +99,8 @@ _GROUP_BY_PATTERNS = [
      r"|top\s+actions?|most\s+(?:common|frequent)\s+action)\b", "action"),
     (r"\b(by\s+session|per\s+session|for\s+each\s+session|busiest\s+session"
      r"|which\s+session|what\s+sessions?|top\s+sessions?)\b", "session"),
+    (r"\b(by\s+dominant\s+phase|dominant\s+phase\s+breakdown|per\s+dominant\s+phase"
+     r"|by\s+phase\s+dominance|by\s+phase|which\s+phase\s+dominates)\b", "dominant_phase"),
 ]
 
 # Stopwords reused from the detail-row parser semantics — words that follow
@@ -128,6 +165,32 @@ def _row_duration(row):
     return None
 
 
+def _row_phase(row, field):
+    v = row.get(field)
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def _dominant_phase(row):
+    """Return the phase ('frontend'|'network'|'backend') with the largest
+    per-row maximum, or None when no phase timing is present.
+
+    This classifies EVERY action by which phase contributed most to it — the
+    argmax of max_frontend / max_network / max_backend — independent of whether
+    the action was flagged. It is distinct from the frontend_bound /
+    network_bound / backend_bound anomaly types, which cover only flagged
+    actions. Ties resolve by the fixed _PHASE_FIELDS order (frontend first)."""
+    best_name, best_val = None, None
+    for field, name in _PHASE_FIELDS:
+        v = _row_phase(row, field)
+        if v is None:
+            continue
+        if best_val is None or v > best_val:
+            best_name, best_val = name, v
+    # best_val == 0 means every present phase was 0 (no real activity) → no
+    # dominant phase, rather than defaulting to whichever field sorted first.
+    return best_name if best_val else None
+
+
 def _bucket_key(dt, granularity):
     """Return (sort_key, label) for grouping a datetime, or None."""
     if dt is None:
@@ -179,6 +242,27 @@ def _metric_bundle(durations, threshold_ms=SLOW_ACTION_THRESHOLD_MS):
     }
 
 
+def _phase_bundle(rows):
+    """Per-phase (frontend/network/backend) avg/median/max over rows, in ms.
+
+    Reads the row-level max_frontend / max_network / max_backend fields that
+    _metric_bundle ignores (it sees only total durations). Returns {} when a
+    group has no phase data, and omits any single phase whose values are all
+    absent, so a phase column never shows a misleading 0.
+    """
+    out = {}
+    for field, name in _PHASE_FIELDS:
+        vals = sorted(
+            v for v in (_row_phase(r, field) for r in rows) if v is not None
+        )
+        if not vals:
+            continue
+        out[f"avg_{name}_ms"]    = int(round(sum(vals) / len(vals)))
+        out[f"median_{name}_ms"] = int(round(_percentile(vals, 50)))
+        out[f"max_{name}_ms"]    = int(round(vals[-1]))
+    return out
+
+
 # ─── filtering + aggregation ────────────────────────────────────────────────
 
 def _match(row_val, wanted):
@@ -199,6 +283,9 @@ def filter_rows(rows, filters):
     hour    = filters.get("hour_of_day")     # int 0-23
     dmin    = filters.get("duration_min_ms")
     dmax    = filters.get("duration_max_ms")
+    dphase  = filters.get("dominant_phase")  # "frontend"|"network"|"backend"
+    ehmin   = filters.get("end_hour_min")    # _action_end hour >= this
+    ehmax   = filters.get("end_hour_max")    # _action_end hour <= this
 
     user_set = {str(u).strip().lower() for u in users if u} if users else None
 
@@ -226,6 +313,16 @@ def filter_rows(rows, filters):
                 continue
             if dmax is not None and dur > dmax:
                 continue
+        if dphase is not None and _dominant_phase(r) != dphase:
+            continue
+        if ehmin is not None or ehmax is not None:
+            edt = parse_ts(r.get("_action_end"))
+            if edt is None:
+                continue
+            if ehmin is not None and edt.hour < ehmin:
+                continue
+            if ehmax is not None and edt.hour > ehmax:
+                continue
         out.append(r)
     return out
 
@@ -245,10 +342,10 @@ def aggregate_rows(rows, filters=None, group_by=None,
 
     if not group_by:
         bundle = _metric_bundle([_row_duration(r) for r in matched], threshold_ms)
-        result["groups"] = [{"group": "all", **bundle}]
+        result["groups"] = [{"group": "all", **bundle, **_phase_bundle(matched)}]
         return result
 
-    buckets = {}  # sort_key -> {"label": str, "durations": [..]}
+    buckets = {}  # sort_key -> {"label": str, "rows": [..]}
     for r in matched:
         if group_by in ("hour", "day", "weekday", "month"):
             bk = _bucket_key(_row_ts(r), group_by)
@@ -260,19 +357,26 @@ def aggregate_rows(rows, filters=None, group_by=None,
             v = r.get("action_name"); bk = (str(v), str(v)) if v else None
         elif group_by == "session":
             v = r.get("session_id"); bk = (str(v), str(v)) if v else None
+        elif group_by == "dominant_phase":
+            v = _dominant_phase(r); bk = (v, v) if v else None
         else:
             bk = None
         if bk is None:
             continue
         sort_key, label = bk
-        buckets.setdefault(sort_key, {"label": label, "durations": []})
-        buckets[sort_key]["durations"].append(_row_duration(r))
+        buckets.setdefault(sort_key, {"label": label, "rows": []})
+        buckets[sort_key]["rows"].append(r)
 
     is_time = group_by in ("hour", "day", "weekday", "month")
     for sort_key in sorted(buckets.keys(), key=lambda k: (k is None, k)) if is_time \
-            else sorted(buckets.keys(), key=lambda k: -len(buckets[k]["durations"])):
+            else sorted(buckets.keys(), key=lambda k: -len(buckets[k]["rows"])):
         b = buckets[sort_key]
-        result["groups"].append({"group": b["label"], **_metric_bundle(b["durations"], threshold_ms)})
+        durations = [_row_duration(r) for r in b["rows"]]
+        result["groups"].append({
+            "group": b["label"],
+            **_metric_bundle(durations, threshold_ms),
+            **_phase_bundle(b["rows"]),
+        })
 
     if not is_time and limit:
         result["groups"] = result["groups"][:limit]
@@ -408,7 +512,113 @@ def _detect_hour(question):
     m = re.search(r"\b(?:hour|hr)\s+(\d{1,2})\b", q)
     if m and 0 <= int(m.group(1)) <= 23:
         return int(m.group(1))
+    if re.search(r"\bnoon\b|\bmidday\b", q):
+        return 12
+    if re.search(r"\bmidnight\b", q):
+        return 0
     return None
+
+
+def _detect_duration_filter(question):
+    """Parse a natural-language duration threshold into min/max millisecond bounds.
+
+    Handles 'longer than 5 minutes', 'under 2 seconds', 'over 500ms', 'at least
+    1 hour', '>= 90s', 'faster than 1 min'. Returns a dict with the
+    duration_min_ms / duration_max_ms keys that were found (either, both, or
+    neither), which filter_rows already understands. A bare clock-hour or date
+    phrase is left untouched because a comparator word plus a duration unit are
+    both required to match."""
+    out = {}
+    for rx, key in ((_DUR_MIN_RE, "duration_min_ms"), (_DUR_MAX_RE, "duration_max_ms")):
+        m = rx.search(question)
+        if not m:
+            continue
+        mult = _DUR_UNIT_MS.get(m.group(2).lower())
+        if mult:
+            out[key] = float(m.group(1).replace(",", "")) * mult
+    return out
+
+
+# Dominant-phase phrasings: "<phase> dominant/heavy", "dominant <phase>",
+# "<phase> is the dominant/heaviest phase". front-end / back-end spelling
+# variants are normalised in _norm_phase. Deliberately excludes "<phase> bound"
+# — that is the anomaly-type wording handled separately in orchestrate.py.
+_DOM_PHASE_RE = re.compile(
+    r"\b(front[\s-]?end|frontend|network|back[\s-]?end|backend)[\s-]*"
+    r"(?:dominant|dominated|dominance|heavy|heaviest)\b"
+    r"|\b(?:dominant|heaviest)[\s-]+(front[\s-]?end|frontend|network|back[\s-]?end|backend)\b"
+    r"|\b(front[\s-]?end|frontend|network|back[\s-]?end|backend)\s+(?:(?:is|was|were|are)\s+)?(?:the\s+)?"
+    r"(?:dominant|heaviest|largest|biggest)\s+phase\b",
+    re.IGNORECASE,
+)
+
+
+def _norm_phase(word):
+    """Normalise a phase word ('front end', 'front-end', 'Frontend') to a
+    canonical key, or None if it isn't a phase name."""
+    if not word:
+        return None
+    w = re.sub(r"[\s-]+", "", word.lower())   # 'front end' / 'front-end' → 'frontend'
+    return w if w in ("frontend", "network", "backend") else None
+
+
+def _detect_dominant_phase_filter(question):
+    """Detect a dominant-phase row filter. Returns {'dominant_phase': <phase>}
+    (frontend/network/backend) or {}. Matches 'backend-dominant actions',
+    'frontend heavy', 'actions where network was the heaviest phase'. This
+    classifies ALL rows by argmax phase — distinct from the *_bound anomaly
+    types which cover only flagged actions (see _dominant_phase)."""
+    m = _DOM_PHASE_RE.search(question)
+    if not m:
+        return {}
+    for g in m.groups():
+        p = _norm_phase(g)
+        if p:
+            return {"dominant_phase": p}
+    return {}
+
+
+# End-timestamp (_action_end) clock-hour phrasings. An end/finish verb plus
+# after/before/between is required, so start-time or duration phrases never
+# match here.
+_END_AFTER_RE   = re.compile(r"\b(?:end(?:ed|ing|s)?|finish(?:ed|ing|es)?)\s+after\b",   re.IGNORECASE)
+_END_BEFORE_RE  = re.compile(r"\b(?:end(?:ed|ing|s)?|finish(?:ed|ing|es)?)\s+before\b",  re.IGNORECASE)
+_END_BETWEEN_RE = re.compile(r"\b(?:end(?:ed|ing|s)?|finish(?:ed|ing|es)?)\s+between\b", re.IGNORECASE)
+# Any end/finish verb — used to blank the end clause before start-hour parsing.
+_END_VERB_RE    = re.compile(r"\b(?:end(?:ed|ing|s)?|finish(?:ed|ing|es)?)\b", re.IGNORECASE)
+
+
+def _detect_end_time_filter(question):
+    """Parse an end-timestamp (_action_end) clock-hour filter.
+
+    'ended after 3pm' → {end_hour_min: 15}; 'finished before noon' →
+    {end_hour_max: 12}; 'ended between 2pm and 5pm' → both bounds. Returns {}
+    when no end/finish + after/before/between phrase with a parseable clock
+    time is present. filter_rows applies these against each row's _action_end."""
+    mb = _END_BETWEEN_RE.search(question)
+    if mb:
+        out = {}
+        tail = question[mb.end():]
+        parts = re.split(r"\band\b", tail, maxsplit=1, flags=re.IGNORECASE)
+        lo = _detect_hour(parts[0]) if parts else None
+        hi = _detect_hour(parts[1]) if len(parts) > 1 else None
+        if lo is not None:
+            out["end_hour_min"] = lo
+        if hi is not None:
+            out["end_hour_max"] = hi
+        return out
+    out = {}
+    ma = _END_AFTER_RE.search(question)
+    if ma:
+        h = _detect_hour(question[ma.end():])
+        if h is not None:
+            out["end_hour_min"] = h
+    mbf = _END_BEFORE_RE.search(question)
+    if mbf:
+        h = _detect_hour(question[mbf.end():])
+        if h is not None:
+            out["end_hour_max"] = h
+    return out
 
 
 def parse_query(question, dataset_id):
@@ -457,7 +667,25 @@ def parse_query(question, dataset_id):
     date = _detect_date(question, rows)
     if date:
         filters["date"] = date
-    hour = _detect_hour(question)
+    dur = _detect_duration_filter(question)
+    if dur:
+        filters.update(dur)
+    dp = _detect_dominant_phase_filter(question)
+    if dp:
+        filters.update(dp)
+    et = _detect_end_time_filter(question)
+    if et:
+        filters.update(et)
+
+    # Start-of-action hour. When an end-time clause is present, parse the
+    # start hour from only the text before the end/finish verb, so
+    # 'ended after 3pm' sets end_hour_min=15 and NOT hour_of_day=15 too.
+    hour_q = question
+    if et:
+        mk = _END_VERB_RE.search(question)
+        if mk:
+            hour_q = question[:mk.start()]
+    hour = _detect_hour(hour_q)
     if hour is not None:
         filters["hour_of_day"] = hour
 
@@ -507,7 +735,8 @@ def format_answer(spec, agg):
     groups = agg.get("groups", [])
     label  = {"hour": "Hour", "day": "Date", "weekday": "Weekday",
               "month": "Month", "user": "User", "story": "Story",
-              "action": "Action", "session": "Session"}.get(group_by, "Group")
+              "action": "Action", "session": "Session",
+              "dominant_phase": "Dominant phase"}.get(group_by, "Group")
     if groups:
         top = groups[0]
         return (f"{total} matching action{'s' if total != 1 else ''}{scope} "
@@ -529,15 +758,36 @@ def format_aggregation(spec, agg):
     parts.append(f"Matching actions: {agg.get('total_matching', 0)}")
     label = {"hour": "Hour", "day": "Date", "weekday": "Weekday",
              "month": "Month", "user": "User", "story": "Story",
-             "action": "Action", "session": "Session"}.get(group_by, "Group")
+             "action": "Action", "session": "Session",
+             "dominant_phase": "Dominant phase"}.get(group_by, "Group")
     parts.append("")
-    parts.append(f"| {label} | Count | Median ms | p90 ms | Max ms | Total ms | >Threshold |")
-    parts.append("|---|---|---|---|---|---|---|")
-    for g in agg["groups"]:
+    # Phase columns are appended only when the groups actually carry phase data,
+    # so count-only breakdowns ("actions by hour") stay narrow.
+    has_phase = any(
+        any(k in g for k in ("avg_frontend_ms", "avg_network_ms", "avg_backend_ms"))
+        for g in agg["groups"]
+    )
+    if has_phase:
         parts.append(
-            f"| {g.get('group','?')} | {g.get('count',0)} | "
-            f"{g.get('median_ms','—')} | {g.get('p90_ms','—')} | "
-            f"{g.get('max_ms','—')} | {g.get('total_duration_ms','—')} | "
-            f"{g.get('over_threshold','—')} |"
-        )
+            f"| {label} | Count | Median ms | p90 ms | Max ms | Total ms | "
+            f">Threshold | Avg FE ms | Avg NW ms | Avg BE ms |")
+        parts.append("|---|---|---|---|---|---|---|---|---|---|")
+        for g in agg["groups"]:
+            parts.append(
+                f"| {g.get('group','?')} | {g.get('count',0)} | "
+                f"{g.get('median_ms','—')} | {g.get('p90_ms','—')} | "
+                f"{g.get('max_ms','—')} | {g.get('total_duration_ms','—')} | "
+                f"{g.get('over_threshold','—')} | {g.get('avg_frontend_ms','—')} | "
+                f"{g.get('avg_network_ms','—')} | {g.get('avg_backend_ms','—')} |"
+            )
+    else:
+        parts.append(f"| {label} | Count | Median ms | p90 ms | Max ms | Total ms | >Threshold |")
+        parts.append("|---|---|---|---|---|---|---|")
+        for g in agg["groups"]:
+            parts.append(
+                f"| {g.get('group','?')} | {g.get('count',0)} | "
+                f"{g.get('median_ms','—')} | {g.get('p90_ms','—')} | "
+                f"{g.get('max_ms','—')} | {g.get('total_duration_ms','—')} | "
+                f"{g.get('over_threshold','—')} |"
+            )
     return "\n".join(parts)

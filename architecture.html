@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Performance Analytics · Multi-Agent Architecture</title>
+  <title>Performance Analytics · Unified Agent Architecture</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -36,8 +36,19 @@
     }
 
     .badge {
-      margin-left: auto;
+      margin-left: 12px;
       background: #0F766E;
+      color: white;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-new {
+      margin-left: auto;
+      background: #7C3AED;
       color: white;
       padding: 4px 14px;
       border-radius: 20px;
@@ -66,17 +77,14 @@
     .c-orch   { background: #EDE9FE; border: 1.5px solid #7C3AED; }
     .c-orch   .box-title { color: #5B21B6; }
 
-    .c-agent  { background: #ECFDF5; border: 1.5px solid #059669; }
-    .c-agent  .box-title { color: #065F46; }
+    .c-unified { background: #F0FDF4; border: 2px solid #16A34A; }
+    .c-unified .box-title { color: #15803D; }
 
-    .c-analyst{ background: #FEF9C3; border: 1.5px solid #CA8A04; }
-    .c-analyst .box-title { color: #92400E; }
+    .c-mode   { background: #ECFDF5; border: 1.5px solid #059669; }
+    .c-mode   .box-title { color: #065F46; }
 
-    .c-hitl   { background: #FFF7ED; border: 2px solid #EA580C; }
-    .c-hitl   .box-title { color: #C2410C; }
-
-    .c-synth  { background: #EFF6FF; border: 1.5px solid #2563EB; }
-    .c-synth  .box-title { color: #1D4ED8; }
+    .c-det    { background: #FFFBEB; border: 1.5px solid #D97706; }
+    .c-det    .box-title { color: #92400E; }
 
     .c-out    { background: #1D4ED8; border: none; }
     .c-out    .box-title { color: white; }
@@ -84,6 +92,12 @@
 
     .c-infra  { background: #F8FAFC; border: 1.5px solid #CBD5E1; }
     .c-infra  .box-title { color: #334155; }
+
+    .c-python { background: #FFF7ED; border: 1.5px solid #EA580C; }
+    .c-python .box-title { color: #C2410C; }
+
+    .c-mesh   { background: #EFF6FF; border: 1.5px solid #2563EB; }
+    .c-mesh   .box-title { color: #1D4ED8; }
 
     /* ── TAGS ── */
     .tag {
@@ -95,10 +109,12 @@
       margin-top: 6px;
       margin-right: 3px;
     }
-    .t-llm { background: #EDE9FE; color: #5B21B6; border: 1px solid #A78BFA; }
-    .t-ro  { background: #ECFDF5; color: #065F46; border: 1px solid #6EE7B7; }
-    .t-api { background: #EFF6FF; color: #1E40AF; border: 1px solid #93C5FD; }
-    .t-det { background: #FEF9C3; color: #92400E; border: 1px solid #FCD34D; }
+    .t-llm  { background: #EDE9FE; color: #5B21B6; border: 1px solid #A78BFA; }
+    .t-ro   { background: #ECFDF5; color: #065F46; border: 1px solid #6EE7B7; }
+    .t-api  { background: #EFF6FF; color: #1E40AF; border: 1px solid #93C5FD; }
+    .t-det  { background: #FEF9C3; color: #92400E; border: 1px solid #FCD34D; }
+    .t-new  { background: #7C3AED; color: white; border: none; }
+    .t-py   { background: #FFF7ED; color: #C2410C; border: 1px solid #FDBA74; }
 
     /* ── FLOW HELPERS ── */
     .divider {
@@ -123,10 +139,10 @@
     .col    { display: flex; flex-direction: column; gap: 10px; }
     .center { align-items: center; }
 
-    .agents-grid {
+    .modes-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      gap: 10px;
     }
 
     .user-block {
@@ -209,6 +225,52 @@
       padding: 1px 6px;
       border-radius: 4px;
     }
+    .mode-key {
+      font-family: monospace;
+      font-size: 11px;
+      background: #ECFDF5;
+      color: #065F46;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    .callout {
+      background: #F0FDF4;
+      border: 1.5px solid #16A34A;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .callout-icon { font-size: 22px; flex-shrink: 0; }
+    .callout-body { font-size: 12px; line-height: 1.6; }
+    .callout-body strong { font-weight: 700; color: #15803D; }
+
+    .before-after {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .ba-col {
+      flex: 1;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .ba-before {
+      background: #FFF1F2;
+      border: 1.5px solid #F43F5E;
+    }
+    .ba-before .ba-title { color: #BE123C; font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+    .ba-after  {
+      background: #F0FDF4;
+      border: 1.5px solid #16A34A;
+    }
+    .ba-after  .ba-title { color: #15803D; font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+    .ba-item { font-size: 11px; line-height: 1.7; color: #475569; }
+    .ba-item code { font-size: 10px; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; }
+
     @media print {
       .page:first-of-type { page-break-after: always; }
       body { background: white; padding: 0; }
@@ -225,6 +287,42 @@
   <div class="page-header">
     <div class="page-title">Performance Analytics · Agent Dispatch Flow</div>
     <div class="badge">COE Datasphere</div>
+    <div class="badge-new">Unified Agent Architecture</div>
+  </div>
+
+  <!-- Summary callout -->
+  <div class="callout">
+    <div class="callout-icon">⚡</div>
+    <div class="callout-body">
+      <strong>Merged to 2 agents.</strong>
+      The 6 specialist analysts (Stats, Anomaly, Root Cause, Explorer, Trace, Narrator) have been merged into a single
+      <strong>Unified Agent</strong> that operates in one of 6 modes per question.
+      Every question now takes exactly <strong>2 LLM calls</strong> (intent classification + analysis),
+      down from 2–4. The orchestrator intent classifier is unchanged.
+    </div>
+  </div>
+
+  <!-- Before/After -->
+  <div class="before-after">
+    <div class="ba-col ba-before">
+      <div class="ba-title">Before — 7 agents, 2–4 LLM calls</div>
+      <div class="ba-item">⚙ Orchestrator (intent)</div>
+      <div class="ba-item">📊 Stats Agent — KPI formatting</div>
+      <div class="ba-item">🔍 Anomaly Agent — count detector</div>
+      <div class="ba-item">🔎 Root Cause Agent — WHY analyst</div>
+      <div class="ba-item">🗂 Explorer Agent — data explorer</div>
+      <div class="ba-item">📡 Trace Agent — widget timing</div>
+      <div class="ba-item">📝 Narrator — synthesis</div>
+      <div class="ba-item" style="margin-top:6px; font-style:italic;">FULL_ANALYSIS: 3 LLM calls (stats ∥ anomaly → narrator)</div>
+    </div>
+    <div class="ba-col ba-after">
+      <div class="ba-title">After — 2 agents, always 2 LLM calls</div>
+      <div class="ba-item">⚙ Orchestrator (intent) — <em>unchanged</em></div>
+      <div class="ba-item">🤖 Unified Agent — all 6 analysis modes</div>
+      <div class="ba-item" style="margin-top:6px; font-style:italic;">Stats &amp; Anomaly pre-passes replaced by deterministic Python helpers</div>
+      <div class="ba-item" style="font-style:italic;">Output stored under original mesh names — cross-agent enrichment preserved</div>
+      <div class="ba-item" style="font-style:italic;">Phase-drill fast path (no LLM) preserved</div>
+    </div>
   </div>
 
   <!-- ROW 1: User → Orchestrator -->
@@ -235,7 +333,7 @@
     </div>
 
     <div class="arrow-line" style="width:90px;">
-      <span>planning request</span>
+      <span>question + payload</span>
       <svg width="80" height="14" viewBox="0 0 80 14">
         <line x1="0" y1="7" x2="72" y2="7" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4,3"/>
         <polygon points="72,3 80,7 72,11" fill="#94A3B8"/>
@@ -243,133 +341,165 @@
     </div>
 
     <div class="box c-orch" style="flex:1; max-width:420px;">
-      <div class="box-title">⚙ Orchestrator Agent</div>
-      <div class="box-sub">Reads question + payload · Classifies intent · Builds execution plan · Dispatches agents</div>
-      <span class="tag t-llm">LLM — 1 call</span>
-      <span class="tag t-api">Phase 0 classification</span>
+      <div class="box-title">⚙ Orchestrator Agent — Intent Classifier</div>
+      <div class="box-sub">
+        Reads question + payload · Classifies intent · Returns routing JSON<br>
+        <code style="font-size:10px;">pipeline-overlay.md</code> — phase 0 only (no analysis)
+      </div>
+      <span class="tag t-llm">LLM — call 1 of 2</span>
+      <span class="tag t-ro">unchanged from original</span>
     </div>
   </div>
 
-  <!-- HITL gate -->
-  <div class="divider">▼ PLAN RETURNED TO USER</div>
+  <div class="divider">▼ INTENT CLASSIFIED</div>
 
+  <!-- Python prep layer -->
   <div class="row center" style="justify-content:center; margin-bottom:4px;">
-    <div class="box c-hitl" style="width:420px; text-align:center;">
-      <div class="box-title">⏸ HITL Gate — Decision Required</div>
-      <div class="box-sub">User reviews the plan · Approves or requests changes · Revisions loop until satisfied · History kept</div>
+    <div class="box c-python" style="width:680px;">
+      <div class="box-title">🐍 _build_unified_input() — Python data prep (no LLM)</div>
+      <div class="box-sub">
+        Maps intent → <code style="font-size:10px;">agent_mode</code> field · Assembles the correct data slice with token budgeting ·
+        For KPI_SUMMARY / FULL_ANALYSIS: runs <code style="font-size:10px;">_map_kpis_to_stats_output()</code> + <code style="font-size:10px;">_derive_active_types()</code> deterministically (replaces the old Stats + Anomaly LLM pre-passes) ·
+        For ROOT_CAUSE: passes full <code style="font-size:10px;">flagged_by_type</code> (slimmed in runner) + derived active types ·
+        For DATA_EXPLORATION / WIDGET_TRACE: reuses existing <code style="font-size:10px;">_build_explorer_input()</code> / <code style="font-size:10px;">_build_trace_input()</code> helpers unchanged
+      </div>
     </div>
   </div>
 
-  <div class="divider">▼ CONFIRMED — DISPATCH AGENTS</div>
+  <div class="divider">▼ SINGLE UNIFIED INPUT → UNIFIED AGENT</div>
 
-  <!-- ROW 3: Agent grid -->
-  <div class="agents-grid" style="margin-bottom:4px;">
+  <!-- Unified agent box -->
+  <div class="row center" style="justify-content:center; margin-bottom:8px;">
+    <div class="box c-unified" style="width:680px;">
+      <div class="box-title">🤖 Unified Agent — run_unified_agent()</div>
+      <div class="box-sub">
+        Reads <code style="font-size:10px;">agent_mode</code> from input · Follows ONLY the matching MODE section in <code style="font-size:10px;">skills/unified-agent/SKILL.md</code> ·
+        All 4 reference catalogues inlined at load time by <code style="font-size:10px;">_inline_references()</code> ·
+        Deterministic safety nets preserved: phase-drill fast path (no LLM) + per-mode chart directive injection
+      </div>
+      <span class="tag t-llm">LLM — call 2 of 2</span>
+      <span class="tag t-new">6 modes in one prompt</span>
+      <span class="tag t-ro">~109k chars, cached ephemerally</span>
+    </div>
+  </div>
 
-    <div class="box c-agent">
-      <div class="box-title">📊 Stats Agent</div>
-      <div class="box-sub">Reads <code style="font-size:10px;">kpis[]</code> · Structures KPI table · Confirms values without interpretation</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-ro">read-only</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Format → Answer</div>
+  <!-- 6 Modes grid -->
+  <div class="modes-grid" style="max-width:680px; margin: 0 auto 8px;">
+
+    <div class="box c-mode">
+      <div class="box-title">📊 kpi_summary</div>
+      <div class="box-sub">KPI table with threshold label · no interpretation</div>
+      <span class="tag t-py">prep: _map_kpis_to_stats_output()</span>
     </div>
 
-    <div class="box c-agent">
-      <div class="box-title">🔍 Anomaly Agent</div>
-      <div class="box-sub">Reads anomaly counts · Identifies active types · Outputs structured count table</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-ro">read-only</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Detect → Answer</div>
+    <div class="box c-mode">
+      <div class="box-title">🔍 anomaly_summary</div>
+      <div class="box-sub">Active types table · phase breakdown · pct as integer %</div>
+      <span class="tag t-py">prep: _derive_active_types()</span>
     </div>
 
-    <div class="box c-analyst">
-      <div class="box-title">🔎 Root Cause Agent</div>
-      <div class="box-sub">Reads anomaly output · Explains WHY each anomaly occurs · Separates performance vs data quality</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-det">analysis</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Analyse → Answer</div>
+    <div class="box c-det">
+      <div class="box-title">🔎 root_cause</div>
+      <div class="box-sub">Root cause tables · phase context · row-level queries</div>
+      <span class="tag t-api">phase-drill fast path (no LLM)</span>
     </div>
 
-    <div class="box c-agent">
-      <div class="box-title">🗂 Explorer Agent</div>
-      <div class="box-sub">Reads <code style="font-size:10px;">data_summary</code> · Rankings by user/story/action · Time-of-day & weekday trends</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-api">GET /api/actions</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Query → Rank → Answer</div>
+    <div class="box c-mode">
+      <div class="box-title">🗂 data_exploration</div>
+      <div class="box-sub">Ranking / detail / cross / breakdown modes · metric_rankings · aggregation</div>
+      <span class="tag t-api">query_engine (no LLM)</span>
     </div>
 
-    <div class="box c-agent">
-      <div class="box-title">📡 Trace Agent</div>
-      <div class="box-sub">Reads widget rows · Bottleneck widget · Dominant phase (render / network / backend)</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-api">GET /api/widgets</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Trace → Answer</div>
+    <div class="box c-mode">
+      <div class="box-title">📡 widget_trace</div>
+      <div class="box-sub">Waterfall table · bottleneck · loading pattern · data quality math</div>
+      <span class="tag t-api">deterministic chart directive</span>
     </div>
 
-    <div class="box c-synth">
-      <div class="box-title">📝 Narrator</div>
-      <div class="box-sub">Synthesises Stats + Anomaly outputs · Unified headline table · Does NOT add new insights</div>
-      <span class="tag t-llm">LLM</span>
-      <span class="tag t-ro">synthesis only</span>
-      <div class="box-sub" style="margin-top:6px;">Think → Combine → Answer</div>
+    <div class="box c-det">
+      <div class="box-title">📝 full_summary</div>
+      <div class="box-sub">Headline + top_types + KPI block + worst_offender in one call</div>
+      <span class="tag t-py">stats + anomaly built in Python</span>
     </div>
 
   </div>
 
-  <!-- Final output -->
-  <div class="divider">▼ RESPONSE DELIVERED</div>
+  <div class="divider">▼ OUTPUT STORED IN MESH · RESPONSE DELIVERED</div>
 
-  <div class="row center" style="justify-content:center;">
-    <div class="box c-out" style="width:480px; text-align:center;">
+  <div class="row center" style="justify-content:center; gap:14px;">
+    <div class="box c-mesh" style="flex:1; max-width:320px; text-align:center;">
+      <div class="box-title">🔗 Mesh Store</div>
+      <div class="box-sub">Output stored under original per-mode names<br>
+        (<code style="font-size:10px;">stats-agent</code> / <code style="font-size:10px;">anomaly-agent</code> / <code style="font-size:10px;">root-cause-agent</code> / …)<br>
+        Cross-agent enrichment + follow-up resolution unchanged
+      </div>
+    </div>
+    <div class="box c-out" style="flex:1; max-width:320px; text-align:center;">
       <div class="box-title">✅ Response Rendered in Chat Panel</div>
       <div class="box-sub">Prose answer · ECharts chart directives · Session notes surfaced to user</div>
     </div>
   </div>
 
   <!-- Intent routing table -->
-  <div class="divider" style="margin-top:24px;">INTENT → AGENT ROUTING</div>
+  <div class="divider" style="margin-top:24px;">INTENT → UNIFIED AGENT MODE MAPPING</div>
   <table class="intent-table">
     <thead>
       <tr>
         <th>Intent</th>
-        <th>Agents Called</th>
+        <th>agent_mode</th>
+        <th>Data prep (Python)</th>
         <th>LLM Calls</th>
+        <th>Mesh store key</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td><span class="intent-key">FULL_ANALYSIS</span></td>
-        <td>Stats + Anomaly (parallel) → Narrator</td>
-        <td>3</td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">ROOT_CAUSE_ANALYSIS</span></td>
-        <td>Anomaly Agent → Root Cause Agent</td>
-        <td>2</td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">DATA_EXPLORATION</span></td>
-        <td>query_engine (no LLM) + Explorer Agent</td>
-        <td>1</td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">WIDGET_TRACE</span></td>
-        <td>Trace Agent</td>
-        <td>1</td>
-      </tr>
-      <tr>
         <td><span class="intent-key">KPI_SUMMARY</span></td>
-        <td>Stats Agent</td>
-        <td>1</td>
+        <td><span class="mode-key">kpi_summary</span></td>
+        <td>_map_kpis_to_stats_output()</td>
+        <td>2</td>
+        <td><code style="font-size:10px;">stats-agent</code></td>
       </tr>
       <tr>
         <td><span class="intent-key">ANOMALY_SUMMARY</span></td>
-        <td>Anomaly Agent</td>
-        <td>1</td>
+        <td><span class="mode-key">anomaly_summary</span></td>
+        <td>_derive_active_types() · _build_anomaly_output()</td>
+        <td>2</td>
+        <td><code style="font-size:10px;">anomaly-agent</code></td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">ROOT_CAUSE_ANALYSIS</span></td>
+        <td><span class="mode-key">root_cause</span></td>
+        <td>flagged_by_type slimmed · active types derived · phase-drill fast path</td>
+        <td>1 or 2</td>
+        <td><code style="font-size:10px;">root-cause-agent</code></td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">DATA_EXPLORATION</span></td>
+        <td><span class="mode-key">data_exploration</span></td>
+        <td>_build_explorer_input() · _compute_flagged_rankings() · query_engine</td>
+        <td>2</td>
+        <td><code style="font-size:10px;">explorer-agent</code></td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">WIDGET_TRACE</span></td>
+        <td><span class="mode-key">widget_trace</span></td>
+        <td>_build_trace_input() · deterministic chart directive</td>
+        <td>2</td>
+        <td><code style="font-size:10px;">trace-agent</code></td>
+      </tr>
+      <tr>
+        <td><span class="intent-key">FULL_ANALYSIS</span></td>
+        <td><span class="mode-key">full_summary</span></td>
+        <td>_map_kpis_to_stats_output() + _build_anomaly_output() — no parallel pre-passes</td>
+        <td>2 <em style="color:#94A3B8;">(was 3–4)</em></td>
+        <td><code style="font-size:10px;">narrator</code></td>
       </tr>
       <tr>
         <td><span class="intent-key">CONVERSATIONAL</span></td>
-        <td>LLM with session history (no specialist agent)</td>
+        <td colspan="2"><em style="color:#64748B;">Routed directly to _conversational_answer() — no unified agent call</em></td>
         <td>1</td>
+        <td>—</td>
       </tr>
     </tbody>
   </table>
@@ -377,10 +507,11 @@
   <!-- Legend -->
   <div class="legend">
     <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator</div>
-    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Agent (read-only)</div>
-    <div class="legend-item"><div class="ldot" style="background:#CA8A04;"></div> Analyst (analysis)</div>
-    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Synthesis / Output</div>
-    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Decision Required (HITL)</div>
+    <div class="legend-item"><div class="ldot" style="background:#16A34A;"></div> Unified Agent</div>
+    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Unified Agent — mode</div>
+    <div class="legend-item"><div class="ldot" style="background:#D97706;"></div> Unified Agent — analysis mode</div>
+    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Deterministic Python (no LLM)</div>
+    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Mesh / Output</div>
   </div>
 </div>
 
@@ -392,6 +523,7 @@
   <div class="page-header">
     <div class="page-title">Performance Analytics · Technical Solution</div>
     <div class="badge">COE Datasphere</div>
+    <div class="badge-new">Unified Agent Architecture</div>
   </div>
 
   <div class="row" style="gap:20px; align-items:stretch;">
@@ -423,9 +555,9 @@
 
       <div class="box c-orch" style="border-style:dashed;">
         <div class="box-title">AgentChatPanel</div>
-        <div class="box-sub">Phase 1 → POST /api/session → plan card shown</div>
-        <div class="box-sub" style="margin-top:3px;">User confirms → Phase 2 → POST /api/session/&lt;id&gt;/confirm</div>
+        <div class="box-sub">POST /api/chat (single-turn) or POST /api/session → confirm flow</div>
         <div class="box-sub" style="margin-top:3px;">Renders: prose · ChartBlock → resolveChartDirective() → ECharts</div>
+        <div class="box-sub" style="margin-top:3px;">Dropdown: Auto (orchestrator routes) | Unified Agent (direct)</div>
       </div>
     </div>
 
@@ -440,19 +572,23 @@
         </div>
         <div class="box c-infra" style="flex:1;">
           <div class="box-title">mesh_store.py</div>
-          <div class="box-sub">Thread-safe in-memory store · datasets (TTL 1h) · sessions (TTL 4h) · agent_outputs · disk snapshots per dataset UUID</div>
+          <div class="box-sub">Thread-safe in-memory store · datasets (TTL 1h) · sessions (TTL 4h) · agent_outputs (keyed by original agent name) · disk snapshots per dataset UUID</div>
         </div>
       </div>
 
       <div class="box c-orch">
-        <div class="box-title">orchestrate.py — Multi-Agent Pipeline</div>
-        <div class="box-sub">plan_turn() → classify_intent() [1 LLM call] → _build_plan() → return to HITL</div>
-        <div class="box-sub" style="margin-top:4px;">orchestrate() → route by confirmed intent → run agents → _guard_store() → _ensure_chart() → _save_turn()</div>
+        <div class="box-title">orchestrate.py — Unified Agent Pipeline</div>
+        <div class="box-sub">classify_intent() [1 LLM call] → _build_unified_input() [Python only] → run_unified_agent() [1 LLM call]</div>
+        <div class="box-sub" style="margin-top:4px;">
+          Deterministic helpers: _map_kpis_to_stats_output() · _derive_active_types() · _build_anomaly_output() · _threshold_label() ·
+          _compute_flagged_rankings() · _build_phase_drill() · _phase_scoped_result()<br>
+          Back-compat shims: run_root_cause_agent / run_explorer_agent / run_narrator / run_trace_agent → all delegate to run_unified_agent()
+        </div>
         <div class="row" style="gap:6px; margin-top:8px; flex-wrap:wrap;">
-          <span class="tag t-llm">parallel: stats + anomaly via ThreadPoolExecutor</span>
+          <span class="tag t-py">_build_explorer_input() — NL → query_engine</span>
+          <span class="tag t-py">_build_trace_input() — widget row fetch</span>
           <span class="tag t-api">_resolve_followup_references() — entity lookup</span>
-          <span class="tag t-det">_build_explorer_input() — NL → query_engine</span>
-          <span class="tag t-ro">_build_trace_input() — widget row fetch</span>
+          <span class="tag t-ro">_guard_store() · _ensure_chart() · _save_turn()</span>
         </div>
       </div>
 
@@ -463,30 +599,42 @@
         </div>
         <div class="box c-infra" style="flex:1;">
           <div class="box-title">skills.py — Prompt Composer</div>
-          <div class="box-sub">preamble.md + pipeline-overlay.md + SKILL.md (frontmatter stripped) + inlined references/*.md = final system prompt per agent</div>
+          <div class="box-sub">
+            <strong>2 skills registered:</strong> orchestrator + unified_agent<br>
+            Composition: preamble.md + pipeline-overlay.md + SKILL.md body + inlined references/*.md<br>
+            Loaded once at import time · ~109k chars for unified_agent · cached ephemerally
+          </div>
         </div>
       </div>
 
-      <div class="box c-synth">
+      <div class="box c-mesh">
         <div class="box-title">llm.py — LLM Wrapper</div>
-        <div class="box-sub">Priority order: LLM_URL proxy → OpenAI direct → SAP AI Core · Default model: anthropic--claude-4.5-haiku · extract_json_from_response() · USAGE_RECORDS token accounting</div>
+        <div class="box-sub">Priority order: LLM_URL proxy → OpenAI direct → SAP AI Core · Default model: anthropic--claude-4.5-haiku · extract_json_from_response() · USAGE_RECORDS token accounting · AI_CORE_MAX_TOKENS=8000 output cap</div>
       </div>
     </div>
 
     <!-- COLUMN 3: Skills + Schemas -->
-    <div class="col" style="width:190px; flex-shrink:0;">
+    <div class="col" style="width:205px; flex-shrink:0;">
       <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Agent Skills</div>
 
-      <div class="box c-agent">
+      <div class="box c-unified">
         <div class="box-title">skills/ directory</div>
-        <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
-          <div style="font-size:11px;"><strong>⚙</strong> orchestrator — intent classifier</div>
-          <div style="font-size:11px;"><strong>📊</strong> stats-agent — KPI pass-through</div>
-          <div style="font-size:11px;"><strong>🔍</strong> anomaly-agent — count detector</div>
-          <div style="font-size:11px;"><strong>🔎</strong> root-cause-agent — WHY analyst</div>
-          <div style="font-size:11px;"><strong>🗂</strong> explorer-agent — distribution explorer</div>
-          <div style="font-size:11px;"><strong>📡</strong> trace-agent — widget timing drill</div>
-          <div style="font-size:11px;"><strong>📝</strong> narrator — synthesis writer</div>
+        <div style="margin-top:6px; display:flex; flex-direction:column; gap:5px;">
+          <div style="font-size:11px;"><strong>_shared/</strong></div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">preamble.md · pipeline-overlay.md</div>
+
+          <div style="font-size:11px; margin-top:3px;"><strong>⚙ orchestrator/</strong></div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">pipeline-overlay.md (classifier only)</div>
+
+          <div style="font-size:11px; margin-top:3px;"><strong>🤖 unified-agent/</strong> <span style="background:#7C3AED; color:white; font-size:9px; padding:1px 5px; border-radius:3px; font-weight:700;">NEW</span></div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">SKILL.md — all 6 modes + conversational</div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/tool-data-schema.md</div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/anomaly-type-reference.md</div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/root-cause-catalogue.md</div>
+          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/widget-trace-patterns.md</div>
+        </div>
+        <div style="margin-top:8px; font-size:10px; color:#6B7280; font-style:italic;">
+          Old dirs removed: stats-agent/ anomaly-agent/<br>root-cause-agent/ narrator/ explorer-agent/ trace-agent/
         </div>
       </div>
 
@@ -518,11 +666,11 @@
 
   <!-- Legend -->
   <div class="legend">
-    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator / HITL</div>
-    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Agent Skills</div>
-    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> LLM / Synthesis</div>
+    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator / Routing</div>
+    <div class="legend-item"><div class="ldot" style="background:#16A34A;"></div> Unified Agent</div>
+    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Mesh / LLM</div>
+    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Deterministic Python (no LLM)</div>
     <div class="legend-item"><div class="ldot" style="background:#94A3B8;"></div> Infrastructure</div>
-    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Decision Required</div>
   </div>
 </div>
 
