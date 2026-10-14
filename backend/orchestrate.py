@@ -219,17 +219,23 @@ def _resolve_followup_references(question: str, dataset_id) -> str:
                     return f"[Context: rank {rank_num} = {resolved_tag}] {question}"
 
     # ── Mechanism 2: Session context injection ───────────────────────────────
-    # Detect follow-up signals: pronouns, implicit references, or short queries
-    # that clearly build on the previous turn.
+    # Only inject prior-turn context on an EXPLICIT follow-up signal (pronoun or
+    # implicit-reference verb). A bare word-count heuristic ("<= 8 words")
+    # misfired on independent short questions — "how many users are there?"
+    # after a session drilldown got tagged with the prior session_id, which both
+    # misrouted intent to CONVERSATIONAL and anchored the LLM to that one
+    # session, so it answered "1 user" instead of the dataset's 48. The signal
+    # regex below already covers genuine follow-ups ("that", "it", "those",
+    # "more", "explain", …); a short question with none of those words is a new
+    # question and must stay unscoped.
     _followup_signals = re.search(
         r'\b(?:that|those|them|it|this|these|same|previous|prior|above|earlier'
         r'|more|further|deeper|again|also|too|continue|follow.?up'
         r'|explore|drill|expand|elaborate|detail|explain)\b',
         q_lower,
     )
-    _is_short_query = len(question.split()) <= 8
 
-    if _followup_signals or _is_short_query:
+    if _followup_signals:
         # Build a compact context tag from the previous output
         prev_q = prev_output.get("question_answered") or "prior analysis"
         brief_parts = []
@@ -550,6 +556,28 @@ def _detect_anomaly_type(question: str) -> str | None:
     return None
 
 
+# Widget-timing phrasings that _compute_widget_metric_rankings is the right
+# source for ("which user has the most backend time", "highest offset",
+# "slowest-loading widgets"). Used to strip the competing flagged / activity
+# rankings so metric_rankings stands alone (double-output fix, Case 3).
+_TIMING_METRIC_RE = re.compile(
+    r'\b(?:offset|render(?:ing)?|network|backend|frontend)\b[^.?!]*\b'
+    r'(?:time|ms|duration|latency|wait)\b'
+    r'|\b(?:most|highest|longest|biggest|top)\b[^.?!]*\b'
+    r'(?:offset|render(?:ing)?|network|backend|frontend)\b'
+    r'|\bslowest[- ]loading\b'
+    r'|\bwidget[- ]timing\b',
+    re.IGNORECASE,
+)
+
+
+def _detect_timing_metric(question: str) -> bool:
+    """True when the question is a widget-timing/metric ranking question that
+    metric_rankings answers — so the flagged and activity rankings are competing
+    noise and should be stripped."""
+    return bool(_TIMING_METRIC_RE.search(question or ""))
+
+
 def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
                                 scoped_user=None, scoped_story=None,
                                 scoped_action=None, scoped_session=None) -> dict | None:
@@ -716,14 +744,31 @@ def _build_unified_input(question, payload, dataset_id, intent, llm_history=None
                 "user_request": question}
 
     if intent == "ANOMALY_SUMMARY":
+        _counts = anom.get("counts", {})
+        # Scope to a single named type so the agent doesn't dump the full
+        # breakdown AND then re-explain the one type the question asked about
+        # (double output). Only narrow when the named type is actually present.
+        _at = _detect_anomaly_type(question)
+        if _at and _at in _counts:
+            _counts = {_at: _counts[_at]}
         return {"agent_mode": "anomaly_summary",
-                "anomalies": {"counts":        anom.get("counts", {}),
+                "anomalies": {"counts":        _counts,
                               "total_flagged": anom.get("total_flagged", {}),
                               "total_actions": anom.get("total_actions", 0)},
                 "user_request": question}
 
     if intent == "ROOT_CAUSE_ANALYSIS":
         headline, phase = _derive_active_types(anom.get("counts", {}))
+        # Scope to a single named type for the same reason as ANOMALY_SUMMARY:
+        # "tell me more about the fragmented anomaly" must explain ONLY
+        # fragmented, not emit the all-types tables and then the fragmented
+        # drilldown on top of them. Only narrow when the named type is active
+        # (present in one of the derived lists); an inactive type leaves the
+        # full view so the agent can still explain what's there.
+        _at = _detect_anomaly_type(question)
+        if _at and any(e["key"] == _at for e in headline + phase):
+            headline = [e for e in headline if e["key"] == _at]
+            phase    = [e for e in phase    if e["key"] == _at]
         return {
             "agent_mode":            "root_cause",
             "active_headline_types": headline,
@@ -1434,6 +1479,35 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
             displayed_story_ranking = []
         elif _typed_dim == "action_types":
             displayed_action_ranking = []
+        # Stripping the flagged ranking alone is not enough: data_summary.by_<dim>
+        # ranks the SAME entities by raw activity volume (not by this anomaly
+        # type's flagged count), so the model sees two competing ranked lists and
+        # renders both — the correct anomaly_type_scope.by_<dim> AND the wrong
+        # activity table. Mirror the scoped_agg strip and remove the matching
+        # data_summary array so anomaly_type_scope.by_<dim> is the only ranked
+        # per-entity source for this dimension.
+        _ds_strip = {"users": "by_user", "stories": "by_story",
+                     "action_types": "by_action"}.get(_typed_dim)
+        if _ds_strip and ds_out:
+            ds_out = {k: v for k, v in ds_out.items() if k != _ds_strip}
+
+    # ── Single-source enforcement for widget-timing questions (Case 3) ────────
+    # "Which user has the most backend time?" is answered by metric_rankings
+    # (widget phase timings). But flagged_*_ranking (flagged counts) and
+    # data_summary.by_* (activity volume) rank the SAME entities by DIFFERENT
+    # metrics and would be rendered as extra, contradicting tables. When the
+    # question is a widget-timing one — and it is NOT scoped and NOT an
+    # anomaly-type question (those have their own single-source handling above)
+    # — and metric data actually exists, strip the competing rankings so
+    # metric_rankings is the only ranked per-entity source. Mirrors scoped_agg.
+    metric_rankings = None if scoped_agg else _compute_widget_metric_rankings(dataset_id, payload)
+    if (not scoped_agg and not anomaly_type_scope
+            and _detect_timing_metric(scoped_question)
+            and metric_rankings and metric_rankings.get("available")):
+        displayed_user_ranking = displayed_story_ranking = displayed_action_ranking = []
+        if ds_out:
+            ds_out = {k: v for k, v in ds_out.items()
+                      if k not in ("by_user", "by_story", "by_action")}
 
     # ── Scope flagged_by_type + authoritative per-type totals ─────────────────
     # flagged_by_type indexes each flagged action under EACH of its anomaly
@@ -1558,7 +1632,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
         "ranking_request":              ranking_request,
         "cross_filter":                 cross_filter,   # None unless mode = "cross"
         "cross_results":                (cross_results[:ranking_request] if ranking_request else cross_results),  # [] unless mode = "cross"
-        "metric_rankings":              (None if scoped_agg else _compute_widget_metric_rankings(dataset_id, payload)),
+        "metric_rankings":              metric_rankings,
         "previous_results":             _get_previous_explorer_context(dataset_id),
         "aggregation":                  aggregation,    # None unless a drilldown was parsed
     }
@@ -2683,7 +2757,12 @@ def _conversational_answer(question: str, payload: dict,
                 "Cite specific numbers from the data."
             )
         try:
-            return call_llm(system, question, history=llm_history)
+            # Strip any [Previous: ...] / [Context: ...] enrichment tag before
+            # the LLM sees it — the tag biases the model toward the prior turn's
+            # scope (e.g. a session_id), which is exactly how an independent
+            # question got answered against the wrong session. The deictic
+            # resolution above already consumed the tag it needed.
+            return call_llm(system, _strip_context_tag(question), history=llm_history)
         except Exception as exc:
             log.warning("Conversational LLM call failed (%s) — using static fallback", exc)
 

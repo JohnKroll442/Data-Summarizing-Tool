@@ -67,7 +67,7 @@ the tool and submit your question from the embedded chat panel."
 
 ## Phase 0 — Intent Reasoning (ALWAYS FIRST)
 
-Do NOT pattern-match keywords. Read the user's question and ask:
+Read the user's question and ask:
 **"What kind of information does this question require?"**
 
 Then match to the agent whose capability covers that need.
@@ -89,11 +89,16 @@ If genuinely unclear, ask ONE clarifying question before routing.
 Record the intent and target agent in session state before proceeding.
 
 When the payload first arrives, immediately COPY `payload.meta` into
-`session_state.payload_meta`. Do this once, up front — the raw payload can
-scroll out of context on a long session, so every later phase must read meta
-from `session_state.payload_meta`, never from the raw payload.
+`session_state.payload_meta`. Do this once, up front — every later phase reads
+meta from `session_state.payload_meta`, never from the raw payload.
 
 Same rule applies to follow-up messages — every message re-enters Phase 0.
+
+**Execution order on follow-up turns:** (1) the Phase 5 staleness check runs FIRST,
+then (2) Phase 0 intent reasoning. "Phase 0 always first — no exceptions" means
+Phase 0 always precedes agent *dispatch*; it does NOT precede the staleness check.
+The staleness check must run before intent classification so a changed payload
+clears stale cached outputs before routing.
 
 ---
 
@@ -105,10 +110,8 @@ Do NOT wait for user confirmation of the plan.
 
 Examples:
 - "Let me check the active anomalies and explain what's causing each one."
-- "Pulling up the KPI snapshot from your current view."
 - "Running a full analysis — KPIs and anomalies in parallel."
 - "Finding the most active users across your dataset."
-- "Fetching all actions for that user from the tool."
 
 ---
 
@@ -116,16 +119,22 @@ Examples:
 
 See `references/agent-capability-catalogue.md` for full dispatch inputs.
 
+**All dispatches target the single `unified-agent` skill.** Every dispatch payload
+MUST carry an `agent_mode` field as its FIRST key — this tells the unified-agent
+which of its mode sections to execute. Without it the agent cannot know which
+analysis to run. The `agent_mode` values are: `kpi_summary`, `anomaly_summary`,
+`root_cause`, `data_exploration`, `widget_trace`, `full_summary`.
+
 ### ROOT_CAUSE_ANALYSIS
-1. Dispatch Anomaly Agent with `payload.anomalies` section.
-2. After Anomaly Agent confirms, dispatch Root Cause Agent. The Root Cause Agent
-   expects its anomaly fields FLAT at the root of its input — it reads
-   `active_headline_types`, `active_phase_types`, `total_flagged`, and
-   `total_actions` at the top level, and empty values trigger its early-exit
-   (returns NO_ANOMALIES). Do NOT pass the Anomaly Agent output as a nested
-   `anomaly_output` blob. EXTRACT/MERGE those fields up to the root:
+1. Dispatch the unified-agent with `agent_mode: "anomaly_summary"` and the
+   `payload.anomalies` section.
+2. After the anomaly pass confirms, dispatch the unified-agent with
+   `agent_mode: "root_cause"`. root_cause expects its anomaly fields FLAT at the
+   root of its input (not nested under `anomaly_output`); empty values trigger its
+   early-exit (returns NO_ANOMALIES). EXTRACT/MERGE those fields up to the root:
 ```json
 {
+  "agent_mode": "root_cause",
   "active_headline_types": "<extracted from anomaly_output>",
   "active_phase_types": "<extracted from anomaly_output>",
   "total_flagged": "<extracted from anomaly_output>",
@@ -136,45 +145,112 @@ See `references/agent-capability-catalogue.md` for full dispatch inputs.
 ```
 
 ### ANOMALY_SUMMARY
-Dispatch Anomaly Agent with `payload.anomalies` section.
+Dispatch the unified-agent with:
+```json
+{
+  "agent_mode": "anomaly_summary",
+  "anomalies": "<payload.anomalies section>"
+}
+```
 
 ### KPI_SUMMARY
-Dispatch Stats Agent with `payload.kpis` array.
+Dispatch the unified-agent with:
+```json
+{
+  "agent_mode": "kpi_summary",
+  "kpis": "<payload.kpis array>",
+  "meta": "<session_state.payload_meta>"
+}
+```
+`meta` is REQUIRED — kpi_summary derives `threshold_label` from
+`meta.slow_action_threshold_ms`. Omit it and the threshold always renders
+"not available".
 
 ### FULL_ANALYSIS
-Dispatch Stats Agent AND Anomaly Agent in a SINGLE message with 2 parallel
-task calls. Pass `payload.kpis` to Stats Agent, `payload.anomalies` to
-Anomaly Agent.
 
-JOIN BARRIER: these two dispatches are independent human-in-the-loop
-checkpoints. Do NOT dispatch the Narrator when only one has confirmed —
-confirming Stats alone must NOT trigger the Narrator. Wait until BOTH
+**INTERACTIVE mode:** Dispatch sequentially — a sub-agent's REQUIRED human-review
+pause cannot surface to the user from inside a parallel task call. Dispatch the
+unified-agent with `agent_mode: "kpi_summary"` (include `meta`) first; after its
+CONFIRMED response (including any review round-trips), dispatch with
+`agent_mode: "anomaly_summary"`; after ITS CONFIRMED response, dispatch the
+Narrator (`agent_mode: "full_summary"`). Do NOT use parallel dispatch in
+interactive mode.
+
+**PIPELINE mode:** The pipeline-overlay skips the human-review pauses, so parallel
+dispatch of the kpi_summary and anomaly_summary passes is valid there (handled by
+orchestrate.py, not this SKILL). Pass `payload.kpis` + `meta` to the kpi pass and
+`payload.anomalies` to the anomaly pass.
+
+JOIN BARRIER: the kpi and anomaly passes are independent human-in-the-loop
+checkpoints. Do NOT dispatch the Narrator when only one has confirmed. Wait until BOTH
 `session_state.stats_output` AND `session_state.anomaly_output` are present
 and confirmed; only then dispatch the Narrator. Dispatching early feeds the
 Narrator a null anomaly (or stats) output.
 
 ### DATA_EXPLORATION
-Dispatch Explorer Agent with:
+Dispatch the unified-agent with:
 ```json
 {
-  "data_summary": payload.data_summary,
-  "flagged_by_type": payload.anomalies.flagged_by_type,
-  "question": "<user's exact question>"
+  "agent_mode": "data_exploration",
+  "mode": "<ranking|detail|cross — decide from question, see table below>",
+  "dimension": "<users|stories|action_types|time|sessions|all — decide from question>",
+  "ranking_request": "<0=activity, 1=flagged, 2=widget-timing>",
+  "question": "<user's exact question>",
+  "data_summary": "payload.data_summary",
+  "flagged_users_ranking": "<derived — see below>",
+  "flagged_stories_ranking": "<derived — see below>",
+  "flagged_action_types_ranking": "<derived — see below>",
+  "flagged_by_type": "payload.anomalies.flagged_by_type"
 }
 ```
-The Explorer Agent uses `data_summary` for ranking answers and calls
-`GET /api/actions` for row-level detail. Pass `flagged_by_type` so the
-agent can cross-reference flagged actions against the full-dataset rankings.
+
+Decide `mode` / `dimension` from the question:
+
+| Question pattern | mode | dimension |
+|---|---|---|
+| "show me [user]'s actions", "detail for [entity]" | `detail` | entity type |
+| "which users/stories/actions have the most [metric]" | `ranking` | entity type |
+| "which [dim-A] has issues on [dim-B entity]" | `cross` | — |
+| "by hour / by day / busiest session" | `ranking` | `time` or `sessions` |
+| anything else | `ranking` | `all` |
+
+Set `ranking_request`: `1` for "most flagged / worst / biggest offender"
+questions, `2` for widget-timing ("most offset/render/network/backend time"),
+`0` otherwise.
+
+**Derive the flagged ranking arrays** from `payload.anomalies.flagged_by_type`
+(these power "most flagged user / worst story" questions — the raw
+`flagged_by_type` alone is NOT a ranked aggregation). For each dimension,
+aggregate flagged actions per entity across all type arrays, then sort by
+`flagged_count` descending and add a `rank`:
+```
+flagged_users_ranking:        [ { rank, user, flagged_count, flagged_pct, anomaly_types, affected_stories } ]
+flagged_stories_ranking:      [ { rank, story_name, flagged_count, flagged_pct, anomaly_types, affected_users } ]
+flagged_action_types_ranking: [ { rank, action_name, flagged_count, flagged_pct, anomaly_types, affected_users } ]
+```
+`flagged_pct` = the entity's `flagged_count` ÷ `payload.anomalies.total_flagged.actions`.
 
 ### WIDGET_TRACE
-Dispatch Trace Agent with:
-- `dataset_id` from `payload.meta.dataset_id`
-- The user's question
-- `payload.anomalies.flagged_by_type`
-- `payload.anomalies.flagged_actions`
-
-The Trace Agent reads other agents' outputs from the mesh store (if available).
-Do NOT manually assemble anomaly or root cause outputs for it — it reads them itself.
+Dispatch the unified-agent with the shape the widget_trace mode expects (the
+mode reads `type_summary` + `top_actions` + `widget_data`, NOT `flagged_by_type`
+/ `flagged_actions`):
+```json
+{
+  "agent_mode": "widget_trace",
+  "dataset_id": "<payload.meta.dataset_id>",
+  "question": "<user's question>",
+  "type_summary": "<for each key in payload.anomalies.flagged_by_type, its array length>",
+  "top_actions": "<payload.anomalies.flagged_actions sorted by action_duration_ms desc, top 10>",
+  "widget_data": {},
+  "anomaly_context": "<session_state.anomaly_output.active_headline_types, or null>",
+  "root_cause_context": "<session_state.root_cause_output.root_causes, or null>",
+  "scope": "flagged"
+}
+```
+`anomaly_context` and `root_cause_context` are OPTIONAL enrichment — pass them
+from session state when those passes have already run, else `null`. In the
+backend pipeline `widget_data` is pre-fetched; in interactive Joule use the mode
+falls back to `GET /api/widgets` when `widget_data` is empty.
 
 ### WORST_OFFENDER
 If Narrator output exists in session state: surface `narrator_output.worst_offender` inline.
@@ -189,18 +265,33 @@ If the question cannot be answered from session state, re-classify.
 ## Phase 3 — Collect Results
 
 - `CONFIRMED` or `NO_DATA` or `NO_ANOMALIES` → proceed to Phase 4
+- `COMPLETE` → treat as `CONFIRMED`: proceed to Phase 4 (or the conversational loop
+  if already in Phase 5) and store the full output in session state.
+- `READY_FOR_REVIEW` → do NOT advance to Phase 4. Pause and surface the agent's
+  table/question to the user; wait for their direction before dispatching further.
 - `HALTED` → tell the user which agent halted. Ask: "Want to retry or skip it?"
 - `BLOCKED` → retry once. If still blocked, surface the blocker to the user.
 - `AWAITING_USER_DIRECTION` → do NOT advance to Phase 4. Pause and surface the
   agent's question/options to the user, and wait for their direction before
   dispatching anything further.
 - `DRILL_REQUESTED` → the agent is requesting a follow-up drill. Do NOT drop it.
-  Dispatch the requested drill (the agent names the target/parameters) and
-  collect its result before advancing.
+  Read `user_requested_drill` from the output — it contains a bare entity name
+  (e.g. `"MHURTADO"`). Resolve it to a root_cause drill:
+  1. Identify the entity type by finding the name in
+     `payload.anomalies.flagged_by_type` arrays (user / story_name / action_name).
+  2. Collect the anomaly type keys the entity appears in.
+  3. Dispatch the unified-agent with `agent_mode: "root_cause"` and a payload
+     scoped to that entity: `active_headline_types` filtered to its types,
+     `flagged_by_type` filtered to its actions, and
+     `user_request: "<entity> — drill down requested"`.
+  Collect its result before advancing.
 - `PARSE_ERROR` → do NOT proceed with null data. Surface the parse error to the
   user and re-request / re-dispatch the agent rather than continuing.
 
 Carry all `session_notes[]` from agent outputs into session state.
+
+When a `widget_trace` dispatch returns `CONFIRMED` (or `COMPLETE`), immediately
+store its full output as `session_state.trace_output`.
 
 ---
 
@@ -209,6 +300,7 @@ Carry all `session_notes[]` from agent outputs into session state.
 For FULL_ANALYSIS: build the Narrator input package:
 ```json
 {
+  "agent_mode": "full_summary",
   "stats":    "<stats_output>",
   "anomalies": "<anomaly_output>",
   "meta": "<session_state.payload_meta>",
@@ -216,19 +308,17 @@ For FULL_ANALYSIS: build the Narrator input package:
   "top_flagged_action": "<flagged action with the MAXIMUM action_duration_ms, or null>"
 }
 ```
-Read `meta` from `session_state.payload_meta` (NOT the raw payload) so the
-Narrator heading never renders "null" on a long session.
+Read `meta` from `session_state.payload_meta`, not the raw payload.
 
 Select `top_flagged_action` as the flagged action with the MAXIMUM
 `action_duration_ms` — sort/scan `payload.anomalies.flagged_actions` by
 duration and take the largest. Never use `flagged_actions[0]` (array position),
 which reports the first-listed action rather than the actual worst performer.
 
-Include `trace_output` whenever `session_state.trace_output` is set (the Trace
-Agent has run). It lets the Narrator emit a "Trace findings" section instead of
-generic routing suggestions. If no Trace Agent output exists, pass `null`.
+Include `trace_output` whenever `session_state.trace_output` is set.
 
-Dispatch Narrator. Surface its output. Store full Narrator output in session state.
+Dispatch the Narrator (unified-agent with `agent_mode: "full_summary"`). Surface
+its output. Store full Narrator output in session state.
 
 For ROOT_CAUSE_ANALYSIS: surface Root Cause Agent output directly — no Narrator needed.
 
@@ -268,8 +358,7 @@ Compare `meta.generated_at` in the incoming payload against `session_state.paylo
 }
 ```
 
-Accumulate `session_notes` from every agent that runs. The full list
-propagates to the Narrator and is surfaced to the user at summary time.
+The full list propagates to the Narrator and is surfaced to the user at summary time.
 
 ---
 

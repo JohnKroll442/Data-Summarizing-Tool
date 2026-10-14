@@ -58,9 +58,10 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
 
-  const inputRef  = useRef(null)
-  const bottomRef = useRef(null)
-  const bodyRef   = useRef(null)
+  const inputRef       = useRef(null)
+  const bottomRef      = useRef(null)
+  const bodyRef        = useRef(null)
+  const lastResponseRef = useRef(null)
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 300)
@@ -75,6 +76,16 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
     if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, loading])
+
+  // When a response arrives (loading flips true → false), jump to the TOP of
+  // the new response so the user reads from the beginning, not the end.
+  const prevLoadingRef = useRef(false)
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading) {
+      lastResponseRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+    prevLoadingRef.current = loading
+  }, [loading])
 
   // Escape closes the panel while it's open.
   useEffect(() => {
@@ -255,14 +266,15 @@ export default function AgentChatPanel({ buildPayload, aggRows, rows, headers, w
 
           {/* Flat message list */}
           <ChartDataContext.Provider value={chartData}>
-          {messages.map((msg) => {
+          {messages.map((msg, idx) => {
+            const isLastResponse = msg.type === 'response' && idx === messages.length - 1
             if (msg.type === 'user') return (
               <div key={msg.id} className="ai-chat-message ai-chat-message--user">
                 <div className="ai-chat-bubble">{msg.text}</div>
               </div>
             )
             if (msg.type === 'response') return (
-              <div key={msg.id} className="ai-chat-message ai-chat-message--ai">
+              <div key={msg.id} ref={isLastResponse ? lastResponseRef : null} className="ai-chat-message ai-chat-message--ai">
                 <AiResponseBody response={msg.data} />
                 {msg.data.next_steps?.length > 0 && (
                   <NextSteps

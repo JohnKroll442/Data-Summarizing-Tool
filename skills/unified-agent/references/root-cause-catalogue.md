@@ -1,8 +1,6 @@
 # Root Cause Catalogue
 
 Authoritative root cause explanations for every anomaly type the tool detects.
-Derived from the tool's ANOMALY_TYPES definitions (src/lib/anomalyDetect.js)
-and the AnomalySummaryPanel BLURBS (src/components/AnomalySummaryPanel.jsx).
 
 The Root Cause Agent reads this file verbatim. Do not paraphrase.
 
@@ -66,10 +64,16 @@ These do NOT count toward totalFlagged. They describe WHERE time went
 in already-slow actions. At most one fires per action.
 
 ### frontend_bound
+- **nature**: phase_attribution
 - **root_cause**: The majority of the action's widget busy time was spent in browser rendering. This typically means heavy DOM manipulation, complex layout calculations, large JavaScript bundles executing synchronously, or CSS reflow triggered repeatedly during widget updates.
+- **what_to_look_for**: Check the per-widget render/network/backend split to identify which widget contributed most of the frontend time, and whether rendering is dominated by one heavy component or spread across many.
 
 ### network_bound
+- **nature**: phase_attribution
 - **root_cause**: The majority of the action's widget busy time was spent waiting for network responses. This points to slow server response times (high TTFB), large payload sizes that take time to transfer, or network latency between the client and server.
+- **what_to_look_for**: Check the per-widget network phase times to find which request dominated, and whether payload size or server response latency is the larger contributor.
 
 ### backend_bound
+- **nature**: phase_attribution
 - **root_cause**: The majority of the action's widget busy time was spent in backend processing. This typically means slow database queries, complex business logic, resource contention on the application server, or missing database indices causing full table scans.
+- **what_to_look_for**: Check the per-widget backend phase times to find which query or operation dominated, and whether a single slow query or many moderate ones drove the total.

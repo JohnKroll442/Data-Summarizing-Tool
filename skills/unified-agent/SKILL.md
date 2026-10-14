@@ -41,7 +41,6 @@ pipeline execution) above still apply in every mode.
 ======================================================================
 ## MODE: kpi_summary
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "kpi_summary". Follow this section and ignore all other MODE sections.)*
 
 # Stats Agent
 
@@ -65,18 +64,6 @@ You do NOT:
 ## Capability Description
 
 Domain: KPI and latency statistics from the current view.
-
-This agent can answer:
-- How many total actions are in the dataset
-- How many actions crossed the slow-action threshold and what percentage that is
-- What the median, p90, and p95 action durations are
-- What slow-action threshold is currently configured
-
-This agent cannot answer — route elsewhere:
-- Why anomalies occur → Root Cause Agent
-- Which users or stories appear most frequently → Explorer Agent
-- Which anomaly types were detected → Anomaly Agent
-- Combined summaries or full reports → Narrator
 
 ---
 
@@ -216,7 +203,6 @@ Return ONLY this JSON in the labelled code block.
 ======================================================================
 ## MODE: anomaly_summary
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "anomaly_summary". Follow this section and ignore all other MODE sections.)*
 
 # Anomaly Agent
 
@@ -239,20 +225,6 @@ You do NOT:
 ## Capability Description
 
 Domain: Anomaly type detection and flagging across the dataset.
-
-This agent can answer:
-- Which anomaly types were active in this dataset
-- How many actions were flagged for each type and what percentage
-- Whether flagged types are performance issues or data quality issues
-- What each anomaly flag means in plain language
-- The total number of actions with any anomaly flag
-
-This agent cannot answer — route elsewhere:
-- Why anomalies occur or what causes them → Root Cause Agent
-- Which specific users or sessions triggered anomalies → Root Cause Agent (row-level)
-- Which users appear most in the full dataset → Explorer Agent
-- KPI values or latency percentiles → Stats Agent
-- Combined summaries → Narrator
 
 ---
 
@@ -339,8 +311,10 @@ Add at most one note.
 
 ### Step 4 — Fill the output JSON
 
-Use `assets/anomaly-output-template.json`. Set `types_checked: 10` always.
-Set `types_active` to headline count only. Convert all `pct` to integers.
+Use `assets/anomaly-output-template.json`. Set `types_checked` to the number of
+keys in the input `counts` object (currently 10 — this tracks the catalogue size,
+so it stays correct if the anomaly type catalogue grows). Set `types_active` to
+headline count only. Convert all `pct` to integers.
 
 ### Step 5 — Present tables (ALWAYS BEFORE JSON)
 
@@ -348,6 +322,9 @@ Write: ### Anomaly Breakdown
 
 Table columns: Type | Description | Actions | % of Total
 Render rows in `active_headline_types[]` array order — do not re-sort.
+When the question names ONE specific anomaly type, the backend scopes the input
+to that type only, so the table has a single row — present just that type; do not
+list or re-introduce the other types the dataset happens to contain.
 
 After table: **Total flagged: [total_flagged.actions] of [total_actions] actions ([pct]%)**
 
@@ -363,10 +340,14 @@ Then JSON in a code block labelled json.
 
 ### Step 7 — Pause for human review (REQUIRED)
 
-Ask: "Anomaly snapshot captured — [types_active] type(s) active in this dataset.
-Ready to continue, or would you like to exclude anything before I pass this on?"
+Initial ask: "Anomaly snapshot captured — [types_active] type(s) active in this
+dataset. Ready to continue, or would you like to exclude anything before I pass
+this on?"
 
-If types were excluded, append: `([excluded keys] excluded)`
+Re-ask (ONLY after the user has excluded one or more types): "Updated —
+[types_active] type(s) remaining ([excluded keys] excluded). Ready to continue,
+or exclude more?" Do NOT append the "excluded" note on the initial ask — nothing
+has been excluded yet at that point.
 
 Do not proceed until the user responds.
 
@@ -385,11 +366,6 @@ diff) with `status` replaced by a terminal value:
 - `NO_DATA` if the input carried no `anomalies` payload
 - `NO_ANOMALIES` per the Step 1 early-exit
 - `HALTED` on "stop"
-
-Backend note: the pipeline-overlay already mandates `CONFIRMED` and skips the
-human pause, so in the automated pipeline you re-emit the full payload with
-`status: "CONFIRMED"` directly — the emitted JSON is never left at
-`READY_FOR_REVIEW`.
 
 ---
 
@@ -413,17 +389,9 @@ Return ONLY this JSON in the labelled code block. All fields required.
 ```
 
 `pct` is always an integer percentage.
-`session_notes` must always be present, even if empty.
 
-`active_headline_types[]` and `active_phase_types[]` are arrays of OBJECTS,
-never bare strings. Each element has EXACTLY this shape:
-
-```json
-{ "key": "<type_key>", "label": "<human label>", "actions": <int>, "pct": <int percent> }
-```
-
-The downstream Root Cause Agent reads `.key`, `.label`, `.actions`, and
-`.pct` off each element — emitting a string (e.g. `"slow_action"`) breaks it.
+Elements of `active_headline_types[]` / `active_phase_types[]` are objects
+`{key, label, actions, pct}`, never bare strings — see Step 1.
 
 ---
 
@@ -440,7 +408,6 @@ The downstream Root Cause Agent reads `.key`, `.label`, `.actions`, and
 ======================================================================
 ## MODE: root_cause
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "root_cause". Follow this section and ignore all other MODE sections.)*
 
 ## Role
 
@@ -463,21 +430,6 @@ You do NOT:
 ## Capability Description
 
 Domain: Explanation and analysis of detected anomaly types and their underlying actions.
-
-This agent can answer:
-- Why specific anomaly types occur in SAP Datasphere performance data
-- What causes each active anomaly type
-- What to look for to confirm a root cause
-- Whether anomalies are genuine performance issues or data quality artifacts
-- Which specific users, sessions, and timestamps are behind each anomaly type
-- Which actions within a type had the longest duration
-- Whether a specific user appeared across multiple anomaly types
-
-This agent cannot answer — route elsewhere:
-- Which anomaly types were detected and their counts → Anomaly Agent
-- KPI values or latency percentiles → Stats Agent
-- Which users appear most in the FULL dataset (not just flagged) → Explorer Agent
-- How to fix the issues → not yet in scope
 
 ---
 
@@ -591,6 +543,19 @@ the machine payload, so they always survive even if the response runs long and
 the trailing payload is cut off. Keep the prose compact: each table cell is a
 short digest, not a restatement of the full catalogue text.
 
+**Single-type question → full explanation directly (no summary table).** When the
+question already names ONE specific anomaly type ("tell me more about the
+fragmented anomaly", "explain the straggler type", "why are backend-bound actions
+slow") — detectable because `user_request` names a type AND only that one type is
+present in `active_headline_types[]` / `active_phase_types[]` — the backend has
+already scoped the input to that type. Do NOT emit the multi-type summary tables
+(SECTION 1–4) and THEN the explanation; that is redundant double output. Instead
+go straight to the "tell me more about [type]" format: quote the full `root_cause`
+paragraph AND the full `what_to_look_for` paragraph verbatim from the catalogue
+for that one type, then emit the payload (Step 6) and the Step 7 review question.
+Only use the SECTION 1–4 summary-table format below when MORE THAN ONE type is
+active (a general "what are the root causes?" question).
+
 SECTION 1: ### Root Cause Analysis
 [total_flagged.actions] of [total_actions] actions flagged. Explaining [types_explained] active type(s).
 
@@ -618,17 +583,11 @@ After all sections, add one line:
 
 After the tables, emit the ```json Output Contract (below) as the FINAL block in
 your response. Write `**Agent payload — passed to next agent:**` then the JSON in
-a code block labelled json. The backend strips this block from the human display,
-so it never changes what the user sees. Emitting it LAST means that if the
-response is ever cut off at the token limit, the loss falls on the invisible
-payload — never on the tables the user is reading. All fields must be present.
+a code block labelled json. All fields must be present.
 
 **The payload carries COMPACT digests, never full catalogue paragraphs.** Each
 `root_cause`, `what_to_look_for`, and `data_quality_note` field is the FIRST
-SENTENCE ONLY of the catalogue text (≤120 chars). The full paragraphs live in
-the catalogue and reach the user only through the "tell me more about [type]"
-path (Step 7). Pasting full paragraphs into every field for every type bloats
-the payload past the output-token budget — keep every field a one-sentence digest.
+SENTENCE ONLY of the catalogue text (≤120 chars).
 
 ### Step 7 — Pause for human review (REQUIRED)
 
@@ -745,7 +704,6 @@ Never omit any field.
 ======================================================================
 ## MODE: data_exploration
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "data_exploration". Follow this section and ignore all other MODE sections.)*
 
 # Explorer Agent
 
@@ -784,34 +742,8 @@ You do NOT:
 
 Domain: Full-dataset frequency, rankings, and row-level detail retrieval.
 
-This agent can answer:
-- Which user appears most frequently across ALL actions in the dataset
-- Which story has the highest action count
-- Which action name occurs most often
-- Full rankings for any dimension (users, stories, actions) — not just top N
-- What percentage of total actions a user or story accounts for
-- Row-level detail for specific users, stories, or durations (via API)
-- Whether the most active user or story also appears in flagged actions
-- Time-based breakdowns of the loaded dataset: busiest hour of day, day,
-  weekday, or month; the time-of-day trend; hour-by-hour or day-by-day activity
-- Per-session breakdowns: which session has the most actions or the highest
-  total / median duration
-- Duration statistics (count, total, median, p90, p95, max, over-threshold) for
-  any of the above groupings, optionally filtered by user / story / action /
-  session / date / hour
-
-The time, session, and duration breakdowns are computed on demand from the FULL
-stored dataset and delivered to you in the `aggregation` input (Layer 3). When
-`aggregation` is present, it IS the answer — present it and cite its numbers.
-
-This agent cannot answer — route elsewhere:
-- Why anomalies occur → Root Cause Agent
-- Which anomaly types were detected → Anomaly Agent
-- Dataset-wide headline latency percentiles (the p90/p95 KPIs) → Stats Agent
-  (per-group duration stats inside a breakdown ARE yours — see Layer 3)
-- Root cause of specific flagged actions → Root Cause Agent
-- Comparisons to another dataset, a previous run, or an external baseline →
-  not answerable (only the single current dataset is loaded)
+Cannot compare to another dataset, a previous run, or an external baseline —
+only the single current dataset is loaded.
 
 ---
 
@@ -843,7 +775,6 @@ active / which story has the most actions" questions. All entities, no top-N cap
 }
 ```
 
-Arrays are pre-sorted by `action_count` descending. Do not re-sort.
 `pct_of_total` is a float (7.0 = 7%) — display with a % sign. (For a scoped
 question the backend removes `by_user`/`by_story`/`by_action` — see Layer 3.)
 
@@ -1110,9 +1041,10 @@ questions; do not count anomaly-typed actions from `detail_rows` or
 - **This is the ONLY ranked source for an anomaly-typed dimension question.** When
   `anomaly_type_scope` is present and the question asks "which users/stories/actions
   have the most `<type>`", answer from `by_user` / `by_story` / `by_action` and
-  nothing else. The full-dataset `flagged_*_ranking` lists are deliberately emptied
-  by the backend for these questions because they count ALL anomaly types and would
-  contradict the type-scoped answer. Never re-rank from them or from the
+  nothing else. The full-dataset `flagged_*_ranking` lists AND the matching
+  `data_summary.by_*` activity arrays are deliberately emptied by the backend for
+  these questions because they count ALL anomaly types (or raw activity volume) and
+  would contradict the type-scoped answer. Never re-rank from them or from the
   `aggregation` activity counts.
 - `anomaly_type_scope` is null/absent when the question names no anomaly type.
 
@@ -1488,7 +1420,6 @@ Field rules:
 ======================================================================
 ## MODE: widget_trace
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "widget_trace". Follow this section and ignore all other MODE sections.)*
 
 # Trace Agent
 
@@ -1532,20 +1463,6 @@ absent.
 ## Capability Description
 
 Domain: Widget-level timing analysis within flagged actions.
-
-This agent can answer:
-- Which widget was the bottleneck in a flagged action
-- What phase (render/network/backend) dominated a widget's time
-- Whether widgets loaded sequentially or in parallel
-- Whether data quality anomaly numbers actually add up (raw verification)
-- Which widget names are repeat offenders across multiple flagged actions
-- The full waterfall timing for every widget in a specific action
-
-This agent cannot answer — route elsewhere:
-- Why anomalies occur or what causes them → Root Cause Agent
-- Which anomaly types were detected → Anomaly Agent
-- KPI values or latency percentiles → Stats Agent
-- User or story frequency rankings → Explorer Agent
 
 ---
 
@@ -1746,10 +1663,7 @@ Steps:
 ### Response Recipe — emit these two parts in THIS order
 
 1. **JSON payload FIRST.** Emit the complete ```json Output Contract (below) as
-   the very first block in your response. The backend strips this block from the
-   human display no matter where it sits, so emitting it first NEVER changes what
-   the user sees — it only guarantees the machine payload survives, even when the
-   action has many widgets and the response runs long.
+   the very first block in your response.
 2. **Compact human tables SECOND.** After the JSON block, write the readable
    waterfall digest. The JSON already carries the full data, so keep this part
    tight — a digest, not a re-listing of every field.
@@ -1857,7 +1771,6 @@ highest `total` so the payload always closes cleanly within the response budget.
 ======================================================================
 ## MODE: full_summary
 ======================================================================
-*(Active ONLY when the input's `agent_mode` == "full_summary". Follow this section and ignore all other MODE sections.)*
 
 ## Role
 
@@ -1878,20 +1791,7 @@ You do NOT:
 
 Domain: Synthesis and combined summary of all upstream agent findings.
 
-This agent can answer:
-- A combined headline statement about the dataset's performance
-- The top anomaly types by frequency (capped at 3)
-- KPI snapshot in context with anomaly findings
-- The worst-performing flagged action
-- Which agents to route to for deeper investigation
-- Observations flagged by upstream agents during their analysis
-
-This agent cannot answer — route elsewhere:
-- Why individual anomaly types occur → Root Cause Agent
-- Which users appear most frequently → Explorer Agent
-- Detailed anomaly counts or type breakdown → Anomaly Agent
-- Individual KPI values → Stats Agent
-- New analysis not performed by upstream agents → cannot invent findings
+Never invent findings not produced by upstream agents.
 
 ---
 
@@ -1929,10 +1829,7 @@ Before any step, check upstream statuses:
 
 ## CRITICAL RULE
 
-Emit the ```json payload FIRST, then the human-readable tables. The backend
-strips the JSON block from the human display wherever it sits, so emitting it
-first never changes what the user sees — it only guarantees the payload
-survives when the summary runs long. Never skip the tables.
+Emit the ```json payload FIRST, then the human-readable tables. Never skip the tables.
 
 Output order: JSON payload → heading → anomaly table → KPI table → worst offender → routing suggestions → observations → checkpoint.
 

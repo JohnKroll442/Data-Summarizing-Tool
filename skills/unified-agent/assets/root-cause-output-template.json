@@ -1,0 +1,13 @@
+{
+  "agent": "root-cause-agent",
+  "status": "AWAITING_USER_DIRECTION",
+  "total_actions": null,
+  "total_flagged": { "actions": null, "pct": null },
+  "types_explained": null,
+  "root_causes": [],
+  "data_quality_flags": [],
+  "phase_context": [],
+  "excluded_by_user": [],
+  "user_requested_drill": null,
+  "session_notes": []
+}

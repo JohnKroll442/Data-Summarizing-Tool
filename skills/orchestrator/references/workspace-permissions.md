@@ -2,26 +2,28 @@
 
 ## Data Access
 
+All analysis runs through the single `unified-agent` skill (selected per dispatch
+via `agent_mode`), not through separate per-agent namespaces. The orchestrator
+holds all cached outputs in its own session state.
+
 | Access | Namespace | Description |
 |--------|-----------|-------------|
 | read | source/* | Full tool payload (kpis, anomalies, data_summary, meta) |
-| read | agents/stats/output | Stats Agent confirmed output |
-| read | agents/anomaly/output | Anomaly Agent confirmed output |
-| read | agents/root-cause/output | Root Cause Agent confirmed output |
-| read | agents/explorer/output | Explorer Agent confirmed output |
-| read | agents/narrator/output | Narrator confirmed output |
-| write | session/state | Session phase, intent, cached agent outputs |
+| write | session/state | Session phase, intent, and all cached unified-agent outputs |
 | read | session/notes | Accumulated session learning notes |
 | read | shared/anomaly-types | Canonical anomaly type registry |
 | read | shared/kpi-schema | Canonical KPI field definitions |
 
+Cached output slots on `session_state`:
+`stats_output`, `anomaly_output`, `root_cause_output`, `explorer_output`,
+`narrator_output`, `trace_output`.
+
 ## External APIs
 
-None.
+None directly. The `widget_trace` mode may call `GET /api/widgets` in interactive
+Joule use; in the backend pipeline its widget data is pre-fetched.
 
 ## Notes
 
-- The Orchestrator is the only agent that reads from ALL agent output namespaces.
-- It maintains session state as the single source of conversational memory.
-- It does NOT analyse data — it dispatches to specialist agents.
-- In the current hub-and-spoke model, it also brokers data between agents. In the mesh model, agents read peer outputs directly and the Orchestrator becomes a lightweight router.
+- It does NOT analyse data — it classifies intent and dispatches the unified-agent
+  in the appropriate mode.

@@ -1,8 +1,11 @@
 # Agent Capability Catalogue
 
-This catalogue describes what each agent can answer and what data it requires.
-The Orchestrator reads this in Phase 0 to reason about which agent to dispatch.
 Do NOT use keyword matching — reason about the user's information need.
+
+**All six "agents" below are MODES of the single `unified-agent` skill, not
+separate skills.** The `agent_mode` values map as: Stats Agent → `kpi_summary`,
+Anomaly Agent → `anomaly_summary`, Root Cause Agent → `root_cause`, Explorer Agent
+→ `data_exploration`, Trace Agent → `widget_trace`, Narrator → `full_summary`.
 
 ---
 
@@ -18,7 +21,7 @@ Do NOT use keyword matching — reason about the user's information need.
 
 **Cannot answer:** anomaly types, root causes, user rankings, story frequency
 
-**Dispatch input:** `{ "kpis": payload.kpis }`
+**Dispatch input:** `{ "agent_mode": "kpi_summary", "kpis": payload.kpis, "meta": session_state.payload_meta }`
 
 ---
 
@@ -30,12 +33,11 @@ Do NOT use keyword matching — reason about the user's information need.
 - Which anomaly types were active in this dataset
 - How many actions were flagged for each type
 - What percentage of actions had anomalies
-- What each anomaly type means
-- Whether types are performance issues or data quality issues
+- What each anomaly type means (performance issue vs. data quality artifact)
 
 **Cannot answer:** root causes, user rankings, KPI percentiles, row-level detail
 
-**Dispatch input:** `{ "anomalies": { "counts": payload.anomalies.counts, "total_flagged": payload.anomalies.total_flagged, "total_actions": payload.anomalies.total_actions } }`
+**Dispatch input:** `{ "agent_mode": "anomaly_summary", "anomalies": { "counts": payload.anomalies.counts, "total_flagged": payload.anomalies.total_flagged, "total_actions": payload.anomalies.total_actions } }`
 
 ---
 
@@ -44,7 +46,6 @@ Do NOT use keyword matching — reason about the user's information need.
 **Owns:** Explanation of active anomaly types + row-level flagged action data.
 
 **Can answer:**
-- Why specific anomaly types occur
 - What causes each active anomaly type
 - What to investigate to confirm a root cause
 - Whether anomalies are performance issues or data quality artifacts
@@ -56,6 +57,7 @@ Do NOT use keyword matching — reason about the user's information need.
 **Dispatch input:**
 ```json
 {
+  "agent_mode": "root_cause",
   "active_headline_types": "<from anomaly_output>",
   "active_phase_types": "<from anomaly_output>",
   "total_flagged": "<from anomaly_output>",
@@ -69,8 +71,7 @@ Do NOT use keyword matching — reason about the user's information need.
 
 ## Explorer Agent
 
-**Owns:** `data_summary` section of the payload — full-dataset frequency data,
-plus row-level detail via the tool's API endpoint.
+**Owns:** `data_summary` + `GET /api/actions` endpoint.
 
 **Operates in two modes:**
 
@@ -78,10 +79,8 @@ plus row-level detail via the tool's API endpoint.
 All entities are included (no top-N cap). Arrays are pre-sorted by `action_count` descending.
 
 **Detail mode** — calls `GET /api/actions` with filter params to fetch row data:
-- `user=<user>` — filter by user
-- `story=<story_name>` — filter by story
-- `action_name=<action>` — filter by action name
-- `duration_min_ms=<ms>` / `duration_max_ms=<ms>` — duration range filter
+- `user=<user>`, `story=<story_name>`, `action_name=<action>`
+- `duration_min_ms=<ms>` / `duration_max_ms=<ms>`
 - Returns: `[{ action_name, story_name, user, session_id, action_duration_ms, action_timestamp }]`
 
 **Can answer:**
@@ -100,6 +99,11 @@ All entities are included (no top-N cap). Arrays are pre-sorted by `action_count
 **Dispatch input:**
 ```json
 {
+  "agent_mode": "data_exploration",
+  "mode": "<ranking|detail|cross — orchestrator decides from question>",
+  "dimension": "<users|stories|action_types|time|sessions|all>",
+  "ranking_request": "<0=activity, 1=flagged, 2=widget-timing>",
+  "question": "<user's exact question>",
   "data_summary": {
     "total_actions": 0,
     "total_unique_users": 0,
@@ -109,8 +113,10 @@ All entities are included (no top-N cap). Arrays are pre-sorted by `action_count
     "by_story":  [ { "story_name": "<string>", "action_count": 0, "pct_of_total": 0.0 } ],
     "by_action": [ { "action_name": "<string>", "action_count": 0, "pct_of_total": 0.0 } ]
   },
-  "flagged_by_type": "<payload.anomalies.flagged_by_type>",
-  "question": "<user's exact question>"
+  "flagged_users_ranking": "<derived from flagged_by_type — see SKILL Phase 2>",
+  "flagged_stories_ranking": "<derived from flagged_by_type>",
+  "flagged_action_types_ranking": "<derived from flagged_by_type>",
+  "flagged_by_type": "<payload.anomalies.flagged_by_type>"
 }
 ```
 
@@ -130,29 +136,25 @@ All entities are included (no top-N cap). Arrays are pre-sorted by `action_count
 
 **Cannot answer:** new analysis, root causes, user rankings, any finding not produced by upstream agents
 
-**Dispatch input:** Stats + Anomaly confirmed outputs + meta + trace_output + top_flagged_action
+**Dispatch input:** `{ "agent_mode": "full_summary", ... }` — Stats + Anomaly confirmed outputs + meta + trace_output + top_flagged_action
 
-- `trace_output` — from `session_state.trace_output`; present when the Trace
-  Agent has run. Enables the Narrator's "Trace findings" section; pass `null`
-  when no Trace Agent output exists.
+- `trace_output` — `session_state.trace_output` (null if Trace Agent hasn't run); enables "Trace findings" section.
 - `top_flagged_action` — the flagged action with the MAXIMUM `action_duration_ms`
   (not the first array element).
 
 ---
 
-## Trace Agent (mesh-native)
+## Trace Agent
 
-**Owns:** Widget-level timing data via `GET /api/widgets`.
+**Owns:** Widget-level timing data (pre-fetched into `widget_data`, or via
+`GET /api/widgets` interactively).
 
-**Mesh reads:** anomaly-agent output, root-cause-agent output (both optional, from store).
+**Mesh reads:** `anomaly_context` + `root_cause_context` (both optional).
 
 **Operates in two modes:**
 
 **Detail mode** — investigates a single flagged action's widgets.
 - Shows waterfall table: each widget's offset, render, network, backend, total
-- Identifies bottleneck widget and dominant phase
-- Classifies loading pattern (sequential vs parallel)
-- Verifies data quality with raw numbers
 
 **Aggregation mode** — scans across all flagged actions of a type.
 - Finds repeat offender widgets
@@ -170,10 +172,15 @@ All entities are included (no top-N cap). Arrays are pre-sorted by `action_count
 **Dispatch input:**
 ```json
 {
+  "agent_mode": "widget_trace",
   "dataset_id": "<from payload.meta.dataset_id>",
   "question": "<user's question>",
-  "flagged_by_type": "<payload.anomalies.flagged_by_type>",
-  "flagged_actions": "<payload.anomalies.flagged_actions>"
+  "type_summary": "<for each key in payload.anomalies.flagged_by_type, its array length>",
+  "top_actions": "<payload.anomalies.flagged_actions sorted by action_duration_ms desc, top 10>",
+  "widget_data": {},
+  "anomaly_context": "<session_state.anomaly_output.active_headline_types, or null>",
+  "root_cause_context": "<session_state.root_cause_output.root_causes, or null>",
+  "scope": "flagged"
 }
 ```
 
