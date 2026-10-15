@@ -81,14 +81,38 @@ Examples:
   "why is there large offset?" → ROOT_CAUSE_ANALYSIS
   "show me the frontend issues" → ROOT_CAUSE_ANALYSIS
   "explain the straggler anomalies" → ROOT_CAUSE_ANALYSIS
+→ COUNT / RANKING / scope exception: a question that COUNTS a phase-bound or
+anomaly type ("how many backend-bound actions?", "how many network-bound did X
+have?"), RANKS entities by it ("which users have the most straggler actions?"),
+or scopes it to a subset (a time window, user, story, action, session, duration)
+is NOT an explanation — route it to DATA_EXPLORATION (rule 5). ROOT_CAUSE is only
+for WHY/EXPLAIN. "how many <type>" and "which <entity> has the most <type>" are
+counting questions, not WHY questions.
 
 **3. ANOMALY COUNTS / WHICH TYPES EXIST → ANOMALY_SUMMARY**
-The user wants to know which anomaly types are present and how many.
+The user wants the WHOLE-DATASET anomaly catalogue: which anomaly types are
+present and how many, across all actions with NO narrowing filter.
 Examples: "how many actions were flagged?", "what anomaly types are there?"
+→ ANOMALY_SUMMARY has NO scope filter — it can only report dataset-wide totals.
+If the question narrows the anomaly/flagged count to a subset — a time window,
+user, story, action, session, or duration ("of the actions after 4 PM, how many
+had anomalies?", "how many of NROS's actions were flagged?", "how many flagged
+in story X?", "how many flagged in session S?", "how many flagged on Jul 30?",
+"how many flagged actions ran longer than 5 min?") — that is a SCOPED count →
+route to DATA_EXPLORATION (rule 5), NOT here. The word "anomaly"/"flagged" plus a
+scope is a filter, not a catalogue request.
 
-**4. LATENCY / PERCENTILE STATISTICS → KPI_SUMMARY**
-The user wants specific dataset-wide percentile or aggregate numbers.
+**4. DATASET-WIDE LATENCY / PERCENTILE STATISTICS → KPI_SUMMARY**
+The user wants a single dataset-wide percentile or aggregate number, with NO
+scope and NO per-group breakdown.
 Examples: "what is the p95 duration?", "what is the median action time?"
+→ KPI_SUMMARY has NO scope filter and returns ONE dataset-wide number. If the
+same statistic is SCOPED to a subset ("median duration for user X", "p95 after
+4 PM", "average duration in story Y") OR asked as a per-group BREAKDOWN ("median
+duration by session", "p95 by hour of day"), that is NOT KPI_SUMMARY → route to
+DATA_EXPLORATION (rule 5), which computes scoped and grouped statistics on
+demand. A percentile/median word plus a scope or a "by/per X" breakdown is a
+DATA_EXPLORATION request, not a dataset-wide KPI.
 
 **5. RANKINGS, ROW DETAIL, or TIME / SESSION BREAKDOWNS → DATA_EXPLORATION**
 The user wants frequency rankings, row-level detail for named entities, or a
@@ -101,16 +125,30 @@ Examples: "who has the most actions?", "show all actions for user alice",
 "which stories is NSARIPIRALLA having the worst performance on?",
 "which hour of day is busiest?", "hour-by-hour breakdown for alice on Jul 30",
 "what's the time-of-day trend?", "busiest weekday?", "actions per day",
-"which session has the most actions?", "median duration by session".
+"which session has the most actions?", "median duration by session",
+"of the actions after 4 PM, how many had anomalies?" (scoped flagged count),
+"how many of NROS's actions were flagged?" (scoped flagged count).
 
-**6. WIDGET TIMING / WATERFALL → WIDGET_TRACE**
-The user wants widget-level phase breakdown for a specific action.
+**6. WIDGET WATERFALL FOR A SPECIFIC ACTION → WIDGET_TRACE**
+The user wants the widget-level phase breakdown WITHIN a single action (its
+waterfall) or the bottleneck widget of one action.
 Examples: "which widget was the bottleneck?", "show me the widget waterfall",
 "show the action waterfall for the slowest action".
+→ Boundary with rule 1: a dataset-wide RANKING of widgets or entities by a widget
+metric ("which widget has the most render time?", "rank users by backend time",
+"slowest-loading widgets overall") is a METRIC RANKING → DATA_EXPLORATION (rule
+1). WIDGET_TRACE is for drilling INTO one action's widgets; rule 1 is for ranking
+ACROSS the dataset.
 
-**7. FULL COMBINED SUMMARY → FULL_ANALYSIS**
-General "analyse this / summarise everything / what's going on" requests that
-want KPIs and anomalies combined.
+**7. DATASET-WIDE COMBINED SUMMARY → FULL_ANALYSIS**
+General, UNSCOPED "analyse this / summarise everything / what's going on"
+requests that want KPIs and anomalies combined for the whole dataset.
+→ Scope exception: when "analyse / summarise / what's going on with" is scoped to
+a specific entity ("analyse NROS's performance", "summarise what's happening in
+story X", "what's going on with session S"), that is NOT a dataset-wide summary →
+route to DATA_EXPLORATION (rule 5), or ROOT_CAUSE_ANALYSIS (rule 2) if it asks
+WHY. FULL_ANALYSIS has no scope filter and would report dataset-wide numbers for
+a question about one entity.
 
 **8. CAN BE ANSWERED DIRECTLY FROM PAYLOAD OR PRIOR TURNS → CONVERSATIONAL**
 

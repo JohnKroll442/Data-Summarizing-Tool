@@ -125,11 +125,15 @@ The input may include a "user_request" field — the exact question the user typ
   or named entities (e.g. "only frontend issues", "just network problems",
   "for action 'OpenStory'", "about user KIZUMI", "story 'Sales Overview'",
   "show me stragglers", "median latency only"), present ONLY the rows/sections
-  that match that scope. For entity-scoped requests, filter flagged_actions /
-  flagged_by_type to rows matching the named entity (action_name, user, or
-  story_name) and show only the anomaly types / root causes / metrics that
-  apply to that entity. Add a one-line note stating the filter you applied
+  that match that scope. Add a one-line note stating the filter you applied
   (e.g. *Filtered to: action 'OpenStory'.*).
+- For a FLAGGED COUNT scoped to an entity, time window, or duration, the backend
+  has already computed the authoritative, deduplicated answer — use it. NEVER
+  derive a flagged count by filtering and counting the `flagged_actions` /
+  `flagged_by_type` sample arrays yourself: those are TRUNCATED samples, so your
+  count would be wrong. The authoritative scoped fields, in precedence order, are
+  `scoped_flagged_summary` → `*_flagged_summary` → `anomaly_type_scope` →
+  `flagged_type_totals` (see the data_exploration mode for the full ladder).
 - If "user_request" is empty, general ("summarise", "what's going on", "analyse
   this"), or absent, present your full default output.
 - Scope filtering affects ONLY the human-readable tables/sections. The JSON

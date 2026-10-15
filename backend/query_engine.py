@@ -280,7 +280,9 @@ def filter_rows(rows, filters):
     action  = filters.get("action")
     session = filters.get("session")
     date    = filters.get("date")            # "YYYY-MM-DD"
-    hour    = filters.get("hour_of_day")     # int 0-23
+    hour    = filters.get("hour_of_day")     # int 0-23 (exact)
+    hmin    = filters.get("hour_min")        # int 0-23 — dt.hour >= this
+    hmax    = filters.get("hour_max")        # int 0-23 — dt.hour <= this
     dmin    = filters.get("duration_min_ms")
     dmax    = filters.get("duration_max_ms")
     dphase  = filters.get("dominant_phase")  # "frontend"|"network"|"backend"
@@ -297,13 +299,17 @@ def filter_rows(rows, filters):
         if not _match(r.get("story_name"), story):     continue
         if not _match(r.get("action_name"), action):   continue
         if not _match(r.get("session_id"), session):   continue
-        if date is not None or hour is not None:
+        if date is not None or hour is not None or hmin is not None or hmax is not None:
             dt = _row_ts(r)
             if dt is None:
                 continue
             if date is not None and dt.strftime("%Y-%m-%d") != date:
                 continue
             if hour is not None and dt.hour != hour:
+                continue
+            if hmin is not None and dt.hour < hmin:
+                continue
+            if hmax is not None and dt.hour > hmax:
                 continue
         if dmin is not None or dmax is not None:
             dur = _row_duration(r)
@@ -392,11 +398,25 @@ def _detect_group_by(q_lower):
     return None
 
 
+def _token_in(haystack_lower, needle_lower):
+    """Whole-token containment: True when needle_lower appears in haystack_lower
+    delimited by non-alphanumeric boundaries. Prevents a short entity name from
+    matching inside an unrelated word — user "AL" must NOT match "overall",
+    action "Login" must NOT match "Login Dashboard" as a bare substring — while
+    still matching real multi-word names ("Sales Overview") and names bordered by
+    punctuation/underscores. needle may contain spaces/punctuation."""
+    if not needle_lower:
+        return False
+    pat = r"(?<![0-9a-z])" + re.escape(needle_lower) + r"(?![0-9a-z])"
+    return re.search(pat, haystack_lower) is not None
+
+
 def _detect_entity(question, known_values):
     """Return the known entity value whose name appears in the question, if any.
 
     Matches longest known value first so 'Sales Overview' wins over 'Sales'.
-    Case-insensitive whole-substring match against the question text.
+    Whole-token (word-boundary) match against the lowercased question text, so a
+    short name is not spuriously found inside a longer unrelated word.
     """
     if not known_values:
         return None
@@ -405,7 +425,7 @@ def _detect_entity(question, known_values):
         vs = str(val).strip()
         if len(vs) < 2:
             continue
-        if vs.lower() in q_lower:
+        if _token_in(q_lower, vs.lower()):
             return val
     return None
 
@@ -424,10 +444,10 @@ def _detect_users(question, known_users):
         us = str(u).strip()
         if len(us) < 2:
             continue
-        start = q_lower.find(us.lower())
-        if start == -1:
+        m = re.search(r"(?<![0-9a-z])" + re.escape(us.lower()) + r"(?![0-9a-z])", q_lower)
+        if not m:
             continue
-        end = start + len(us)
+        start, end = m.start(), m.end()
         if any(s <= start and end <= e for s, e in claimed):
             continue  # inside an already-matched longer name
         found.append(u)
@@ -621,6 +641,68 @@ def _detect_end_time_filter(question):
     return out
 
 
+# Start-of-action clock-hour RANGE: "after 4pm" / "from 2pm" / "since 14:00" →
+# hour_min; "before noon" / "until 5pm" / "by 3pm" → hour_max; "between 2pm and
+# 5pm" / "from 9am to 5pm" / "2pm-5pm" → both. Distinct from
+# _detect_end_time_filter, which needs an end/finish verb and reads _action_end.
+# Returns {} when no range phrase with a parseable clock hour is present, so a
+# bare "at 4pm" / "hour 16" still falls through to the exact-hour _detect_hour
+# path. Fixes the long-standing bug where "after 4pm" scoped to EXACTLY hour 16
+# (16:00-16:59) instead of 16:00 onward.
+_RANGE_BETWEEN_RE = re.compile(
+    r"\b(?:between|from)\s+(.+?)\s+(?:and|to|through|thru|till|until|[-–—])\s+(.+)",
+    re.IGNORECASE)
+_RANGE_AFTER_RE = re.compile(
+    r"\b(?:after|since|from|starting(?:\s+(?:at|from))?|onwards?"
+    r"|at\s+or\s+after|no\s+earlier\s+than)\b", re.IGNORECASE)
+_RANGE_BEFORE_RE = re.compile(
+    r"\b(?:before|until|till|up\s+to|by|earlier\s+than|prior\s+to"
+    r"|no\s+later\s+than)\b", re.IGNORECASE)
+
+
+def _bare_hour(text):
+    """Clock hour from a short span: _detect_hour first, then a bare 0-23 int.
+    Skips the bare-int fallback when the span carries a duration unit so
+    'between 2 and 5 minutes' is not misread as an hour range."""
+    h = _detect_hour(text)
+    if h is not None:
+        return h
+    if re.search(r"\b(?:" + _DUR_UNIT_ALT + r")\b", text, re.IGNORECASE):
+        return None
+    m = re.search(r"\b(\d{1,2})\b", text)
+    if m and 0 <= int(m.group(1)) <= 23:
+        return int(m.group(1))
+    return None
+
+
+def _detect_hour_range(question):
+    """Parse a start-of-action clock-hour RANGE into {hour_min, hour_max} (either,
+    both, or neither). filter_rows applies these as dt.hour >= min / <= max."""
+    mb = _RANGE_BETWEEN_RE.search(question)
+    if mb:
+        out = {}
+        lo = _bare_hour(mb.group(1))
+        hi = _bare_hour(mb.group(2))
+        if lo is not None:
+            out["hour_min"] = lo
+        if hi is not None:
+            out["hour_max"] = hi
+        if out:
+            return out
+    out = {}
+    ma = _RANGE_AFTER_RE.search(question)
+    if ma:
+        h = _detect_hour(question[ma.end():])
+        if h is not None:
+            out["hour_min"] = h
+    mbf = _RANGE_BEFORE_RE.search(question)
+    if mbf:
+        h = _detect_hour(question[mbf.end():])
+        if h is not None:
+            out["hour_max"] = h
+    return out
+
+
 def parse_query(question, dataset_id):
     """Deterministically parse a question into an aggregation spec.
 
@@ -685,9 +767,16 @@ def parse_query(question, dataset_id):
         mk = _END_VERB_RE.search(question)
         if mk:
             hour_q = question[:mk.start()]
-    hour = _detect_hour(hour_q)
-    if hour is not None:
-        filters["hour_of_day"] = hour
+    # A RANGE phrase ("after 4pm", "before noon", "between 2pm and 5pm") takes
+    # precedence over an exact single hour — otherwise "after 4pm" would scope to
+    # only the 16:00 hour instead of 16:00 onward.
+    hour_range = _detect_hour_range(hour_q)
+    if hour_range:
+        filters.update(hour_range)
+    else:
+        hour = _detect_hour(hour_q)
+        if hour is not None:
+            filters["hour_of_day"] = hour
 
     group_by = _detect_group_by(question.lower())
     # A multi-user comparison with no explicit breakdown → group by user so the

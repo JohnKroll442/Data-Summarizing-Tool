@@ -225,17 +225,29 @@ def _resolve_followup_references(question: str, dataset_id) -> str:
     # after a session drilldown got tagged with the prior session_id, which both
     # misrouted intent to CONVERSATIONAL and anchored the LLM to that one
     # session, so it answered "1 user" instead of the dataset's 48. The signal
-    # regex below already covers genuine follow-ups ("that", "it", "those",
-    # "more", "explain", …); a short question with none of those words is a new
-    # question and must stay unscoped.
+    # set below is deliberately NARROW: hyper-common words ("it", "this", "also",
+    # "too") were removed because they fire on fresh independent questions, and a
+    # question that already carries its OWN concrete filter is never treated as
+    # context-dependent (the self-scoped guard below) — both fixes stop the
+    # injector from anchoring a new question to a stale subset.
     _followup_signals = re.search(
-        r'\b(?:that|those|them|it|this|these|same|previous|prior|above|earlier'
-        r'|more|further|deeper|again|also|too|continue|follow.?up'
-        r'|explore|drill|expand|elaborate|detail|explain)\b',
+        r'\b(?:that|those|them|these|same|previous|prior|above|earlier'
+        r'|further|deeper|continue|follow.?up'
+        r'|explore|drill|expand|elaborate)\b',
         q_lower,
     )
 
-    if _followup_signals:
+    # Self-scoped guard: if the question names its OWN concrete filter (a known
+    # user/story/action/session/date/hour/duration), it is a standalone question,
+    # not a reference to the prior subset — do not inject stale prior context.
+    _self_scoped = False
+    try:
+        import query_engine as _qe_guard
+        _self_scoped = bool((_qe_guard.parse_query(question, dataset_id) or {}).get("filters"))
+    except Exception:
+        _self_scoped = False
+
+    if _followup_signals and not _self_scoped:
         # Build a compact context tag from the previous output
         prev_q = prev_output.get("question_answered") or "prior analysis"
         brief_parts = []
@@ -454,20 +466,23 @@ def classify_intent(question: str, payload: dict, llm_history: list = None) -> d
         prior_turns = []
         for msg in recent:
             role    = msg.get("role", "")
-            content = msg.get("content", "")[:600]   # enough to see ranking tables
+            content = msg.get("content", "")[:1000]   # wide enough for ranking tables
             prior_turns.append(f"[{role}]: {content}")
         payload_context["prior_conversation"] = prior_turns
 
-    # Include last Explorer Agent output summary for reference resolution.
-    # This lets the Orchestrator understand "rank 2" → "user KIZUMI (33 flagged)"
-    # when the previous turn showed a ranked table.
+    # Include the last agent output summary for reference resolution. This lets
+    # the Orchestrator understand "rank 2" → "user KIZUMI (33 flagged)" when the
+    # previous turn showed a ranked table. All agent kinds are consulted (not just
+    # explorer/root-cause/anomaly) so a follow-up after a KPI / full / trace turn
+    # ("drill into that") still carries reference context.
     _ds_id = payload.get("meta", {}).get("dataset_id")
     if _ds_id:
         import mesh_store as _ms
         for _agent_name, _prev in _ms.agent_outputs_by_recency(
-            _ds_id, ("explorer-agent", "root-cause-agent", "anomaly-agent")
+            _ds_id, ("explorer-agent", "root-cause-agent", "anomaly-agent",
+                     "trace-agent", "stats-agent", "narrator")
         ):
-            if _prev and _prev.get("top_results"):
+            if _prev and (_prev.get("top_results") or _prev.get("question_answered")):
                 payload_context["last_agent_results"] = {
                     "agent": _agent_name,
                     "top_results": _prev.get("top_results", [])[:10],
@@ -481,11 +496,18 @@ def classify_intent(question: str, payload: dict, llm_history: list = None) -> d
         response = call_llm(system, user)
         return extract_json_from_response(response)
     except Exception:
-        # Classification failed — default to the cheap single-call ANOMALY_SUMMARY
-        # rather than the expensive 4-call FULL_ANALYSIS. Log the traceback so a
-        # persistently misrouting classifier is debuggable, not silently masked.
-        log.exception("Intent classification failed — defaulting to ANOMALY_SUMMARY")
-        return {"intent": "ANOMALY_SUMMARY", "acknowledgement": "Summarising anomalies..."}
+        # Classification failed — fall back to CONVERSATIONAL, NOT ANOMALY_SUMMARY.
+        # ANOMALY_SUMMARY emits dataset-wide anomaly totals, which is a
+        # confidently-WRONG answer for any scoped question (the "558 of 2070"
+        # failure mode): a user asking "how many of alice's actions after 4 PM
+        # were flagged?" would get the whole-dataset total if a transient LLM or
+        # JSON-parse error forced the fallback. CONVERSATIONAL answers from
+        # session history + on-demand aggregation (scoped) and can honestly say it
+        # is unsure, so it never fabricates a dataset-wide number. Traceback is
+        # logged so a persistently misrouting classifier stays debuggable.
+        log.exception("Intent classification failed — defaulting to CONVERSATIONAL")
+        return {"intent": "CONVERSATIONAL",
+                "acknowledgement": "Let me take a look at that..."}
 
 
 # ─── individual agents ────────────────────────────────────────────────────────
@@ -580,15 +602,19 @@ def _detect_timing_metric(question: str) -> bool:
 
 def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
                                 scoped_user=None, scoped_story=None,
-                                scoped_action=None, scoped_session=None) -> dict | None:
+                                scoped_action=None, scoped_session=None,
+                                time_filters=None) -> dict | None:
     """Authoritative anomaly-type-scoped view built from flagged_by_type.
 
     flagged_by_type[type] holds every flagged action of that type (each listed
     once per type), so it is the only source that can answer "how many <type>
     actions" / "which <dimension> has the most <type> actions" / "list the
     <type> actions" — stored rows carry flags=null. Optionally narrows to a
-    user / story / action / session the question also names. Dedups defensively
-    by (action_name, action_timestamp, session_id) and returns per-dimension and
+    user / story / action / session the question also names, AND to a time /
+    duration window (time_filters, applied via query_engine.filter_rows — the
+    single filter source — so "how many straggler actions after 4 PM" counts
+    only that window, not the dataset-wide total). Dedups defensively by
+    (action_name, action_timestamp, session_id) and returns per-dimension and
     per-hour breakdowns plus a capped sample list.
     """
     acts = raw_fbt.get(anomaly_type)
@@ -602,8 +628,13 @@ def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
         if scoped_session and a.get("session_id")  != scoped_session: return False
         return True
 
+    import query_engine as _qe
+    # Apply any time/duration window first via the single filter source, then the
+    # entity narrowing above.
+    pool = _qe.filter_rows(acts, time_filters) if time_filters else acts
+
     seen, uniq = set(), []
-    for a in acts:
+    for a in pool:
         if not _keep(a):
             continue
         k = (a.get("action_name", ""), a.get("action_timestamp", ""),
@@ -620,7 +651,6 @@ def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
         return [{field: name, "count": n}
                 for name, n in sorted(counts.items(), key=lambda kv: -kv[1])][:20]
 
-    import query_engine as _qe
     by_hour = {}
     for a in uniq:
         dt = _qe.parse_ts(a.get("action_timestamp"))
@@ -1153,22 +1183,24 @@ def _strip_context_tag(question: str) -> str:
 
 
 def _inherit_time_context(question: str, llm_history: list, dataset_id) -> str:
-    """Resolve a deictic time reference in a follow-up question.
+    """Resolve a deictic time reference OR a prior-subset reference in a follow-up.
 
     When the CURRENT question refers to a time established in a PRIOR turn
-    ("that time", "that hour", "that period/window", "then") but names no
-    explicit time of its own, inherit the hour/date from the most recent prior
-    USER turn that named one and append it as an explicit "hour N" / "on
-    YYYY-MM-DD" clause. The deterministic parser (query_engine.parse_query,
+    ("that time", "that hour", "that period/window", "then") — or references the
+    previous flagged subset ("those 33 flagged actions", "of the flagged ones")
+    — but names no explicit time of its own, inherit the hour/date from the most
+    recent prior USER turn that named one and append it as an explicit "hour N" /
+    "on YYYY-MM-DD" clause. The deterministic parser (query_engine.parse_query,
     _fetch_detail_rows) only ever sees the current question string, so without
     this rewrite a follow-up like "show me NROS actions during that time" loses
     the hour-11 scope from the previous turn and the row list stops matching
     the breakdown count the user just saw.
 
     Returns the question unchanged unless ALL of: (a) it uses a deictic time
-    phrase, (b) it names no explicit hour of its own, and (c) a prior user turn
-    named an explicit hour/date. Idempotent — a rewritten question already
-    carries an explicit hour, so re-running it is a no-op.
+    phrase OR references the prior flagged subset, (b) it names no explicit hour
+    of its own, and (c) a prior user turn named an explicit hour/date. Idempotent
+    — a rewritten question already carries an explicit hour, so re-running it is a
+    no-op.
     """
     import re
     if not question or not llm_history or not dataset_id:
@@ -1180,7 +1212,21 @@ def _inherit_time_context(question: str, llm_history: list, dataset_id) -> str:
         r"|\bthen\b",
         q_lower,
     )
-    if not deictic:
+    # Also inherit when the follow-up references the PRIOR scoped subset itself
+    # ("which users were among those 33 flagged actions", "of the 33 flagged
+    # actions", "those flagged ones"). That subset was defined by the previous
+    # turn's time/date scope, so re-apply it. Without this the question parses as
+    # an UNSCOPED ranking and the explorer returns the dataset-wide list (the
+    # "43 users accounted for 33 flagged actions" contradiction).
+    subset_ref = re.search(
+        r"\bthose\s+flagged\b"
+        r"|\bthe\s+\d+\s+flagged\b"
+        r"|\b(?:those|these)\s+(?:\d+\s+)?(?:flagged\s+)?(?:actions?|ones?)\b"
+        r"|\b(?:among|of|from|within|out\s+of)\s+(?:those|these|the)\s+"
+        r"(?:\d+\s+)?(?:flagged\s+)?(?:actions?|ones?)\b",
+        q_lower,
+    )
+    if not deictic and not subset_ref:
         return question
 
     try:
@@ -1217,6 +1263,74 @@ def _inherit_time_context(question: str, llm_history: list, dataset_id) -> str:
     return question
 
 
+# Reference phrases that mark a question as a CONTEXT-DEPENDENT follow-up whose
+# scope should be inherited from the prior turn ("those 33 flagged actions", "the
+# slow ones", "that window", "them", "the same users"). Deliberately NOT firing
+# on bare common words — a question with no reference phrase is treated as a new,
+# independent question (see the over-injection incident noted in
+# _resolve_followup_references).
+_REFERENCE_RE = re.compile(
+    r"\b(?:those|these|them)\b"
+    r"|\b(?:the\s+same|same|previous|prior|earlier|aforementioned)\b"
+    r"|\b(?:that|this)\s+(?:hour|time|period|window|time\s*frame|timeframe|moment"
+    r"|point|set|group|subset|day|range|window)\b"
+    r"|\bthe\s+\d+\s+(?:flagged|actions?|ones?)\b"
+    r"|\b(?:the|those|these)\s+(?:flagged|slow|slowest|offending|affected|anomalous)"
+    r"\s+(?:actions?|ones?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_followup_reference(question: str) -> bool:
+    return bool(_REFERENCE_RE.search(question or ""))
+
+
+def _inherit_prior_scope(question: str, llm_history: list, dataset_id) -> dict:
+    """Structured cross-turn scope inheritance.
+
+    When the current question is a CONTEXT-DEPENDENT follow-up (names a reference
+    phrase) but leaves one or more scope dimensions unset, inherit those
+    dimensions from the most recent prior USER turn that named a scope. Unlike the
+    old hour-only text-append (_inherit_time_context), this carries EVERY
+    dimension query_engine understands — hour RANGE (hour_min/hour_max), date,
+    duration, entity (user/story/action/session) — plus the anomaly type, by
+    re-parsing the prior turn's own text. Returns
+    {"filters": {<inherited only>}, "anomaly_type": str|None}; empty when the
+    current question is not a follow-up reference.
+    """
+    out = {"filters": {}, "anomaly_type": None}
+    if not question or not llm_history or not dataset_id:
+        return out
+    if not _is_followup_reference(question):
+        return out
+    try:
+        import query_engine as _qe
+    except Exception:
+        return out
+    self_filters = (_qe.parse_query(question, dataset_id) or {}).get("filters", {}) or {}
+    self_anom = _detect_anomaly_type(question)
+    for msg in reversed(llm_history):
+        if msg.get("role") != "user":
+            continue
+        prior = _strip_context_tag(msg.get("content") or "")  # tags never re-parsed
+        if not prior:
+            continue
+        pfilters = (_qe.parse_query(prior, dataset_id) or {}).get("filters", {}) or {}
+        panom = _detect_anomaly_type(prior)
+        if not pfilters and not panom:
+            continue
+        for k, v in pfilters.items():
+            if k not in self_filters:
+                out["filters"][k] = v
+        if self_anom is None and panom:
+            out["anomaly_type"] = panom
+        if out["filters"] or out["anomaly_type"]:
+            log.info("Follow-up scope inherited: filters=%s anomaly_type=%s",
+                     out["filters"], out["anomaly_type"])
+        break  # most recent scoped prior turn wins
+    return out
+
+
 def _build_explorer_input(question: str, payload: dict, dataset_id,
                           llm_history: list = None) -> dict:
     """
@@ -1245,14 +1359,14 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     import re
     import mesh_store as _ms
 
-    # Resolve deictic time references ("that time / that hour / then") to the
-    # explicit hour/date established in a prior turn, so the row-detail and
-    # aggregation paths scope a follow-up the same way the previous breakdown
-    # was scoped. The dimension / rank / cross detectors strip the enrichment
-    # tag internally (see _strip_context_tag) so none of them ever match an
-    # injected prior-turn entity name as a filter.
-    scoped_question = _inherit_time_context(
-        _strip_context_tag(question), llm_history, dataset_id)
+    # Strip the enrichment tag so the deterministic parsers never match an
+    # injected prior-turn entity name as a filter. Cross-turn scope is inherited
+    # STRUCTURALLY below (every dimension, incl. hour ranges) rather than via the
+    # old hour-only text append.
+    scoped_question = _strip_context_tag(question)
+    _inherited = _inherit_prior_scope(scoped_question, llm_history, dataset_id)
+    _inherited_filters = _inherited.get("filters", {})
+    _inherited_anom    = _inherited.get("anomaly_type")
 
     user_filter     = None
     detail_rows     = []
@@ -1266,12 +1380,37 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     all_ranked_stories      = all_rankings["stories"]
     all_ranked_action_types = all_rankings["action_types"]
 
+    # Parse the question's filters once up front so the cross-dimensional path
+    # (which runs before the aggregation parse below) can honor a time/duration
+    # window. _TD_KEYS are the keys flagged_actions can satisfy (they carry
+    # timestamp + duration but not phase/end fields). Inherited time/duration
+    # scope is merged in so a follow-up ("which users on story X in that window")
+    # keeps the prior window.
+    _TD_KEYS = ("date", "hour_of_day", "hour_min", "hour_max",
+                "duration_min_ms", "duration_max_ms")
+    _early_time_dur = {}
+    if dataset_id:
+        try:
+            import query_engine as _qe0
+            _early_spec = _qe0.parse_query(scoped_question, dataset_id)
+            if _early_spec:
+                _early_time_dur = {k: v for k, v in _early_spec.get("filters", {}).items()
+                                   if k in _TD_KEYS}
+        except Exception:
+            _early_time_dur = {}
+    # Merge inherited time/duration scope (fills only dims the current question
+    # did not set itself).
+    for _k, _v in _inherited_filters.items():
+        if _k in _TD_KEYS and _k not in _early_time_dur:
+            _early_time_dur[_k] = _v
+
     # ── Cross-dimensional check (highest specificity — runs first) ────────────
     filter_dim, filter_val, result_dim = _detect_cross_dimensional_query(question, payload)
 
     if filter_dim is not None:
         cross_results = _compute_cross_dimensional_results(
-            payload, filter_dim, filter_val, result_dim
+            payload, filter_dim, filter_val, result_dim,
+            extra_filters=_early_time_dur or None,
         )
         log.info(
             "Explorer: cross-dimensional %s='%s' → %s (%d results)",
@@ -1392,13 +1531,31 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
         try:
             import query_engine as _qe
             spec = _qe.parse_query(scoped_question, dataset_id)
+            # Merge inherited scope: a follow-up reference inherits the prior
+            # turn's filter dims it did not set itself (hour range, date,
+            # duration, entity). When the current question had no spec at all but
+            # inherits one, synthesise a spec so the follow-up is still scoped.
+            if _inherited_filters:
+                if spec is None:
+                    spec = {"filters": {}, "group_by": None}
+                _mf = dict(spec.get("filters") or {})
+                for _k, _v in _inherited_filters.items():
+                    _mf.setdefault(_k, _v)
+                spec["filters"] = _mf
             if spec:
                 entry = _ms.get_dataset(dataset_id)
                 rows = (entry or {}).get("rows", []) or []
                 if rows:
                     agg = _qe.aggregate_rows(rows, filters=spec.get("filters"),
                                              group_by=spec.get("group_by"))
-                    if agg.get("groups"):
+                    # Build the aggregation whenever the question carried a
+                    # concrete FILTER — even when it matched ZERO rows. Previously
+                    # a valid-but-empty filter (e.g. "actions longer than 10
+                    # hours", none exist) left aggregation=None → scoped_agg=False
+                    # → the dataset-wide rankings were NOT stripped and the model
+                    # fabricated a nonzero answer. A zero-match scoped result must
+                    # still read as scoped (total_matching=0), not dataset-wide.
+                    if agg.get("groups") or spec.get("filters"):
                         aggregation = {
                             "filters":  spec.get("filters"),
                             "group_by": spec.get("group_by"),
@@ -1408,9 +1565,9 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
                             "answer":   _qe.format_answer(spec, agg),
                         }
                         log.info("Explorer: on-demand aggregation "
-                                 "(filters=%s group_by=%s groups=%d)",
+                                 "(filters=%s group_by=%s groups=%d matching=%d)",
                                  spec.get("filters"), spec.get("group_by"),
-                                 len(agg.get("groups", [])))
+                                 len(agg.get("groups", [])), agg.get("total_matching", 0))
         except Exception:
             log.exception("Explorer on-demand aggregation failed — continuing without it")
 
@@ -1452,10 +1609,12 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     # actions for story X"), build its authoritative view from flagged_by_type —
     # the only flag-aware source — optionally narrowed to the entity the
     # question also scopes to.
-    _anom_type = _detect_anomaly_type(scoped_question)
+    _anom_type = _detect_anomaly_type(scoped_question) or _inherited_anom
+    _type_time_dur = {k: v for k, v in _agg_filters.items() if k in _TD_KEYS}
     anomaly_type_scope = (
         _compute_anomaly_type_scope(raw_fbt, _anom_type, scoped_user,
-                                    scoped_story, scoped_action, scoped_session)
+                                    scoped_story, scoped_action, scoped_session,
+                                    time_filters=_type_time_dur or None)
         if _anom_type else None
     )
 
@@ -1496,12 +1655,16 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     # (widget phase timings). But flagged_*_ranking (flagged counts) and
     # data_summary.by_* (activity volume) rank the SAME entities by DIFFERENT
     # metrics and would be rendered as extra, contradicting tables. When the
-    # question is a widget-timing one — and it is NOT scoped and NOT an
-    # anomaly-type question (those have their own single-source handling above)
-    # — and metric data actually exists, strip the competing rankings so
-    # metric_rankings is the only ranked per-entity source. Mirrors scoped_agg.
-    metric_rankings = None if scoped_agg else _compute_widget_metric_rankings(dataset_id, payload)
-    if (not scoped_agg and not anomaly_type_scope
+    # question is a widget-timing one — and it is NOT an anomaly-type question
+    # (those have their own single-source handling above) — and metric data
+    # exists, strip the competing rankings so metric_rankings is the only ranked
+    # per-entity source. metric_rankings is computed SCOPED when a filter is
+    # present (so "most backend time after 4 PM" / "render time for story X" rank
+    # within the window) instead of being nulled out.
+    _mr_filters = _agg_filters if scoped_agg else None
+    metric_rankings = _compute_widget_metric_rankings(dataset_id, payload,
+                                                      filters=_mr_filters)
+    if (not anomaly_type_scope
             and _detect_timing_metric(scoped_question)
             and metric_rankings and metric_rankings.get("available")):
         displayed_user_ranking = displayed_story_ranking = displayed_action_ranking = []
@@ -1595,19 +1758,134 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
             "total_actions": _agg_total,
         }
 
+    # ── Authoritative flagged count for TIME / DURATION scopes (gap fix) ──────
+    # The *_flagged_summary fields above cover user / story / action / session.
+    # A scope on TIME (date, hour) or DURATION has NO flagged summary, so
+    # "of the actions after 4 PM, how many had anomalies?" had no authoritative
+    # number — the model fell back to the dataset-wide total (answered 558 for a
+    # 105-action window). Build the real count by running the SAME parsed filter
+    # over the payload's flagged_actions through query_engine.filter_rows (the
+    # single filter source of truth — flagged_actions are action-row shaped and
+    # carry action_timestamp + action_duration_ms), deduped by the standard
+    # (action_name, timestamp, session_id) key. Restricted to filter keys the
+    # flagged_actions can satisfy (date / hour / duration) — end-time and
+    # dominant-phase read fields flagged_actions lack, which would wrongly
+    # exclude every row.
+    scoped_flagged_summary = None
+    _TIME_DUR_KEYS = ("date", "hour_of_day", "hour_min", "hour_max",
+                      "duration_min_ms", "duration_max_ms")
+    if scoped_agg and any(k in _agg_filters for k in _TIME_DUR_KEYS):
+        try:
+            import query_engine as _qe
+            _flag_filters = {k: v for k, v in _agg_filters.items()
+                             if k in _TIME_DUR_KEYS or k in ("user", "story", "action", "session")}
+            _flagged = payload.get("anomalies", {}).get("flagged_actions", []) or []
+            # Denominator must use the SAME predicate as the numerator. When
+            # _agg_filters contained a key flagged_actions can't satisfy
+            # (dominant_phase, end_hour) it was dropped from _flag_filters; using
+            # _agg_total (which DID apply it) as the denominator let flagged_count
+            # exceed the total → flagged_pct > 100%. Recount the stored rows under
+            # the identical _flag_filters so numerator and denominator always agree.
+            _stored_rows = (_ms.get_dataset(dataset_id) or {}).get("rows", []) or []
+            _scope_total = (len(_qe.filter_rows(_stored_rows, _flag_filters))
+                            if _stored_rows else _agg_total)
+            _seen = set()
+            _types, _by_user, _by_story, _by_action = {}, {}, {}, {}
+            for a in _qe.filter_rows(_flagged, _flag_filters):
+                k = (a.get("action_name", ""), a.get("action_timestamp", ""),
+                     a.get("session_id", ""))
+                if k in _seen:
+                    continue
+                _seen.add(k)
+                for t in (a.get("anomaly_types") or []):
+                    _types[t] = _types.get(t, 0) + 1
+                _by_user[a.get("user") or "unknown"] = _by_user.get(a.get("user") or "unknown", 0) + 1
+                _by_story[a.get("story_name") or "unknown"] = _by_story.get(a.get("story_name") or "unknown", 0) + 1
+                _by_action[a.get("action_name") or "unknown"] = _by_action.get(a.get("action_name") or "unknown", 0) + 1
+            _flagged_count = len(_seen)
+
+            def _ranked(counts):
+                return [{"name": n, "flagged_count": c}
+                        for n, c in sorted(counts.items(), key=lambda kv: -kv[1])]
+
+            scoped_flagged_summary = {
+                "filters":             _flag_filters,
+                "scope_total_actions": _scope_total,
+                "flagged_count":       _flagged_count,
+                "flagged_pct":         (round(100.0 * _flagged_count / _scope_total, 1)
+                                        if _scope_total else None),
+                "by_type":             dict(sorted(_types.items(), key=lambda kv: -kv[1])),
+                "by_user":             _ranked(_by_user),
+                "by_story":            _ranked(_by_story),
+                "by_action":           _ranked(_by_action),
+            }
+            log.info("Explorer: scoped flagged summary filters=%s flagged=%d/%s users=%d",
+                     _flag_filters, _flagged_count, _scope_total, len(_by_user))
+        except Exception:
+            log.exception("Explorer scoped flagged summary failed — continuing without it")
+
+    # ── Suppress dataset-wide flag sources once the question is SCOPED ─────────
+    # anomaly_context (dataset-wide Anomaly Agent output), flagged_type_totals and
+    # flagged_by_type samples otherwise sit beside the scoped number and are
+    # exactly what the model grabs for "how many". Three cases:
+    #   (a) scoped_flagged_summary present → it is the authoritative scoped flag
+    #       source; replace flagged_type_totals with its scoped by_type, narrow
+    #       flagged_by_type samples to the scope, null the all-time entity
+    #       *_flagged_summary (its by_user/by_story/by_action already cover the
+    #       entity∧time scope), and drop the dataset-wide anomaly_context.
+    #   (b) scoped_agg but NO scoped_flagged_summary (end-time / dominant-phase
+    #       scope — flagged_actions lack those fields, so a scoped flag count is
+    #       not computable) → remove the dataset-wide flag numbers entirely so the
+    #       model cannot present them as the scoped answer; flag it in the note.
+    #   (c) not scoped → leave everything dataset-wide (correct for a global ask).
+    anomaly_context = _get_anomaly_context(dataset_id)
+    _scope_flag_unavailable = False
+    if scoped_flagged_summary is not None:
+        flagged_type_totals = dict(scoped_flagged_summary.get("by_type", {}))
+        try:
+            import query_engine as _qe2
+            flagged_by_type = {
+                tk: _qe2.filter_rows(v if isinstance(v, list) else [], _flag_filters)[:5]
+                for tk, v in raw_fbt.items() if isinstance(v, list)
+            }
+            flagged_by_type = {tk: v for tk, v in flagged_by_type.items() if v}
+        except Exception:
+            flagged_by_type = {}
+        user_flagged_summary = story_flagged_summary = None
+        action_flagged_summary = session_flagged_summary = None
+        anomaly_context = None
+    elif scoped_agg and not (scoped_user or scoped_story or scoped_action or scoped_session):
+        # Non-entity scope we can't represent on flagged_actions (end-time /
+        # dominant-phase). No trustworthy scoped flag count exists.
+        flagged_type_totals = {}
+        flagged_by_type = {}
+        anomaly_context = None
+        _scope_flag_unavailable = True
+
     # Stored action rows (detail_rows, aggregation input) carry flags=null, so no
     # flag count may be derived from them — the *_flagged_summary fields are the
     # single authoritative source. This note is model-visible so the rule holds
     # even if the system prompt is stale.
-    scoped_any = bool(scoped_user or scoped_story or scoped_action or scoped_session)
-    detail_rows_note = (
-        "detail_rows, aggregation, and all stored action rows carry flags=null "
-        "(flags are frontend-computed and not stored server-side). NEVER count "
-        "flagged actions from them, and never read a flagged count off the "
-        "aggregation's activity total. Use the *_flagged_summary.flagged_count "
-        "fields and flagged_type_totals — these are authoritative and already "
-        "deduplicated."
-    ) if scoped_any else None
+    scoped_any = bool(scoped_user or scoped_story or scoped_action or scoped_session
+                      or scoped_flagged_summary or _scope_flag_unavailable)
+    if _scope_flag_unavailable:
+        detail_rows_note = (
+            "This question is scoped by a filter (e.g. end-time or dominant phase) "
+            "that cannot be applied to the flagged-action data, so NO authoritative "
+            "flagged COUNT is available for this exact scope. Report the activity "
+            "numbers from the aggregation, and state plainly that the flagged count "
+            "for this specific filter could not be computed — do NOT substitute a "
+            "dataset-wide flagged total."
+        )
+    else:
+        detail_rows_note = (
+            "detail_rows, aggregation, and all stored action rows carry flags=null "
+            "(flags are frontend-computed and not stored server-side). NEVER count "
+            "flagged actions from them, and never read a flagged count off the "
+            "aggregation's activity total. Use scoped_flagged_summary.flagged_count "
+            "(for time/duration scopes) or the *_flagged_summary.flagged_count "
+            "fields — these are authoritative and already deduplicated."
+        ) if scoped_any else None
 
     return {
         "data_summary":                 ds_out,
@@ -1618,7 +1896,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
         "flagged_type_totals":          flagged_type_totals,
         "question":                     question,
         "user_request":                 question,       # for _SCOPE_FILTER consistency
-        "anomaly_context":              _get_anomaly_context(dataset_id),
+        "anomaly_context":              anomaly_context,
         "detail_rows":                  detail_rows,
         "detail_rows_note":             detail_rows_note,
         "anomaly_type_scope":           anomaly_type_scope,
@@ -1627,6 +1905,7 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
         "story_flagged_summary":        story_flagged_summary,
         "action_flagged_summary":       action_flagged_summary,
         "session_flagged_summary":      session_flagged_summary,
+        "scoped_flagged_summary":       scoped_flagged_summary,
         "mode":                         mode,           # "ranking" | "detail" | "cross"
         "dimension":                    dimension,
         "ranking_request":              ranking_request,
@@ -1923,7 +2202,7 @@ def _compute_flagged_rankings(payload: dict) -> dict:
     }
 
 
-def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
+def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> dict:
     """
     Aggregate widget-level timing metrics (offset, render, network, backend) by
     action_name, story_name, and user — reading from the widget_rows stored in
@@ -1932,30 +2211,51 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
     widget_rows carry the `offset` (pre-render wait ms), `render`, `network`,
     and `backend` phase durations per widget per action instance.
 
+    When `filters` is given (a query_engine filter spec — user/story/hour/date/
+    duration etc.), the ranking is SCOPED: only widget rows whose parent action
+    row passes query_engine.filter_rows are aggregated, so "most backend time
+    after 4 PM" / "render time for story X" rank within that window instead of
+    dataset-wide.
+
     Returns {
-        "by_action": [{rank, action_name, total_offset_ms, avg_offset_ms,
-                       total_render_ms, total_network_ms, total_backend_ms,
-                       widget_count}],
-        "by_story":  [same, keyed story_name],
-        "by_user":   [same, keyed user],
-        "available": bool   # False when no widget rows exist
+        "by_action": [...], "by_story": [...], "by_user": [...],
+        "by_session": [...], "by_widget": [...],
+        "available": bool,  # False when no widget rows exist
+        "scoped": bool      # True when a filter was applied
     }
     All lists are pre-sorted by total_offset_ms descending.
     """
     import mesh_store as _ms
 
+    _empty = {"by_action": [], "by_story": [], "by_user": [], "by_session": [],
+              "by_widget": [], "available": False, "scoped": bool(filters)}
     if not dataset_id:
-        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
+        return _empty
 
     entry = _ms.get_dataset(dataset_id)
     if not entry:
-        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
+        return _empty
 
     widget_rows = entry.get("widget_rows", [])
     action_rows = entry.get("rows", [])
 
     if not widget_rows:
-        return {"by_action": [], "by_story": [], "by_user": [], "by_session": [], "by_widget": [], "available": False}
+        return _empty
+
+    # Scope: restrict to the action instances that pass the filter. The widget
+    # row's action_key is "action_name::timestamp"; build the allowed-key set
+    # from the filtered action rows so the widget aggregation honors the scope.
+    allowed_keys = None
+    if filters:
+        try:
+            import query_engine as _qe
+            kept = _qe.filter_rows(action_rows, filters)
+            allowed_keys = {f"{r.get('action_name','')}::{r.get('action_timestamp','')}"
+                            for r in kept}
+            action_rows = kept
+        except Exception:
+            log.exception("metric_rankings scope filter failed — using dataset-wide")
+            allowed_keys = None
 
     # Build lookup: action_key ("action_name::timestamp") → {story_name, user}
     action_key_meta: dict = {}
@@ -1975,6 +2275,8 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
 
     for w in widget_rows:
         action_key  = w.get("action_key", "")
+        if allowed_keys is not None and action_key not in allowed_keys:
+            continue  # outside the requested scope
         action_name = action_key.split("::")[0] if "::" in action_key else action_key
 
         meta       = action_key_meta.get(action_key, {})
@@ -2157,6 +2459,7 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict) -> dict:
         "by_widget":        by_widget[:_WIDGET_CAP],
         "by_widget_total":  len(by_widget),
         "available":        True,
+        "scoped":           bool(filters),
     }
 
 
@@ -2268,10 +2571,16 @@ def _compute_cross_dimensional_results(
     filter_dim: str,
     filter_val: str,
     result_dim: str,
+    extra_filters=None,
 ) -> list:
     """
     Filter flagged_actions to rows where filter_dim == filter_val, then rank
     by result_dim (deduplicated by action identity key).
+
+    When `extra_filters` is given (a query_engine time/duration spec), it is
+    applied first via query_engine.filter_rows so "which users on story X after
+    4 PM" ranks only the flagged actions inside that window — otherwise the time
+    scope was silently dropped and the result spanned all hours.
 
     Returns [
         {rank, <result_field>: entity, flagged_count, flagged_pct,
@@ -2287,6 +2596,12 @@ def _compute_cross_dimensional_results(
     result_field = _field[result_dim]
 
     flagged_actions = payload.get("anomalies", {}).get("flagged_actions", [])
+    if extra_filters:
+        try:
+            import query_engine as _qe
+            flagged_actions = _qe.filter_rows(flagged_actions, extra_filters)
+        except Exception:
+            log.exception("cross-dim time/duration scope failed — using all hours")
 
     # Filter to matching entity (case-insensitive exact match)
     fval_lower = filter_val.lower()

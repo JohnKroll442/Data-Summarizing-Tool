@@ -1,676 +1,405 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Performance Analytics · Unified Agent Architecture</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #EEF2F7;
-      padding: 32px;
-      min-width: 1100px;
-      color: #1E293B;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1200">
+<title>Performance Analytics · Architecture</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;
+  background:#dde3ea;
+  padding:28px;
+  min-width:1100px;
+  color:#1a2233;
+  font-size:11px;
+}
 
-    .page {
-      background: white;
-      border-radius: 14px;
-      padding: 36px 40px 28px;
-      margin-bottom: 48px;
-      box-shadow: 0 2px 20px rgba(0,0,0,0.09);
-    }
+/* ── Page ── */
+.page{
+  background:#fff;
+  border-radius:10px;
+  padding:24px 30px 22px;
+  margin-bottom:30px;
+  width:1080px;
+}
 
-    .page-header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 28px;
-      border-bottom: 1px solid #E2E8F0;
-      padding-bottom: 16px;
-    }
+@media print{
+  @page{size:A4 landscape;margin:10mm 13mm}
+  body{background:#fff;padding:0;min-width:0}
+  .page{border-radius:0;margin:0;padding:10mm 13mm;width:100%;page-break-after:always}
+  .page:last-child{page-break-after:avoid}
+}
 
-    .page-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: #1E293B;
-    }
+/* ── Header ── */
+.ph{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #d0d7e2;padding-bottom:8px;margin-bottom:16px}
+.ph h1{font-size:14.5px;font-weight:700;color:#111827}
+.brand{font-size:8px;font-weight:600;letter-spacing:.14em;color:#9ca3af;text-transform:uppercase}
 
-    .badge {
-      margin-left: 12px;
-      background: #0F766E;
-      color: white;
-      padding: 4px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
+/* ── Cards ── */
+.card{border:1.5px solid;border-radius:7px;overflow:hidden}
+.hd{color:#fff;padding:5px 11px;font-size:10.5px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bd{padding:6px 11px;font-size:9.5px;line-height:1.6;color:#374151}
 
-    .badge-new {
-      margin-left: auto;
-      background: #7C3AED;
-      color: white;
-      padding: 4px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
+/* ── Colours ── */
+.blue  {--b:#1e40af;--bg:#eff6ff;--br:#93c5fd}
+.teal  {--b:#065f46;--bg:#ecfdf5;--br:#6ee7b7}
+.violet{--b:#4c1d95;--bg:#f5f3ff;--br:#c4b5fd}
+.green {--b:#14532d;--bg:#f0fdf4;--br:#86efac}
+.amber {--b:#78350f;--bg:#fffbeb;--br:#fcd34d}
+.slate {--b:#1e293b;--bg:#f8fafc;--br:#cbd5e1}
+.card.blue  {background:var(--bg);border-color:var(--br)}
+.card.teal  {background:var(--bg);border-color:var(--br)}
+.card.violet{background:var(--bg);border-color:var(--br)}
+.card.green {background:var(--bg);border-color:var(--br)}
+.card.amber {background:var(--bg);border-color:var(--br)}
+.card.slate {background:var(--bg);border-color:var(--br)}
+.hd.blue  {background:#1d4ed8}
+.hd.teal  {background:#065f46}
+.hd.violet{background:#5b21b6}
+.hd.green {background:#15803d}
+.hd.amber {background:#b45309}
+.hd.slate {background:#334155}
 
-    /* ── BOX ── */
-    .box {
-      border-radius: 8px;
-      padding: 11px 14px 12px;
-    }
-    .box-title {
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 3px;
-    }
-    .box-sub {
-      font-size: 11px;
-      line-height: 1.5;
-      opacity: 0.78;
-    }
+/* ── Chips ── */
+.chip{display:inline-block;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.32);color:#fff;white-space:nowrap}
+.chip-out{display:inline-block;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:600;background:#e5e7eb;color:#374151;border:1px solid #d1d5db;white-space:nowrap}
 
-    /* ── COLOURS ── */
-    .c-orch   { background: #EDE9FE; border: 1.5px solid #7C3AED; }
-    .c-orch   .box-title { color: #5B21B6; }
+/* ── Flow ── */
+.flow{display:flex;flex-direction:column;align-items:center;gap:0;width:100%}
+.fw{width:100%}
+.arr{text-align:center;font-size:15px;color:#94a3b8;padding:3px 0;line-height:1}
+.arr-lbl{display:block;font-size:7.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-top:1px}
 
-    .c-unified { background: #F0FDF4; border: 2px solid #16A34A; }
-    .c-unified .box-title { color: #15803D; }
+/* Entry row */
+.entry{display:flex;align-items:center;gap:0;width:100%}
+.ubub{width:42px;height:42px;border-radius:50%;background:#e5e7eb;border:1.5px solid #d1d5db;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.dash{flex:0 0 52px;border-bottom:1.5px dashed #94a3b8;margin:0 6px;position:relative;align-self:center}
+.dash-lbl{font-size:7.5px;color:#9ca3af;position:absolute;top:-12px;left:50%;transform:translateX(-50%);white-space:nowrap}
 
-    .c-mode   { background: #ECFDF5; border: 1.5px solid #059669; }
-    .c-mode   .box-title { color: #065F46; }
+/* Mode grid */
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;width:100%}
+.mc{border:1.5px solid #c4b5fd;border-radius:7px;background:#f5f3ff;overflow:hidden}
+.mc-hd{background:#5b21b6;color:#fff;padding:5px 9px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.mc-chips{padding:3px 9px 0;display:flex;gap:3px}
+.mc-body{padding:4px 9px 7px;font-size:9px;color:#374151;line-height:1.6}
+.mc-flow{font-size:8.5px;font-style:italic;color:#5b21b6;margin-top:2px}
 
-    .c-det    { background: #FFFBEB; border: 1.5px solid #D97706; }
-    .c-det    .box-title { color: #92400E; }
+/* Response bar */
+.respbar{border:1.5px solid #86efac;border-radius:7px;background:#f0fdf4;padding:7px 14px;width:100%;display:flex;align-items:center;gap:10px}
+.respbar-icon{font-size:18px}
+.respbar-text{font-size:9.5px;color:#15803d;line-height:1.6}
+.respbar-text b{color:#14532d}
 
-    .c-out    { background: #1D4ED8; border: none; }
-    .c-out    .box-title { color: white; }
-    .c-out    .box-sub   { color: rgba(255,255,255,0.85); }
+/* ── Routing table ── */
+.rt-sec{margin-top:10px}
+.rt-ttl{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;text-align:center;margin-bottom:5px}
+.rt{width:100%;border-collapse:collapse;font-size:9px}
+.rt th{padding:4px 10px;background:#f1f5f9;font-weight:700;color:#334155;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;text-align:left}
+.rt td{padding:3.5px 10px;border-bottom:1px solid #e2e8f0;vertical-align:middle}
+.rt tr:last-child td{border-bottom:none}
+.it{display:inline-block;padding:1px 6px;border-radius:3px;font-size:8.5px;font-weight:700}
+.i-fa{background:#dbeafe;color:#1e40af}
+.i-rc{background:#fce7f3;color:#9d174d}
+.i-rp{background:#fdf4ff;color:#7e22ce;font-style:italic}
+.i-de{background:#d1fae5;color:#065f46}
+.i-wt{background:#e0e7ff;color:#3730a3}
+.i-kp{background:#fef3c7;color:#92400e}
+.i-an{background:#fee2e2;color:#991b1b}
+.i-cv{background:#f3f4f6;color:#374151}
+.llm{font-weight:700;color:#5b21b6}
+.det{color:#059669;font-size:8.5px}
 
-    .c-infra  { background: #F8FAFC; border: 1.5px solid #CBD5E1; }
-    .c-infra  .box-title { color: #334155; }
+/* ── Legend ── */
+.leg{display:flex;gap:16px;margin-top:10px;font-size:8.5px;color:#4b5563;justify-content:center}
+.li{display:flex;align-items:center;gap:4px}
+.ls{width:12px;height:12px;border-radius:2px;flex-shrink:0}
 
-    .c-python { background: #FFF7ED; border: 1.5px solid #EA580C; }
-    .c-python .box-title { color: #C2410C; }
-
-    .c-mesh   { background: #EFF6FF; border: 1.5px solid #2563EB; }
-    .c-mesh   .box-title { color: #1D4ED8; }
-
-    /* ── TAGS ── */
-    .tag {
-      display: inline-block;
-      border-radius: 4px;
-      padding: 2px 7px;
-      font-size: 10px;
-      font-weight: 600;
-      margin-top: 6px;
-      margin-right: 3px;
-    }
-    .t-llm  { background: #EDE9FE; color: #5B21B6; border: 1px solid #A78BFA; }
-    .t-ro   { background: #ECFDF5; color: #065F46; border: 1px solid #6EE7B7; }
-    .t-api  { background: #EFF6FF; color: #1E40AF; border: 1px solid #93C5FD; }
-    .t-det  { background: #FEF9C3; color: #92400E; border: 1px solid #FCD34D; }
-    .t-new  { background: #7C3AED; color: white; border: none; }
-    .t-py   { background: #FFF7ED; color: #C2410C; border: 1px solid #FDBA74; }
-
-    /* ── FLOW HELPERS ── */
-    .divider {
-      text-align: center;
-      font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      color: #94A3B8;
-      margin: 10px 0 8px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .divider::before, .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: #CBD5E1;
-    }
-
-    .row    { display: flex; align-items: flex-start; gap: 14px; }
-    .col    { display: flex; flex-direction: column; gap: 10px; }
-    .center { align-items: center; }
-
-    .modes-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-    }
-
-    .user-block {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px;
-      flex-shrink: 0;
-    }
-    .user-icon {
-      width: 46px;
-      height: 46px;
-      background: #E2E8F0;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-    }
-    .user-label { font-size: 11px; color: #64748B; }
-
-    .arrow-line {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      flex-shrink: 0;
-    }
-    .arrow-line span { font-size: 10.5px; color: #94A3B8; font-style: italic; white-space: nowrap; }
-    .arrow-line svg  { display: block; }
-
-    .legend {
-      display: flex;
-      gap: 18px;
-      margin-top: 22px;
-      padding-top: 14px;
-      border-top: 1px solid #E2E8F0;
-      flex-wrap: wrap;
-    }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 11px;
-      color: #475569;
-    }
-    .ldot {
-      width: 11px;
-      height: 11px;
-      border-radius: 3px;
-      flex-shrink: 0;
-    }
-
-    .intent-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11.5px;
-      margin-top: 10px;
-    }
-    .intent-table th {
-      background: #F1F5F9;
-      padding: 6px 10px;
-      text-align: left;
-      font-weight: 700;
-      color: #475569;
-      border-bottom: 1px solid #E2E8F0;
-    }
-    .intent-table td {
-      padding: 6px 10px;
-      border-bottom: 1px solid #F1F5F9;
-      vertical-align: top;
-    }
-    .intent-table tr:last-child td { border-bottom: none; }
-    .intent-key {
-      font-family: monospace;
-      font-size: 11px;
-      background: #EDE9FE;
-      color: #5B21B6;
-      padding: 1px 6px;
-      border-radius: 4px;
-    }
-    .mode-key {
-      font-family: monospace;
-      font-size: 11px;
-      background: #ECFDF5;
-      color: #065F46;
-      padding: 1px 6px;
-      border-radius: 4px;
-    }
-
-    .callout {
-      background: #F0FDF4;
-      border: 1.5px solid #16A34A;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .callout-icon { font-size: 22px; flex-shrink: 0; }
-    .callout-body { font-size: 12px; line-height: 1.6; }
-    .callout-body strong { font-weight: 700; color: #15803D; }
-
-    .before-after {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 14px;
-    }
-    .ba-col {
-      flex: 1;
-      border-radius: 8px;
-      padding: 12px 14px;
-    }
-    .ba-before {
-      background: #FFF1F2;
-      border: 1.5px solid #F43F5E;
-    }
-    .ba-before .ba-title { color: #BE123C; font-weight: 700; font-size: 12px; margin-bottom: 6px; }
-    .ba-after  {
-      background: #F0FDF4;
-      border: 1.5px solid #16A34A;
-    }
-    .ba-after  .ba-title { color: #15803D; font-weight: 700; font-size: 12px; margin-bottom: 6px; }
-    .ba-item { font-size: 11px; line-height: 1.7; color: #475569; }
-    .ba-item code { font-size: 10px; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; }
-
-    @media print {
-      .page:first-of-type { page-break-after: always; }
-      body { background: white; padding: 0; }
-      .page { box-shadow: none; border-radius: 0; margin: 0; }
-    }
-  </style>
+/* ── Page 2 grid ── */
+.tgrid{display:grid;grid-template-columns:1fr 1.65fr 1fr;gap:9px;margin-bottom:9px}
+.tbot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.col{display:flex;flex-direction:column;gap:7px}
+.slbl{font-size:7.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#9ca3af;margin-bottom:3px}
+.side2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tree{font-family:'Cascadia Code',ui-monospace,monospace;font-size:8px;line-height:1.85;color:#374151}
+.tr-d{color:#1d4ed8;font-weight:700}
+.tr-n{color:#6b7280;font-style:italic}
+.sep{border:none;border-top:1px solid #e5e7eb;margin:4px 0}
+</style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════
-     PAGE 1 — AGENT DISPATCH FLOW
-     ═══════════════════════════════════════════════ -->
+<!-- ═══════════════ PAGE 1 — DISPATCH FLOW ═══════════════ -->
 <div class="page">
-  <div class="page-header">
-    <div class="page-title">Performance Analytics · Agent Dispatch Flow</div>
-    <div class="badge">COE Datasphere</div>
-    <div class="badge-new">Unified Agent Architecture</div>
+  <div class="ph">
+    <h1>Performance Analytics &middot; Agent Dispatch Flow</h1>
+    <span class="brand">COE Datasphere</span>
   </div>
 
-  <!-- Summary callout -->
-  <div class="callout">
-    <div class="callout-icon">⚡</div>
-    <div class="callout-body">
-      <strong>Merged to 2 agents.</strong>
-      The 6 specialist analysts (Stats, Anomaly, Root Cause, Explorer, Trace, Narrator) have been merged into a single
-      <strong>Unified Agent</strong> that operates in one of 6 modes per question.
-      Every question now takes exactly <strong>2 LLM calls</strong> (intent classification + analysis),
-      down from 2–4. The orchestrator intent classifier is unchanged.
-    </div>
-  </div>
+  <div class="flow">
 
-  <!-- Before/After -->
-  <div class="before-after">
-    <div class="ba-col ba-before">
-      <div class="ba-title">Before — 7 agents, 2–4 LLM calls</div>
-      <div class="ba-item">⚙ Orchestrator (intent)</div>
-      <div class="ba-item">📊 Stats Agent — KPI formatting</div>
-      <div class="ba-item">🔍 Anomaly Agent — count detector</div>
-      <div class="ba-item">🔎 Root Cause Agent — WHY analyst</div>
-      <div class="ba-item">🗂 Explorer Agent — data explorer</div>
-      <div class="ba-item">📡 Trace Agent — widget timing</div>
-      <div class="ba-item">📝 Narrator — synthesis</div>
-      <div class="ba-item" style="margin-top:6px; font-style:italic;">FULL_ANALYSIS: 3 LLM calls (stats ∥ anomaly → narrator)</div>
-    </div>
-    <div class="ba-col ba-after">
-      <div class="ba-title">After — 2 agents, always 2 LLM calls</div>
-      <div class="ba-item">⚙ Orchestrator (intent) — <em>unchanged</em></div>
-      <div class="ba-item">🤖 Unified Agent — all 6 analysis modes</div>
-      <div class="ba-item" style="margin-top:6px; font-style:italic;">Stats &amp; Anomaly pre-passes replaced by deterministic Python helpers</div>
-      <div class="ba-item" style="font-style:italic;">Output stored under original mesh names — cross-agent enrichment preserved</div>
-      <div class="ba-item" style="font-style:italic;">Phase-drill fast path (no LLM) preserved</div>
-    </div>
-  </div>
-
-  <!-- ROW 1: User → Orchestrator -->
-  <div class="row center" style="margin-bottom:4px;">
-    <div class="user-block">
-      <div class="user-icon">👤</div>
-      <div class="user-label">User</div>
-    </div>
-
-    <div class="arrow-line" style="width:90px;">
-      <span>question + payload</span>
-      <svg width="80" height="14" viewBox="0 0 80 14">
-        <line x1="0" y1="7" x2="72" y2="7" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4,3"/>
-        <polygon points="72,3 80,7 72,11" fill="#94A3B8"/>
-      </svg>
-    </div>
-
-    <div class="box c-orch" style="flex:1; max-width:420px;">
-      <div class="box-title">⚙ Orchestrator Agent — Intent Classifier</div>
-      <div class="box-sub">
-        Reads question + payload · Classifies intent · Returns routing JSON<br>
-        <code style="font-size:10px;">pipeline-overlay.md</code> — phase 0 only (no analysis)
-      </div>
-      <span class="tag t-llm">LLM — call 1 of 2</span>
-      <span class="tag t-ro">unchanged from original</span>
-    </div>
-  </div>
-
-  <div class="divider">▼ INTENT CLASSIFIED</div>
-
-  <!-- Python prep layer -->
-  <div class="row center" style="justify-content:center; margin-bottom:4px;">
-    <div class="box c-python" style="width:680px;">
-      <div class="box-title">🐍 _build_unified_input() — Python data prep (no LLM)</div>
-      <div class="box-sub">
-        Maps intent → <code style="font-size:10px;">agent_mode</code> field · Assembles the correct data slice with token budgeting ·
-        For KPI_SUMMARY / FULL_ANALYSIS: runs <code style="font-size:10px;">_map_kpis_to_stats_output()</code> + <code style="font-size:10px;">_derive_active_types()</code> deterministically (replaces the old Stats + Anomaly LLM pre-passes) ·
-        For ROOT_CAUSE: passes full <code style="font-size:10px;">flagged_by_type</code> (slimmed in runner) + derived active types ·
-        For DATA_EXPLORATION / WIDGET_TRACE: reuses existing <code style="font-size:10px;">_build_explorer_input()</code> / <code style="font-size:10px;">_build_trace_input()</code> helpers unchanged
+    <!-- Entry -->
+    <div class="entry fw">
+      <div class="ubub">👤</div>
+      <div class="dash"><span class="dash-lbl">question</span></div>
+      <div class="card amber fw">
+        <div class="hd amber">AgentChatPanel</div>
+        <div class="bd">1st turn &mdash; POST /api/session &nbsp;&middot;&nbsp; Follow-up &mdash; POST /api/session/&lt;id&gt;/continue</div>
       </div>
     </div>
-  </div>
 
-  <div class="divider">▼ SINGLE UNIFIED INPUT → UNIFIED AGENT</div>
+    <div class="arr">▼</div>
 
-  <!-- Unified agent box -->
-  <div class="row center" style="justify-content:center; margin-bottom:8px;">
-    <div class="box c-unified" style="width:680px;">
-      <div class="box-title">🤖 Unified Agent — run_unified_agent()</div>
-      <div class="box-sub">
-        Reads <code style="font-size:10px;">agent_mode</code> from input · Follows ONLY the matching MODE section in <code style="font-size:10px;">skills/unified-agent/SKILL.md</code> ·
-        All 4 reference catalogues inlined at load time by <code style="font-size:10px;">_inline_references()</code> ·
-        Deterministic safety nets preserved: phase-drill fast path (no LLM) + per-mode chart directive injection
+    <!-- Intent Classifier -->
+    <div class="card blue fw">
+      <div class="hd blue">⚙&nbsp; Intent Classifier <span class="chip">LLM &mdash; 1 call</span></div>
+      <div class="bd">orchestrator / pipeline-overlay.md &nbsp;&middot;&nbsp; Reads question + payload + session history &nbsp;&middot;&nbsp; Returns intent + acknowledgement</div>
+    </div>
+
+    <div class="arr">▼ <span class="arr-lbl">Intent classified</span></div>
+
+    <!-- Deterministic pre-pass -->
+    <div class="card teal fw">
+      <div class="hd teal">📐&nbsp; Deterministic Pre-pass <span class="chip">no LLM</span></div>
+      <div class="bd">Active types &nbsp;&middot;&nbsp; Stats output &nbsp;&middot;&nbsp; Context &amp; time inheritance &nbsp;&middot;&nbsp; NL query parse &nbsp;&middot;&nbsp; Phase drill (zero-LLM fast path) &nbsp;&middot;&nbsp; Token budget guard</div>
+    </div>
+
+    <div class="arr">▼ <span class="arr-lbl">Dispatch unified agent — one mode per intent (skipped for CONVERSATIONAL &amp; phase-scoped root cause)</span></div>
+
+    <!-- 6 mode cards -->
+    <div class="mgrid fw">
+      <div class="mc">
+        <div class="mc-hd">📊 KPI Summary <span class="chip" style="background:rgba(255,255,255,.2)">kpi_summary</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">read-only</span></div>
+        <div class="mc-body">Reads kpis[] &middot; Structures KPI table &middot; No interpretation<div class="mc-flow">Think → Format → Answer</div></div>
       </div>
-      <span class="tag t-llm">LLM — call 2 of 2</span>
-      <span class="tag t-new">6 modes in one prompt</span>
-      <span class="tag t-ro">~109k chars, cached ephemerally</span>
-    </div>
-  </div>
-
-  <!-- 6 Modes grid -->
-  <div class="modes-grid" style="max-width:680px; margin: 0 auto 8px;">
-
-    <div class="box c-mode">
-      <div class="box-title">📊 kpi_summary</div>
-      <div class="box-sub">KPI table with threshold label · no interpretation</div>
-      <span class="tag t-py">prep: _map_kpis_to_stats_output()</span>
-    </div>
-
-    <div class="box c-mode">
-      <div class="box-title">🔍 anomaly_summary</div>
-      <div class="box-sub">Active types table · phase breakdown · pct as integer %</div>
-      <span class="tag t-py">prep: _derive_active_types()</span>
-    </div>
-
-    <div class="box c-det">
-      <div class="box-title">🔎 root_cause</div>
-      <div class="box-sub">Root cause tables · phase context · row-level queries</div>
-      <span class="tag t-api">phase-drill fast path (no LLM)</span>
-    </div>
-
-    <div class="box c-mode">
-      <div class="box-title">🗂 data_exploration</div>
-      <div class="box-sub">Ranking / detail / cross / breakdown modes · metric_rankings · aggregation</div>
-      <span class="tag t-api">query_engine (no LLM)</span>
-    </div>
-
-    <div class="box c-mode">
-      <div class="box-title">📡 widget_trace</div>
-      <div class="box-sub">Waterfall table · bottleneck · loading pattern · data quality math</div>
-      <span class="tag t-api">deterministic chart directive</span>
-    </div>
-
-    <div class="box c-det">
-      <div class="box-title">📝 full_summary</div>
-      <div class="box-sub">Headline + top_types + KPI block + worst_offender in one call</div>
-      <span class="tag t-py">stats + anomaly built in Python</span>
-    </div>
-
-  </div>
-
-  <div class="divider">▼ OUTPUT STORED IN MESH · RESPONSE DELIVERED</div>
-
-  <div class="row center" style="justify-content:center; gap:14px;">
-    <div class="box c-mesh" style="flex:1; max-width:320px; text-align:center;">
-      <div class="box-title">🔗 Mesh Store</div>
-      <div class="box-sub">Output stored under original per-mode names<br>
-        (<code style="font-size:10px;">stats-agent</code> / <code style="font-size:10px;">anomaly-agent</code> / <code style="font-size:10px;">root-cause-agent</code> / …)<br>
-        Cross-agent enrichment + follow-up resolution unchanged
+      <div class="mc">
+        <div class="mc-hd">🔍 Anomaly Summary <span class="chip" style="background:rgba(255,255,255,.2)">anomaly_summary</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">read-only</span></div>
+        <div class="mc-body">Reads anomaly counts &middot; Identifies active types<div class="mc-flow">Think → Detect → Answer</div></div>
+      </div>
+      <div class="mc">
+        <div class="mc-hd">🔎 Root Cause <span class="chip" style="background:rgba(255,255,255,.2)">root_cause</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">analysis</span></div>
+        <div class="mc-body">Explains WHY anomalies occur &middot; Separates perf vs data quality<div class="mc-flow">Think → Analyse → Answer</div></div>
+      </div>
+      <div class="mc">
+        <div class="mc-hd">🗂 Explorer <span class="chip" style="background:rgba(255,255,255,.2)">data_exploration</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">GET /api/actions</span></div>
+        <div class="mc-body">Rankings &middot; row detail &middot; cross-dimensional queries<div class="mc-flow">Think → Query → Rank → Answer</div></div>
+      </div>
+      <div class="mc">
+        <div class="mc-hd">📡 Trace Agent <span class="chip" style="background:rgba(255,255,255,.2)">widget_trace</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">GET /api/widgets</span></div>
+        <div class="mc-body">Widget-level phase timing &middot; Bottleneck analysis<div class="mc-flow">Think → Trace → Answer</div></div>
+      </div>
+      <div class="mc">
+        <div class="mc-hd">📝 Narrator <span class="chip" style="background:rgba(255,255,255,.2)">full_summary</span></div>
+        <div class="mc-chips"><span class="chip-out">LLM</span><span class="chip-out">synthesis only</span></div>
+        <div class="mc-body">Stats + Anomaly are deterministic inputs &middot; No new analysis<div class="mc-flow">Think → Combine → Answer</div></div>
       </div>
     </div>
-    <div class="box c-out" style="flex:1; max-width:320px; text-align:center;">
-      <div class="box-title">✅ Response Rendered in Chat Panel</div>
-      <div class="box-sub">Prose answer · ECharts chart directives · Session notes surfaced to user</div>
+    <div style="text-align:center;font-size:8px;color:#6b7280;margin-top:4px">All six modes live in <strong>unified-agent/SKILL.md</strong> &nbsp;&middot;&nbsp; one LLM call per intent &nbsp;&middot;&nbsp; per-mode trimmed prompt</div>
+
+    <div class="arr" style="margin-top:5px">▼ <span class="arr-lbl">Response delivered</span></div>
+
+    <!-- Response rendered -->
+    <div class="respbar fw">
+      <div class="respbar-icon">✅</div>
+      <div class="respbar-text"><b>Response Rendered in Chat Panel</b> &nbsp;&mdash;&nbsp; Prose &middot; ECharts chart directives &middot; Suggestion chips (next_steps) &middot; Session notes &middot; Intent badge</div>
     </div>
   </div>
 
-  <!-- Intent routing table -->
-  <div class="divider" style="margin-top:24px;">INTENT → UNIFIED AGENT MODE MAPPING</div>
-  <table class="intent-table">
-    <thead>
-      <tr>
-        <th>Intent</th>
-        <th>agent_mode</th>
-        <th>Data prep (Python)</th>
-        <th>LLM Calls</th>
-        <th>Mesh store key</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><span class="intent-key">KPI_SUMMARY</span></td>
-        <td><span class="mode-key">kpi_summary</span></td>
-        <td>_map_kpis_to_stats_output()</td>
-        <td>2</td>
-        <td><code style="font-size:10px;">stats-agent</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">ANOMALY_SUMMARY</span></td>
-        <td><span class="mode-key">anomaly_summary</span></td>
-        <td>_derive_active_types() · _build_anomaly_output()</td>
-        <td>2</td>
-        <td><code style="font-size:10px;">anomaly-agent</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">ROOT_CAUSE_ANALYSIS</span></td>
-        <td><span class="mode-key">root_cause</span></td>
-        <td>flagged_by_type slimmed · active types derived · phase-drill fast path</td>
-        <td>1 or 2</td>
-        <td><code style="font-size:10px;">root-cause-agent</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">DATA_EXPLORATION</span></td>
-        <td><span class="mode-key">data_exploration</span></td>
-        <td>_build_explorer_input() · _compute_flagged_rankings() · query_engine</td>
-        <td>2</td>
-        <td><code style="font-size:10px;">explorer-agent</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">WIDGET_TRACE</span></td>
-        <td><span class="mode-key">widget_trace</span></td>
-        <td>_build_trace_input() · deterministic chart directive</td>
-        <td>2</td>
-        <td><code style="font-size:10px;">trace-agent</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">FULL_ANALYSIS</span></td>
-        <td><span class="mode-key">full_summary</span></td>
-        <td>_map_kpis_to_stats_output() + _build_anomaly_output() — no parallel pre-passes</td>
-        <td>2 <em style="color:#94A3B8;">(was 3–4)</em></td>
-        <td><code style="font-size:10px;">narrator</code></td>
-      </tr>
-      <tr>
-        <td><span class="intent-key">CONVERSATIONAL</span></td>
-        <td colspan="2"><em style="color:#64748B;">Routed directly to _conversational_answer() — no unified agent call</em></td>
-        <td>1</td>
-        <td>—</td>
-      </tr>
-    </tbody>
-  </table>
+  <!-- Routing table -->
+  <div class="rt-sec">
+    <div class="rt-ttl">Intent → Agent Routing</div>
+    <table class="rt">
+      <thead>
+        <tr>
+          <th style="width:175px">Intent</th>
+          <th>How answered</th>
+          <th style="width:100px">Unified Agent Mode</th>
+          <th style="width:85px">LLM Calls</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="it i-fa">FULL_ANALYSIS</span></td><td>Stats + Anomaly computed deterministically → fed to Narrator</td><td>full_summary</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-rc">ROOT_CAUSE_ANALYSIS</span></td><td>Active types derived deterministically → Root Cause agent</td><td>root_cause</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-rp">ROOT_CAUSE (phase)</span></td><td>Frontend / network / backend questions → fully deterministic</td><td style="color:#9ca3af">— skipped</td><td><span class="llm">1</span></td></tr>
+        <tr><td><span class="it i-de">DATA_EXPLORATION</span></td><td>NL parsed by query_engine → Explorer agent</td><td>data_exploration</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-wt">WIDGET_TRACE</span></td><td>Widget rows selected → Trace agent</td><td>widget_trace</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-kp">KPI_SUMMARY</span></td><td>Direct dispatch</td><td>kpi_summary</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-an">ANOMALY_SUMMARY</span></td><td>Direct dispatch</td><td>anomaly_summary</td><td><span class="llm">2</span></td></tr>
+        <tr><td><span class="it i-cv">CONVERSATIONAL</span></td><td>Inline LLM with session history — no unified agent dispatch</td><td style="color:#9ca3af">— skipped</td><td><span class="llm">1</span></td></tr>
+      </tbody>
+    </table>
+  </div>
 
-  <!-- Legend -->
-  <div class="legend">
-    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator</div>
-    <div class="legend-item"><div class="ldot" style="background:#16A34A;"></div> Unified Agent</div>
-    <div class="legend-item"><div class="ldot" style="background:#059669;"></div> Unified Agent — mode</div>
-    <div class="legend-item"><div class="ldot" style="background:#D97706;"></div> Unified Agent — analysis mode</div>
-    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Deterministic Python (no LLM)</div>
-    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Mesh / Output</div>
+  <div class="leg">
+    <div class="li"><div class="ls" style="background:#1d4ed8"></div>Orchestrator</div>
+    <div class="li"><div class="ls" style="background:#059669"></div>Deterministic (no LLM)</div>
+    <div class="li"><div class="ls" style="background:#5b21b6"></div>Unified Agent mode (LLM)</div>
+    <div class="li"><div class="ls" style="background:#b45309"></div>Frontend / Entry</div>
   </div>
 </div>
 
 
-<!-- ═══════════════════════════════════════════════
-     PAGE 2 — TECHNICAL SOLUTION
-     ═══════════════════════════════════════════════ -->
+<!-- ═══════════════ PAGE 2 — TECHNICAL SOLUTION ═══════════════ -->
 <div class="page">
-  <div class="page-header">
-    <div class="page-title">Performance Analytics · Technical Solution</div>
-    <div class="badge">COE Datasphere</div>
-    <div class="badge-new">Unified Agent Architecture</div>
+  <div class="ph">
+    <h1>Performance Analytics &middot; Technical Solution</h1>
+    <span class="brand">COE Datasphere</span>
   </div>
 
-  <div class="row" style="gap:20px; align-items:stretch;">
+  <div class="tgrid">
 
-    <!-- COLUMN 1: User + Frontend -->
-    <div class="col" style="width:210px; flex-shrink:0;">
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Frontend</div>
+    <!-- FRONTEND -->
+    <div class="col">
+      <div class="slbl">Frontend</div>
 
-      <div class="user-block" style="margin-bottom:4px;">
-        <div class="user-icon">👤</div>
-        <div class="user-label">User</div>
+      <div class="card amber">
+        <div class="hd amber">👤 Upload Page</div>
+        <div class="bd">parseCsvFile &middot; PapaParse chunk streaming &middot; IndexedDB cache</div>
       </div>
 
-      <div class="box c-infra">
-        <div class="box-title">Upload Page</div>
-        <div class="box-sub">parseCsvFile() · PapaParse chunk streaming · schema validation · IndexedDB cache</div>
+      <div class="card amber">
+        <div class="hd amber">📊 5 Analysis Views</div>
+        <div class="bd">Summary &middot; Raw &middot; Session &middot; Action &middot; Widget<br>aggregateByAction &middot; detectAnomalies &middot; KpiStrip &middot; ECharts</div>
       </div>
 
-      <div class="box c-infra">
-        <div class="box-title">3 Analysis Views</div>
-        <div class="box-sub">Session View · Action View · Widget View</div>
-        <div class="box-sub" style="margin-top:4px;">aggregateByAction() · detectAnomalies() · KpiStrip · ECharts charts</div>
+      <div class="card amber">
+        <div class="hd amber">🔀 3 Compare Views <span class="chip" style="font-size:7px">NEW</span></div>
+        <div class="bd">Session &middot; Action &middot; Widget<br>Delta comparisons across multiple uploads</div>
       </div>
 
-      <div class="box c-infra">
-        <div class="box-title">buildAgentPayload()</div>
-        <div class="box-sub">Schema v1.1 · meta{} · kpis[] · anomalies{} · data_summary{} · session_summary{} · widget_summary{}</div>
+      <div class="card amber">
+        <div class="hd amber">buildAgentPayload()</div>
+        <div class="bd">Schema v1.1 &middot; meta &middot; kpis &middot; anomalies &middot; data_summary &middot; session_summary &middot; widget_summary + 6 more sections</div>
       </div>
 
-      <div class="box c-orch" style="border-style:dashed;">
-        <div class="box-title">AgentChatPanel</div>
-        <div class="box-sub">POST /api/chat (single-turn) or POST /api/session → confirm flow</div>
-        <div class="box-sub" style="margin-top:3px;">Renders: prose · ChartBlock → resolveChartDirective() → ECharts</div>
-        <div class="box-sub" style="margin-top:3px;">Dropdown: Auto (orchestrator routes) | Unified Agent (direct)</div>
+      <div class="card amber">
+        <div class="hd amber">💬 AgentChatPanel</div>
+        <div class="bd">POST /api/session (1st turn)<br>POST /api/session/&lt;id&gt;/continue (follow-up)<br>Renders: prose &middot; ECharts &middot; suggestion chips</div>
       </div>
     </div>
 
-    <!-- COLUMN 2: Backend Core -->
-    <div class="col" style="flex:1;">
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Backend (Python Flask)</div>
+    <!-- BACKEND -->
+    <div class="col">
+      <div class="slbl">Backend (Python Flask)</div>
 
-      <div class="row" style="gap:10px;">
-        <div class="box c-infra" style="flex:1;">
-          <div class="box-title">app.py — HTTP Server</div>
-          <div class="box-sub">Routes: /api/session · /session/&lt;id&gt;/confirm · /session/&lt;id&gt;/reject · /api/actions · /api/widgets · /api/chat · /api/health</div>
-        </div>
-        <div class="box c-infra" style="flex:1;">
-          <div class="box-title">mesh_store.py</div>
-          <div class="box-sub">Thread-safe in-memory store · datasets (TTL 1h) · sessions (TTL 4h) · agent_outputs (keyed by original agent name) · disk snapshots per dataset UUID</div>
+      <div class="card slate">
+        <div class="hd slate">app.py — HTTP Server</div>
+        <div class="bd">
+          POST /api/session &nbsp;&middot;&nbsp; POST /api/session/&lt;id&gt;/continue &nbsp;&middot;&nbsp; DELETE /api/session/&lt;id&gt;<br>
+          GET /api/actions &nbsp;&middot;&nbsp; GET /api/widgets &nbsp;&middot;&nbsp; POST /api/dataset &nbsp;&middot;&nbsp; GET /api/health
         </div>
       </div>
 
-      <div class="box c-orch">
-        <div class="box-title">orchestrate.py — Unified Agent Pipeline</div>
-        <div class="box-sub">classify_intent() [1 LLM call] → _build_unified_input() [Python only] → run_unified_agent() [1 LLM call]</div>
-        <div class="box-sub" style="margin-top:4px;">
-          Deterministic helpers: _map_kpis_to_stats_output() · _derive_active_types() · _build_anomaly_output() · _threshold_label() ·
-          _compute_flagged_rankings() · _build_phase_drill() · _phase_scoped_result()<br>
-          Back-compat shims: run_root_cause_agent / run_explorer_agent / run_narrator / run_trace_agent → all delegate to run_unified_agent()
-        </div>
-        <div class="row" style="gap:6px; margin-top:8px; flex-wrap:wrap;">
-          <span class="tag t-py">_build_explorer_input() — NL → query_engine</span>
-          <span class="tag t-py">_build_trace_input() — widget row fetch</span>
-          <span class="tag t-api">_resolve_followup_references() — entity lookup</span>
-          <span class="tag t-ro">_guard_store() · _ensure_chart() · _save_turn()</span>
+      <div class="card blue">
+        <div class="hd blue">orchestrate.py — Pipeline</div>
+        <div class="bd">
+          <strong>classify_intent()</strong> [1 LLM] → route by intent → <strong>run_unified_agent()</strong> [1 LLM]
+          <hr class="sep">
+          <span style="color:#059669"><strong>Deterministic (no LLM):</strong></span> stats output &middot; active anomaly types &middot; phase drill &middot; context enrichment &middot; NL query parse &middot; token budget guard
+          <hr class="sep">
+          Explorer: ranking / detail / cross &nbsp;&middot;&nbsp; Trace: targeted or generic &nbsp;&middot;&nbsp; Chart directives post-processed
         </div>
       </div>
 
-      <div class="row" style="gap:10px;">
-        <div class="box c-infra" style="flex:1;">
-          <div class="box-title">query_engine.py</div>
-          <div class="box-sub">Deterministic NL parsing · No LLM · parse_query() · filter_rows() · aggregate_rows() · time buckets (hour/day/weekday/month) · format_answer()</div>
+      <div class="side2">
+        <div class="card slate">
+          <div class="hd slate">mesh_store.py</div>
+          <div class="bd">datasets TTL 1h &middot; sessions TTL 4h<br>agent_outputs &middot; disk snapshots per UUID<br>Thread-safe &middot; memory-first, disk fallback</div>
         </div>
-        <div class="box c-infra" style="flex:1;">
-          <div class="box-title">skills.py — Prompt Composer</div>
-          <div class="box-sub">
-            <strong>2 skills registered:</strong> orchestrator + unified_agent<br>
-            Composition: preamble.md + pipeline-overlay.md + SKILL.md body + inlined references/*.md<br>
-            Loaded once at import time · ~109k chars for unified_agent · cached ephemerally
-          </div>
+        <div class="card teal">
+          <div class="hd teal">query_engine.py</div>
+          <div class="bd"><strong>No LLM</strong> — deterministic NL parse<br>filters &middot; group_by &middot; aggregations<br>time buckets: hour / day / weekday</div>
         </div>
       </div>
 
-      <div class="box c-mesh">
-        <div class="box-title">llm.py — LLM Wrapper</div>
-        <div class="box-sub">Priority order: LLM_URL proxy → OpenAI direct → SAP AI Core · Default model: anthropic--claude-4.5-haiku · extract_json_from_response() · USAGE_RECORDS token accounting · AI_CORE_MAX_TOKENS=8000 output cap</div>
+      <div class="side2">
+        <div class="card violet">
+          <div class="hd violet">skills.py — Prompt Composer</div>
+          <div class="bd">preamble + pipeline-overlay + SKILL.md + inlined references<br>Per-mode trimmed prompts (3–6× smaller)</div>
+        </div>
+        <div class="card slate">
+          <div class="hd slate">llm.py — LLM Wrapper</div>
+          <div class="bd">Priority order:<br>① LLM_URL proxy &nbsp;② OpenAI &nbsp;③ SAP AI Core<br>Token usage accounting &middot; history trim</div>
+        </div>
       </div>
     </div>
 
-    <!-- COLUMN 3: Skills + Schemas -->
-    <div class="col" style="width:205px; flex-shrink:0;">
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase;">Agent Skills</div>
+    <!-- SKILLS -->
+    <div class="col">
+      <div class="slbl">Agent Skills</div>
 
-      <div class="box c-unified">
-        <div class="box-title">skills/ directory</div>
-        <div style="margin-top:6px; display:flex; flex-direction:column; gap:5px;">
-          <div style="font-size:11px;"><strong>_shared/</strong></div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">preamble.md · pipeline-overlay.md</div>
+      <div class="card violet">
+        <div class="hd violet">skills/ directory</div>
+        <div class="bd">
+          <div class="tree">
+<span class="tr-d">_shared/</span>
+  preamble.md
+  pipeline-overlay.md
+  interactive-overlay.md <span class="tr-n">(Joule only)</span>
 
-          <div style="font-size:11px; margin-top:3px;"><strong>⚙ orchestrator/</strong></div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">pipeline-overlay.md (classifier only)</div>
+<span class="tr-d">orchestrator/</span>
+  SKILL.md <span class="tr-n">(Joule: Phase 0–5)</span>
+  pipeline-overlay.md <span class="tr-n">(backend: classifier)</span>
+  references/
 
-          <div style="font-size:11px; margin-top:3px;"><strong>🤖 unified-agent/</strong> <span style="background:#7C3AED; color:white; font-size:9px; padding:1px 5px; border-radius:3px; font-weight:700;">NEW</span></div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">SKILL.md — all 6 modes + conversational</div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/tool-data-schema.md</div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/anomaly-type-reference.md</div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/root-cause-catalogue.md</div>
-          <div style="font-size:10.5px; padding-left:10px; color:#475569;">references/widget-trace-patterns.md</div>
-        </div>
-        <div style="margin-top:8px; font-size:10px; color:#6B7280; font-style:italic;">
-          Old dirs removed: stats-agent/ anomaly-agent/<br>root-cause-agent/ narrator/ explorer-agent/ trace-agent/
-        </div>
-      </div>
-
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Shared Schemas</div>
-      <div class="box c-infra">
-        <div class="box-title">shared/ JSON schemas</div>
-        <div style="font-size:11px; margin-top:5px; line-height:1.7;">
-          anomaly-types.json<br>
-          kpi-schema.json<br>
-          action-row-schema.json<br>
-          session-note-schema.json
+<span class="tr-d">unified-agent/</span>
+  SKILL.md <span class="tr-n">(6 ## MODE: sections)</span>
+  references/
+    anomaly-type-reference.md
+    root-cause-catalogue.md
+    tool-data-schema.md
+    widget-trace-patterns.md
+  assets/ <span class="tr-n">(output templates)</span></div>
         </div>
       </div>
 
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Persistence</div>
-      <div class="box c-infra">
-        <div class="box-title">backend/datasets/</div>
-        <div class="box-sub">JSON snapshot per upload UUID · audit trail · cache self-heal on expiry</div>
+      <div class="card blue">
+        <div class="hd blue">⚙ orchestrator</div>
+        <div class="bd">
+          <strong>Backend:</strong> pipeline-overlay.md is a self-contained intent classifier — returns routing JSON only<br>
+          <strong>Joule:</strong> full SKILL.md with Phase 0–5 interactive workflow
+        </div>
       </div>
 
-      <div style="font-size:10px; font-weight:700; color:#94A3B8; letter-spacing:0.1em; text-transform:uppercase; margin-top:8px;">Deploy</div>
-      <div class="box c-infra">
-        <div class="box-title">manifest.yml</div>
-        <div class="box-sub">Cloud Foundry · staticfile_buildpack · 64 MB · random-route</div>
+      <div class="card violet">
+        <div class="hd violet">📦 unified-agent</div>
+        <div class="bd">
+          One skill &middot; six <strong>## MODE:</strong> sections<br>
+          skills.py splits on mode markers → per-mode trimmed prompt per dispatch<br>
+          References inlined at compose time
+        </div>
       </div>
     </div>
 
   </div>
 
-  <!-- Legend -->
-  <div class="legend">
-    <div class="legend-item"><div class="ldot" style="background:#7C3AED;"></div> Orchestrator / Routing</div>
-    <div class="legend-item"><div class="ldot" style="background:#16A34A;"></div> Unified Agent</div>
-    <div class="legend-item"><div class="ldot" style="background:#2563EB;"></div> Mesh / LLM</div>
-    <div class="legend-item"><div class="ldot" style="background:#EA580C;"></div> Deterministic Python (no LLM)</div>
-    <div class="legend-item"><div class="ldot" style="background:#94A3B8;"></div> Infrastructure</div>
+  <!-- Bottom row -->
+  <div class="tbot">
+    <div class="card slate">
+      <div class="hd slate">🗂 Shared JSON Schemas</div>
+      <div class="bd">anomaly-types.json &middot; kpi-schema.json<br>action-row-schema.json &middot; session-note-schema.json</div>
+    </div>
+    <div class="card slate">
+      <div class="hd slate">💾 Persistence</div>
+      <div class="bd">backend/datasets/ &middot; JSON snapshot per upload UUID<br>Disk fallback on memory miss &middot; self-heal on TTL expiry</div>
+    </div>
+    <div class="card slate">
+      <div class="hd slate">🚀 Deploy</div>
+      <div class="bd">manifest.yml &middot; Cloud Foundry<br>staticfile_buildpack &middot; 64 MB &middot; random-route</div>
+    </div>
+  </div>
+
+  <div class="leg">
+    <div class="li"><div class="ls" style="background:#1d4ed8"></div>Orchestrator</div>
+    <div class="li"><div class="ls" style="background:#059669"></div>Deterministic (no LLM)</div>
+    <div class="li"><div class="ls" style="background:#5b21b6"></div>Unified Agent (LLM)</div>
+    <div class="li"><div class="ls" style="background:#334155"></div>Infrastructure</div>
+    <div class="li"><div class="ls" style="background:#b45309"></div>Frontend</div>
   </div>
 </div>
 

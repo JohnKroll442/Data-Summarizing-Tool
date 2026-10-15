@@ -152,6 +152,11 @@ Then the completed JSON in a code block labelled json.
 
 ### Step 6 — Pause for human review (REQUIRED)
 
+**Backend (pipeline) mode:** per PIPELINE_OVERLAY, do NOT pause or ask — skip this
+step entirely, set `status: "CONFIRMED"`, and emit the final JSON once in a single
+response. The review round-trip below applies ONLY to interactive (Joule) mode;
+in the backend no user reply ever comes, so pausing hangs the turn.
+
 Ask exactly:
 "KPI snapshot captured. Ready to continue to the Anomaly Agent,
 or would you like to flag anything before I pass this on?"
@@ -339,6 +344,10 @@ Write: **Agent payload — passed to next agent:**
 Then JSON in a code block labelled json.
 
 ### Step 7 — Pause for human review (REQUIRED)
+
+**Backend (pipeline) mode:** per PIPELINE_OVERLAY, do NOT pause or ask — skip this
+step, set `status: "CONFIRMED"`, and emit the final JSON once. The review
+round-trip below applies ONLY to interactive (Joule) mode.
 
 Initial ask: "Anomaly snapshot captured — [types_active] type(s) active in this
 dataset. Ready to continue, or would you like to exclude anything before I pass
@@ -615,6 +624,14 @@ session is already at the `CONFIRMED` terminal state while this loop runs.
 
 Identify the anomaly type being asked about. Match to a key in `flagged_by_type`.
 
+**Capped-sample warning (REQUIRED).** The `flagged_by_type[type]` arrays are
+TRUNCATED to a few example rows, so the rows you can list here are a SAMPLE, not
+the complete set. The true count for a type is `flagged_type_totals[type]` (or
+`anomaly_type_scope.total` when the question is type-scoped). When you list rows,
+state the count from `flagged_type_totals` and make clear the table shows the
+first N of that total (e.g. "Showing 5 of 68 straggler actions"). NEVER present
+the sampled rows as if they were every user/session/action for the type.
+
 **"Give me the users for [type]" / "who triggered [type]"**
 Table: User | Action | Session ID | Timestamp | Duration
 Convert duration_ms to seconds (divide by 1000, 1 decimal).
@@ -854,6 +871,13 @@ rows are already in your input. `user_filter` names the resolved entity.
   "session_flagged_summary": {
     "session_id": "<string>", "flagged_count": 0, "total_actions": 0, "anomaly_types": []
   },
+  "scoped_flagged_summary": {
+    "filters": { "hour_of_day": 0 }, "scope_total_actions": 0,
+    "flagged_count": 0, "flagged_pct": 0.0, "by_type": { "<anomaly_type>": 0 },
+    "by_user":   [ { "name": "<string>", "flagged_count": 0 } ],
+    "by_story":  [ { "name": "<string>", "flagged_count": 0 } ],
+    "by_action": [ { "name": "<string>", "flagged_count": 0 } ]
+  },
   "flagged_type_totals": { "<anomaly_type>": 0 },
   "detail_rows_note": "<string or null>",
   "detail_rows": [
@@ -882,8 +906,28 @@ already applied that bound (`duration_min_ms` / `duration_max_ms`) to both
 `detail_rows` and `aggregation`. Present the rows/breakdown as-is; they already
 honour the threshold — do not re-filter or caveat.
 
-**Flagged count for a scoped entity — use the `*_flagged_summary`, never recompute.**
-When the question asks how many flagged actions a specific user / story / action has
+**AUTHORITATIVE FLAGGED-COUNT PRECEDENCE LADDER (read this first).**
+Several flag-count fields can appear in one input. When more than one is present,
+use the FIRST that applies to the question's scope — the earlier a field is in
+this list, the tighter its scope, so it wins:
+1. `scoped_flagged_summary` — the question has a TIME window or DURATION bound
+   (optionally combined with an entity). This is the tightest; its
+   `flagged_count` and `by_user`/`by_story`/`by_action` already honour that exact
+   window. It WINS over every entity/dataset field below.
+2. `anomaly_type_scope` — the question names an anomaly TYPE ("stragglers",
+   "backend-bound"); use its `total` / `by_<dim>` (already scoped to that type and
+   to any time/entity window).
+3. `*_flagged_summary` (`user_`/`story_`/`action_`/`session_`) — the question is
+   scoped to ONE entity with no time/duration/type narrowing.
+4. `flagged_type_totals` — per-anomaly-type counts for the current scope (it is
+   scoped when a scope is active, dataset-wide otherwise).
+5. `flagged_*_ranking` / `data_summary.by_*` — DATASET-WIDE; use ONLY for an
+   unscoped "rank everything" question. NEVER use these when any field above is
+   present — that is the "43 users for a 33-action subset" bug.
+If a field earlier in the ladder is present, do not also quote a later-ladder
+number for the same question — one scope, one source.
+
+
 (ANY phrasing — "how many flags does X have", "does X have anomalies", "X's flagged
 actions"), the backend supplies an authoritative summary:
 `user_flagged_summary`, `story_flagged_summary`, or `action_flagged_summary`.
@@ -904,6 +948,27 @@ opaque strings — present them as session identifiers, not names.
 A `flagged_count` of **0** in a present summary means the entity genuinely has NO
 flagged actions — report that 0 as the answer; do NOT go looking for a different
 number elsewhere.
+
+**Time- or duration-scoped flagged counts.** When the question narrows the flagged
+count to a time window or duration ("of the actions after 4 PM, how many had
+anomalies?", "how many flagged actions ran longer than 5 minutes?"),
+`scoped_flagged_summary` carries the authoritative answer: `flagged_count` is the
+number of distinct flagged actions matching that exact scope (deduplicated in the
+backend over the same filter that produced the `aggregation` total), and
+`scope_total_actions` is the subset size. Quote `flagged_count` as the headline, and
+express it against the subset — e.g. "N of the <scope_total_actions> actions were
+flagged". `by_type` breaks the flagged count down by anomaly type. NEVER answer such a
+question with a dataset-wide flagged total (that would exceed the subset size).
+
+**"Which users/stories/actions were among those flagged?" — list ONLY the subset.**
+When a follow-up asks which entities make up a scoped flagged subset ("which users
+were among those 33 flagged actions", "what stories had those flagged actions"), read
+`scoped_flagged_summary.by_user` / `.by_story` / `.by_action` — each is the list of
+ONLY the entities present in that scoped subset, with their per-entity
+`flagged_count` (counts sum to the subset's `flagged_count`). List exactly those
+entities. Do NOT fall back to `flagged_users_ranking` / `flagged_stories_ranking` —
+those are dataset-wide and will wrongly list entities outside the subset (e.g.
+reporting 43 users for a 33-action subset).
 
 **Never count flagged actions from `detail_rows`, `aggregation`, or stored rows.**
 Stored action rows carry `flags = null` (flags are computed in the frontend and are
@@ -1283,6 +1348,10 @@ the NO_DATA early exit.
 
 ### Step 7 — Pause for human review (REQUIRED)
 
+**Backend (pipeline) mode:** per PIPELINE_OVERLAY, do NOT pause or ask — skip this
+step, set `status: "CONFIRMED"`, and emit the final JSON once. The review
+round-trip below applies ONLY to interactive (Joule) mode.
+
 If cross_references not empty:
 "[Top entity] was the most active. I also noticed they appear in the flagged actions — want me to route to Root Cause for their anomaly breakdown, or is this what you needed?"
 
@@ -1400,6 +1469,14 @@ Field rules:
   both as if consistent — trust the `aggregation` count (the single source of
   truth), state that the row list is being reconciled, and never show rows whose
   timestamps fall outside the requested hour/date/session
+- SINGLE FLAGGED SOURCE for scoped questions: a FLAGGED count is never read from
+  `aggregation` (that is an ACTIVITY count). For any scoped "how many flagged /
+  which entities were flagged" question, use the authoritative flagged field per
+  the PRECEDENCE LADDER above — `scoped_flagged_summary` → `anomaly_type_scope` →
+  `*_flagged_summary` → `flagged_type_totals`. NEVER answer a scoped flagged
+  question from `flagged_*_ranking` or `data_summary.by_*` (dataset-wide). If
+  `detail_rows_note` says the flagged count could not be computed for this scope,
+  say so plainly — do NOT substitute a dataset-wide total
 - When `aggregation` is ABSENT for a time / session question, say the breakdown
   wasn't computed for this phrasing and offer a rephrase — NEVER claim the
   dataset lacks hourly / timestamp data, and never pass off the full-dataset
@@ -1839,6 +1916,16 @@ Output order: JSON payload → heading → anomaly table → KPI table → worst
 
 ### Step 1 — Build the headline
 
+**Scope check (FIRST).** full_summary is a DATASET-WIDE combined summary; its
+inputs (`stats`, `anomalies`, `top_flagged_action`) carry only dataset-wide
+numbers — there is no entity/time filter here. If `user_request` names a specific
+entity, time window, or anomaly type ("summarise NROS's performance", "what's
+going on in story X after 4 PM"), do NOT present the dataset-wide totals AS IF
+they were that entity's. Open by stating the summary is dataset-wide and that a
+scoped breakdown for the named entity should be requested from the Explorer /
+Root Cause agent. Then give the dataset-wide headline below, clearly labelled as
+dataset-wide. Never attach the entity's name to a dataset-wide number.
+
 Check these conditions IN ORDER — the null guard MUST come first so you never dereference a field on a null input:
 1. If `anomalies` is null or absent (no anomaly data — e.g. the NO_ANOMALIES flow): "No anomaly data available for the current view." Do NOT read any field on `anomalies` after this point.
 2. Else if `anomalies.total_actions` is 0 or null: "No actions in the current view."
@@ -1919,6 +2006,10 @@ The payload emitted in Step 6 uses the Output Contract below, with status
 `"AWAITING_USER_DIRECTION"`.
 
 ### Step 8 — Pause for human review (REQUIRED)
+
+**Backend (pipeline) mode:** per PIPELINE_OVERLAY, do NOT pause or ask — skip this
+step, set `status: "COMPLETE"`, and emit the payload once. The review round-trip
+below applies ONLY to interactive (Joule) mode.
 
 Ask: "Here's the full summary for [meta.file_name]. Want to go deeper on anything, or does this look right?"
 
