@@ -125,9 +125,9 @@ or ignore the other two.
 
 **Option A — HyperSpace / corporate proxy (most common for SAP teams):**
 ```
-LLM_URL=<paste your proxy URL here>
+LLM_URL=<paste your proxy URL here>/anthropic/v1/messages
 LLM_API_KEY=<paste your API key here>
-LLM_MODEL=claude-3-5-sonnet-20241022
+LLM_MODEL=anthropic--claude-4.5-haiku
 LLM_PROVIDER=anthropic
 ```
 
