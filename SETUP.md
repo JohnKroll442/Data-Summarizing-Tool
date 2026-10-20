@@ -131,6 +131,17 @@ LLM_MODEL=claude-3-5-sonnet-20241022
 LLM_PROVIDER=anthropic
 ```
 
+> **Important — `LLM_URL` must be the COMPLETE endpoint, including the path.**
+> The backend sends requests to exactly this URL and does not add anything to it.
+> For an Anthropic-format proxy the URL ends in `/anthropic/v1/messages`, for example:
+> ```
+> LLM_URL=https://your-proxy-host/anthropic/v1/messages
+> ```
+> Do **not** remove that path — without it the request hits the wrong address and fails.
+> Everyone using the **same proxy** uses the **exact same `LLM_URL`**; only the
+> `LLM_API_KEY` differs per person. Keep `LLM_PROVIDER=anthropic` when the URL ends
+> in `/anthropic/v1/messages`.
+
 **Option B — OpenAI:**
 ```
 OPENAI_API_KEY=<paste your OpenAI key here>
@@ -144,6 +155,41 @@ AI_CORE_TOKEN=<paste your bearer token here>
 
 Leave every other line in the file as-is — those already have working defaults.
 
+### 4c. SAVE the file, then verify it
+
+**You must save the file after editing it.** Typing values into an editor does
+nothing until you save — the file on disk stays blank. In Notepad, press
+**Ctrl + S** (or File → Save).
+
+Then confirm your values were actually written. Run this from the project root:
+
+- **Windows:**
+  ```powershell
+  type backend\.env
+  ```
+- **macOS / Linux:**
+  ```bash
+  cat backend/.env
+  ```
+
+You should see your real URL and key printed — **not** blank lines like `LLM_URL=`.
+If the values are blank, they were never saved — go back and save the file.
+
+> ⚠️ **Windows Notepad "`.env.txt`" trap.** If you used "Save As", Notepad may have
+> saved the file as `.env.txt` instead of `.env`. Check with `dir backend`. If you
+> see `.env.txt`, rename it:
+> ```powershell
+> ren backend\.env.txt .env
+> ```
+> To avoid this entirely, open the file with `notepad backend\.env`, edit, and press
+> Ctrl + S — that keeps the correct name.
+
+> ⚠️ **Edit the right file.** The `.env` must be the one inside the **`backend`
+> folder of the project you actually run** (not `env.example`, and not a root `.env`).
+> If you cloned into a folder that already had the project name, you may have a nested
+> path like `Data-Summarizing-Tool\Data-Summarizing-Tool\` — in that case the file
+> goes in the **inner** folder's `backend\.env`.
+
 > **Where do I get credentials?** From whoever gave you access to this tool (your
 > team lead or the project owner). If you do not have them yet, you can still finish
 > this guide — the app will open, but the AI analysis features will return an error
@@ -152,6 +198,9 @@ Leave every other line in the file as-is — those already have working defaults
 > **Note:** There may also be a `.env` file in the project **root** folder. That one
 > is unrelated to this app (it is for editor tooling). You do **not** need to touch it.
 > The only credentials file that matters is `backend/.env`.
+
+> **The backend reads `.env` only at startup.** If you change `.env` while the app is
+> running, stop it (Ctrl + C) and run `npm run dev` again for the change to take effect.
 
 ---
 
@@ -219,9 +268,12 @@ On Windows, if `python` is not recognized, use:
 py -m pip install -r backend/requirements.txt
 ```
 
-**The app opens but AI features show "AI service not configured" or an error**
-Your `backend/.env` file is missing or its credentials are blank. Redo Step 4, then
-stop the app (Ctrl + C) and run `npm run dev` again.
+**The app opens, but asking a question just dumps a long data overview instead of answering (or the backend log shows `No LLM configured`)**
+Your `backend/.env` is missing, blank, or wasn't saved. This is the most common
+issue. Check it with `type backend\.env` (Windows) or `cat backend/.env` (Mac/Linux):
+- If the lines are blank (`LLM_URL=` with nothing after), you didn't save after editing — redo Step 4c.
+- If the file isn't found, it was never created or is in the wrong folder — redo Step 4a, watching for the `.env.txt` trap and the nested-folder note in Step 4c.
+After fixing it, stop the app (Ctrl + C) and run `npm run dev` again.
 
 **`Port already in use` (5000 or 5173)**
 Another program is using that port. Either close that program, or change the backend
