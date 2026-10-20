@@ -14,11 +14,9 @@ Make sure you have the following installed before you begin:
 ## Step 1 — Clone the branch
 
 ```bash
-git clone -b merged-agents <repo-url>
-cd <repo-folder>
+git clone -b merged-agents https://github.com/JohnKroll442/Data-Summarizing-Tool.git
+cd Data-Summarizing-Tool
 ```
-
-Replace `<repo-url>` with the repository URL and `<repo-folder>` with the folder name it clones into.
 
 ---
 
