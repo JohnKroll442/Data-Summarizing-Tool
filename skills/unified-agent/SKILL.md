@@ -490,6 +490,21 @@ When `trace_output` is present in the input, use it to enrich root cause explana
 
 If Layer 2 is absent, note it and tell the user row-level queries need the payload regenerated.
 
+**Scope (`scope_applied`, present when the question named an entity / time / duration)**
+```json
+{ "scope_applied": { "filters": { "user": "NROS" }, "description": "user=NROS",
+                     "flagged_count": 31, "scope_total_actions": 139 } }
+```
+When `scope_applied` is present (non-null), the backend has ALREADY filtered
+`active_headline_types`, `active_phase_types`, `flagged_by_type`, `flagged_actions`,
+`total_flagged`, and `total_actions` down to that scope. Present everything as-is:
+- `total_flagged.actions` / `total_actions` are the scoped counts — SECTION 1 reads
+  e.g. "31 of 139 actions flagged" for that entity, not dataset-wide figures.
+- Add a one-line note under the heading stating the filter, e.g. *Filtered to: user NROS.*
+- NEVER say the entity is "missing" / "not in the data" and NEVER fall back to
+  dataset-wide root causes — the scoped rows ARE the data. If every array is empty,
+  say plainly that this scope has no flagged actions (do not substitute global totals).
+
 **Layer 3 — Trace Agent findings (when available from mesh)**
 ```json
 {

@@ -322,6 +322,23 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
 
     log.info("Intent: %s", intent)
 
+    # ── Deterministic guard: a scoped-subset follow-up that asks for a NEW
+    # breakdown / ranking / count ("which users were among those flagged
+    # actions?", "break those down by story", "who were they?") must be answered
+    # by DATA_EXPLORATION, never CONVERSATIONAL. The conversational path recomputes
+    # from stored rows — which carry flags=null and are matched on an EXACT hour,
+    # not the inherited range — so it contradicts the breakdown the user just saw
+    # (e.g. reporting "0 flagged" per user right after showing 94 flagged). Only
+    # DATA_EXPLORATION runs the flag-aware, scope-inheriting machinery.
+    if intent == "CONVERSATIONAL" and _is_followup_reference(question):
+        import re as _re
+        if _re.search(r"\b(?:which|what|who|how\s+many|list|show|rank|break\s+"
+                      r"(?:it|them|these|those)?\s*down|by\s+(?:user|story|action|"
+                      r"session|hour|day|type))\b", question.lower()):
+            log.info("Routing override: scoped follow-up reference → DATA_EXPLORATION "
+                     "(was CONVERSATIONAL)")
+            intent = "DATA_EXPLORATION"
+
     agent_outputs  = {}
     response_parts = [ack, ""]
     session_notes  = []
@@ -600,6 +617,22 @@ def _detect_timing_metric(question: str) -> bool:
     return bool(_TIMING_METRIC_RE.search(question or ""))
 
 
+def _detect_timing_metric_name(question: str) -> str:
+    """Which phase the timing question is about → 'offset'|'render'|'network'|
+    'backend'. Defaults to 'offset' when a widget-timing question names no
+    specific phase. Used to SORT metric_rankings by the requested metric so
+    'most backend time' ranks by backend, not by the offset default."""
+    q = (question or "").lower()
+    # frontend/render are the same phase in widget timing (render time).
+    if re.search(r"\bback\s*end\b", q):
+        return "backend"
+    if re.search(r"\bnetwork\b", q):
+        return "network"
+    if re.search(r"\b(?:render(?:ing)?|front\s*end)\b", q):
+        return "render"
+    return "offset"
+
+
 def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
                                 scoped_user=None, scoped_story=None,
                                 scoped_action=None, scoped_session=None,
@@ -789,24 +822,110 @@ def _build_unified_input(question, payload, dataset_id, intent, llm_history=None
 
     if intent == "ROOT_CAUSE_ANALYSIS":
         headline, phase = _derive_active_types(anom.get("counts", {}))
+        full_fbt      = anom.get("flagged_by_type", {}) or {}
+        all_flagged   = anom.get("flagged_actions", []) or []
+        total_flagged = anom.get("total_flagged", {})
+        total_actions = anom.get("total_actions", 0)
+
+        # ── Entity / time / duration scope (single filter source) ─────────────
+        # When the question narrows to a user / story / action / session / time
+        # window / duration ("root causes for the flagged actions of NROS"),
+        # filter the flagged data to THAT subset through query_engine.filter_rows
+        # — the same source of truth the Explorer uses. Without this the agent
+        # only ever saw a dataset-wide sample (10 rows/type + top-50 by duration)
+        # that routinely omitted the named entity, so it reported the entity as
+        # "missing" and fell back to dataset-wide root causes. Flagged rows carry
+        # user/story/session/action + timestamp + duration, so filter_rows honours
+        # exactly those keys (dominant_phase / end_hour are intentionally excluded
+        # — flagged rows lack those fields).
+        scope_applied = None
+        _rc_scope = {}
+        if dataset_id:
+            try:
+                import query_engine as _qe
+                _spec = _qe.parse_query(_strip_context_tag(question), dataset_id)
+                if _spec:
+                    _ROW_KEYS = ("user", "users", "story", "action", "session",
+                                 "date", "hour_of_day", "hour_min", "hour_max",
+                                 "duration_min_ms", "duration_max_ms")
+                    _rc_scope = {k: v for k, v in _spec.get("filters", {}).items()
+                                 if k in _ROW_KEYS}
+            except Exception:
+                log.exception("Root cause scope parse failed — continuing dataset-wide")
+
+        if _rc_scope:
+            import query_engine as _qe
+            import mesh_store as _ms
+            # Scope every type array AND the flat flagged list through the one
+            # filter source; drop types with no scoped rows.
+            scoped_fbt = {k: _qe.filter_rows(v, _rc_scope)
+                          for k, v in full_fbt.items() if isinstance(v, list)}
+            scoped_fbt = {k: v for k, v in scoped_fbt.items() if v}
+            scoped_flagged = _qe.filter_rows(all_flagged, _rc_scope)
+
+            # Distinct flagged-action count across all types in scope (an action
+            # with several anomaly types appears in several arrays — dedup it).
+            _seen = set()
+            for a in scoped_flagged:
+                _seen.add((a.get("action_name", ""), a.get("action_timestamp", ""),
+                           a.get("session_id", "")))
+            scoped_flagged_count = len(_seen)
+
+            # Denominator: the entity's TOTAL actions under the identical filter,
+            # recounted from the stored rows so numerator/denominator agree.
+            _stored = (_ms.get_dataset(dataset_id) or {}).get("rows", []) or []
+            scope_total = (len(_qe.filter_rows(_stored, _rc_scope))
+                           if _stored else None)
+
+            # Rebuild the headline/phase type lists from the SCOPED per-type
+            # counts (full arrays are authoritative, so len after filtering is the
+            # scoped action count), pct relative to the scope denominator.
+            def _mk(key, cnt):
+                pct = round(100 * cnt / scope_total) if scope_total else 0
+                return {"key": key, "label": _ANOMALY_LABELS.get(key, key),
+                        "actions": cnt, "pct": pct}
+            headline = sorted(
+                [_mk(k, len(v)) for k, v in scoped_fbt.items() if k not in _PHASE_KEYS],
+                key=lambda e: -e["actions"])
+            phase = sorted(
+                [_mk(k, len(v)) for k, v in scoped_fbt.items() if k in _PHASE_KEYS],
+                key=lambda e: -e["actions"])
+
+            total_actions = scope_total if scope_total is not None else total_actions
+            total_flagged = {"actions": scoped_flagged_count,
+                             "pct": (round(100 * scoped_flagged_count / scope_total)
+                                     if scope_total else None)}
+            full_fbt   = scoped_fbt
+            all_flagged = scoped_flagged
+            _scope_desc = ", ".join(f"{k}={v}" for k, v in _rc_scope.items())
+            scope_applied = {"filters": _rc_scope, "description": _scope_desc,
+                             "flagged_count": scoped_flagged_count,
+                             "scope_total_actions": scope_total}
+            log.info("Root cause: scoped to %s — flagged=%d/%s types=%d",
+                     _scope_desc, scoped_flagged_count, scope_total, len(scoped_fbt))
+
         # Scope to a single named type for the same reason as ANOMALY_SUMMARY:
         # "tell me more about the fragmented anomaly" must explain ONLY
         # fragmented, not emit the all-types tables and then the fragmented
         # drilldown on top of them. Only narrow when the named type is active
         # (present in one of the derived lists); an inactive type leaves the
-        # full view so the agent can still explain what's there.
+        # full view so the agent can still explain what's there. Composes with
+        # entity scope above (e.g. "NROS's straggler actions").
         _at = _detect_anomaly_type(question)
         if _at and any(e["key"] == _at for e in headline + phase):
             headline = [e for e in headline if e["key"] == _at]
             phase    = [e for e in phase    if e["key"] == _at]
+            full_fbt = {k: v for k, v in full_fbt.items() if k == _at}
+
         return {
             "agent_mode":            "root_cause",
             "active_headline_types": headline,
             "active_phase_types":    phase,
-            "total_flagged":         anom.get("total_flagged", {}),
-            "total_actions":         anom.get("total_actions", 0),
-            "flagged_by_type":       anom.get("flagged_by_type", {}),   # FULL — runner slims for LLM
-            "flagged_actions":       _sorted_flagged(anom.get("flagged_actions", []))[:50],
+            "total_flagged":         total_flagged,
+            "total_actions":         total_actions,
+            "flagged_by_type":       full_fbt,   # FULL (scoped if narrowed) — runner slims for LLM
+            "flagged_actions":       _sorted_flagged(all_flagged)[:50],
+            "scope_applied":         scope_applied,
             "trace_output":          read_agent_output(dataset_id, "trace-agent"),
             "explorer_context":      _get_explorer_context(dataset_id),
             "user_request":          question,
@@ -1662,8 +1781,9 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     # present (so "most backend time after 4 PM" / "render time for story X" rank
     # within the window) instead of being nulled out.
     _mr_filters = _agg_filters if scoped_agg else None
-    metric_rankings = _compute_widget_metric_rankings(dataset_id, payload,
-                                                      filters=_mr_filters)
+    metric_rankings = _compute_widget_metric_rankings(
+        dataset_id, payload, filters=_mr_filters,
+        sort_metric=_detect_timing_metric_name(scoped_question))
     if (not anomaly_type_scope
             and _detect_timing_metric(scoped_question)
             and metric_rankings and metric_rankings.get("available")):
@@ -1774,11 +1894,19 @@ def _build_explorer_input(question: str, payload: dict, dataset_id,
     scoped_flagged_summary = None
     _TIME_DUR_KEYS = ("date", "hour_of_day", "hour_min", "hour_max",
                       "duration_min_ms", "duration_max_ms")
-    if scoped_agg and any(k in _agg_filters for k in _TIME_DUR_KEYS):
+    # A multi-user comparison ("compare KIZUMI's flagged actions to NROS's")
+    # parses to a `users` list, not a single `user`. flagged_actions carry `user`,
+    # so filter_rows honours `users` directly — build the scoped summary for it too
+    # (its by_user ranking gives the per-user flagged counts the comparison needs).
+    # Without this the `users` scope fell through to the "flag count unavailable"
+    # branch below and wrongly reported NO flagged count for a perfectly
+    # computable comparison.
+    if scoped_agg and any(k in _agg_filters for k in _TIME_DUR_KEYS + ("users",)):
         try:
             import query_engine as _qe
             _flag_filters = {k: v for k, v in _agg_filters.items()
-                             if k in _TIME_DUR_KEYS or k in ("user", "story", "action", "session")}
+                             if k in _TIME_DUR_KEYS
+                             or k in ("user", "users", "story", "action", "session")}
             _flagged = payload.get("anomalies", {}).get("flagged_actions", []) or []
             # Denominator must use the SAME predicate as the numerator. When
             # _agg_filters contained a key flagged_actions can't satisfy
@@ -2202,7 +2330,8 @@ def _compute_flagged_rankings(payload: dict) -> dict:
     }
 
 
-def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> dict:
+def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None,
+                                    sort_metric: str = "offset") -> dict:
     """
     Aggregate widget-level timing metrics (offset, render, network, backend) by
     action_name, story_name, and user — reading from the widget_rows stored in
@@ -2304,9 +2433,14 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> 
             bucket[key]["backend"] += backend_ms
             bucket[key]["count"]   += 1
 
+    # Sort key for widget-phase rankings: the metric the question asked about
+    # ('backend'/'network'/'render'/'offset'), so "most backend time" ranks by
+    # backend instead of the offset default. Falls back to offset if unknown.
+    _sm = sort_metric if sort_metric in ("offset", "render", "network", "backend") else "offset"
+
     def _rank(bucket, entity_key):
         ranked = sorted(
-            bucket.items(), key=lambda x: x[1]["offset"], reverse=True
+            bucket.items(), key=lambda x: x[1][_sm], reverse=True
         )
         return [
             {
@@ -2391,8 +2525,12 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> 
                                          if d["count"] else 0,
                     "action_count":      d["count"],
                 })
-        # re-rank by total_offset_ms (primary), total_duration_ms (secondary)
-        merged.sort(key=lambda x: (x["total_offset_ms"], x["total_duration_ms"]), reverse=True)
+        # re-rank by the requested phase metric (primary), total_duration_ms
+        # (secondary) so the merged list order matches the metric the question
+        # asked about — not always offset.
+        _sort_col = {"offset": "total_offset_ms", "render": "total_render_ms",
+                     "network": "total_network_ms", "backend": "total_backend_ms"}.get(_sm, "total_offset_ms")
+        merged.sort(key=lambda x: (x.get(_sort_col, 0), x["total_duration_ms"]), reverse=True)
         for i, row in enumerate(merged):
             row["rank"] = i + 1
         return merged
@@ -2421,10 +2559,8 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> 
         for i, (sid, d) in enumerate(session_ranked)
     ]
 
-    # ── Per-widget ranking (by widget_name, sorted by render) ────────────────
-    # Answers "which widget had the most render time" and similar per-widget
-    # questions. widget_count here = number of widget INSTANCES carrying that
-    # name across all actions (not an action count).
+    # ── Per-widget ranking (by widget_name, sorted by the requested phase) ───
+    # Answers "which widget had the most render/backend/network/offset time".
     by_widget = [
         {
             "rank":             i + 1,
@@ -2437,7 +2573,8 @@ def _compute_widget_metric_rankings(dataset_id, payload: dict, filters=None) -> 
             "widget_count":     data["count"],
         }
         for i, (name, data) in enumerate(
-            sorted(widget_data_agg.items(), key=lambda x: x[1]["render"], reverse=True)
+            sorted(widget_data_agg.items(),
+                   key=lambda x: x[1][_sm if _sm != "offset" else "render"], reverse=True)
         )
     ]
 
@@ -2714,10 +2851,28 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
             })
         scoped = bool(slim_actions)
 
-    # ── Generic fallback: top 3 flagged actions by duration ───────────────────
+    # ── Generic fallback: top actions by duration ────────────────────────────
+    # Pull from ALL stored rows (not just flagged) so "the slowest action" is the
+    # TRUE slowest overall — not merely the slowest FLAGGED action, which was
+    # often a different, mid-ranked action and produced a misleading waterfall.
+    # Prefer actions that actually have widget data so the trace/waterfall is
+    # non-empty; fall back to flagged_actions when stored rows are unavailable.
     if not scoped:
+        source = flagged_actions
+        if dataset_id:
+            entry = mesh_store.get_dataset(dataset_id)
+            rows = (entry or {}).get("rows", []) or []
+            if rows:
+                wrows = (entry or {}).get("widget_rows", []) or []
+                keys_with_widgets = {w.get("action_key") for w in wrows} if wrows else set()
+                traceable = [
+                    r for r in rows
+                    if f"{r.get('action_name', '')}::{r.get('action_timestamp', '')}"
+                    in keys_with_widgets
+                ]
+                source = traceable or rows
         top_actions = sorted(
-            flagged_actions,
+            source,
             key=lambda a: a.get("action_duration_ms") or 0,
             reverse=True,
         )[:3]
@@ -3290,15 +3445,36 @@ def _root_cause_chart_directive(rc_input: dict, result: dict, question: str) -> 
 
 
 def _explorer_chart_directive(explorer_input: dict, result: dict, question: str) -> dict | None:
-    """Inject a chart only when the user explicitly asked to see one. Covers the
-    common, unambiguous ask (a Pareto/bar of action durations); other chart types
-    are left to the agent's own directive when it emits one."""
+    """Inject a chart only when the user explicitly asked to see one, matching the
+    chart TYPE they named. Previously this always returned a Pareto (except pie),
+    so "show me the action waterfall" rendered a Pareto. Now the named chart type
+    drives the directive; waterfall uses the "worst_offender" selector so it always
+    resolves on the frontend without a brittle exact action-name match."""
     ql = (question or "").lower()
     if not _VIZ_VERB_RE.search(ql):
         return None
+    # Bespoke performance charts — matched before the registry defaults.
+    if "waterfall" in ql:
+        return {"family": "bespoke", "chart": "action_waterfall",
+                "selector": "worst_offender", "title": "Action waterfall — slowest action"}
+    if "scatter" in ql:
+        return {"family": "bespoke", "chart": "action_scatter",
+                "title": "Action phase scatter"}
+    if "box" in ql:   # "boxplot" / "box plot"
+        return {"family": "bespoke", "chart": "action_boxplot",
+                "title": "Action duration spread"}
+    # Registry charts keyed on action durations.
     if "pie" in ql or "donut" in ql:
-        return {"family": "registry", "chartType": "pie", "data": "actions",
+        return {"family": "registry", "chartType": ("donut" if "donut" in ql else "pie"),
+                "data": "actions",
                 "config": {"nameKey": "action_name", "valueKey": "action_duration"},
+                "title": "Action durations"}
+    if "histogram" in ql:
+        return {"family": "registry", "chartType": "histogram", "data": "actions",
+                "config": {"key": "action_duration"}, "title": "Action duration distribution"}
+    if "bar" in ql:
+        return {"family": "registry", "chartType": "bar", "data": "actions",
+                "config": {"xKey": "action_name", "yKey": "action_duration"},
                 "title": "Action durations"}
     # Default explicit-request chart: Pareto of action durations.
     return {"family": "registry", "chartType": "pareto", "data": "actions",

@@ -175,9 +175,16 @@ referencing results from a previous turn:
   - "rank 2", "#2", "the second one" → rank 2 from the last shown table
   - "33 flagged actions" → a specific count value from the last table
   - "explore that more", "drill into that", "tell me more about rank N" → detail drill
-Route these as DATA_EXPLORATION — the Explorer Agent has the previous context to
-resolve the reference. Do NOT misinterpret reference values (like "33") as new
-payload data.
+  - "which users/stories/actions were among those?", "who were they?", "break
+    those down by X", "which of those were flagged?" → a NEW breakdown/ranking of
+    the PRIOR subset
+Route ALL of these as DATA_EXPLORATION — the Explorer Agent re-computes the
+breakdown with the correct flag-aware, scope-inheriting logic. Do NOT route a
+request for a NEW breakdown/ranking/count of a prior subset to CONVERSATIONAL:
+CONVERSATIONAL cannot recompute flagged counts (it reads stored rows where flags
+are null) and will contradict the table the user just saw. CONVERSATIONAL is only
+for restating a value ALREADY shown verbatim, not for producing a new breakdown.
+Do NOT misinterpret reference values (like "33") as new payload data.
 
 ## Output — return ONLY this JSON (no other text, no code fence needed)
 

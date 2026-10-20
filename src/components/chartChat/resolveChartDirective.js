@@ -124,7 +124,12 @@ function resolveBespoke(directive, { aggRows, rows, headers }) {
       const widgetName = directive.selector?.widget_name
       const nameCol = detectMapping(headers).widgetName
       if (!widgetName || !nameCol) return { ok: false, reason: 'no_widget_match', detail: widgetName }
-      const widgetRows = actionRows.filter((r) => String(r?.[nameCol] ?? '') === String(widgetName))
+      let widgetRows = actionRows.filter((r) => String(r?.[nameCol] ?? '') === String(widgetName))
+      if (!widgetRows.length) {
+        const norm = (s) => String(s ?? '').trim().toLowerCase()
+        const target = norm(widgetName)
+        widgetRows = actionRows.filter((r) => norm(r?.[nameCol]) === target)
+      }
       if (!widgetRows.length) return { ok: false, reason: 'no_widget_match', detail: widgetName }
       const option = buildWidgetTimingOption(widgetRows, actionRows)
       return { ok: true, option, title: directive.title || `Widget timing — ${widgetName}`, height: 360 }
@@ -148,7 +153,17 @@ function resolveActionRow(selector, aggRows) {
   }
   const name = selector.action_name
   if (!name) return null
+  // Exact match first; fall back to a normalized (trimmed, case-insensitive)
+  // match so a selector whose action_name differs only in casing/whitespace
+  // from the stored value still resolves instead of silently rendering
+  // "chart unavailable". The LLM constructs these names from its own text, so
+  // minor divergence from the raw CSV value is common.
   let matches = aggRows.filter((r) => String(r.action_name) === String(name))
+  if (!matches.length) {
+    const norm = (s) => String(s ?? '').trim().toLowerCase()
+    const target = norm(name)
+    matches = aggRows.filter((r) => norm(r.action_name) === target)
+  }
   if (selector.action_timestamp) {
     const exact = matches.filter((r) => String(r._action_timestamp ?? '') === String(selector.action_timestamp))
     if (exact.length) matches = exact
