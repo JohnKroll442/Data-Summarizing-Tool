@@ -28,4 +28,5 @@ if (result.status !== 0) {
   console.warn(`[backend]   ${python} -m pip install -r backend/requirements.txt\n`)
 }
 
-process.exit(result.status ?? 0)
+// Always exit 0 — a pip failure is non-fatal for frontend-only environments (e.g. Vercel).
+process.exit(0)
