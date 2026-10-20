@@ -6,14 +6,14 @@
   "scripts": {
     "dev": "concurrently --names \"web,api\" --prefix-colors \"cyan,magenta\" --kill-others \"npm:dev:frontend\" \"npm:dev:backend\"",
     "dev:frontend": "vite",
-    "dev:backend": "cd backend && python app.py",
+    "dev:backend": "node scripts/run-backend.mjs",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "postinstall": "pip install -r backend/requirements.txt"
+    "postinstall": "node scripts/install-backend.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
