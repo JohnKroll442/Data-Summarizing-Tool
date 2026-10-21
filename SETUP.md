@@ -100,7 +100,28 @@ few minutes the first time.
 The backend talks to an AI service, and it needs credentials for that service.
 These are secret, so they are **not** included in the project — you add them yourself.
 
-### 4a. Create the credentials file
+### 4a. Open the project in your editor
+
+From inside the project folder, open the whole project in VS Code so the files are
+easy to find and edit:
+
+```bash
+code .
+```
+
+(That is the word `code`, a space, then a dot — the dot means "this folder".)
+VS Code opens with the project's file tree on the left. Keep this window open for
+the next steps.
+
+> If `code` is **not recognized**, the `code` command isn't on your PATH:
+> - **Windows:** re-run the VS Code installer and tick **"Add to PATH"**, then reopen your terminal.
+> - **macOS:** in VS Code, open the Command Palette (**Cmd + Shift + P**), run
+>   **"Shell Command: Install 'code' command in PATH"**, then reopen your terminal.
+>
+> You don't have to use VS Code — any text editor works. Just open the `backend/.env`
+> file (created in the next step) however you prefer.
+
+### 4b. Create the credentials file
 
 Copy the provided template:
 
@@ -117,7 +138,10 @@ Copy the provided template:
   Copy-Item backend\env.example backend\.env
   ```
 
-### 4b. Fill in your credentials
+In the VS Code file tree, open the **`backend`** folder and click **`.env`** to
+open it for editing.
+
+### 4c. Fill in your credentials
 
 Open the new file `backend/.env` in any text editor. Fill in **only one** of the
 three options below — whichever matches the AI service you have access to. Delete
@@ -155,7 +179,7 @@ AI_CORE_TOKEN=<paste your bearer token here>
 
 Leave every other line in the file as-is — those already have working defaults.
 
-### 4c. SAVE the file, then verify it
+### 4d. SAVE the file, then verify it
 
 **You must save the file after editing it.** Typing values into an editor does
 nothing until you save — the file on disk stays blank. In Notepad, press
@@ -271,8 +295,8 @@ py -m pip install -r backend/requirements.txt
 **The app opens, but asking a question just dumps a long data overview instead of answering (or the backend log shows `No LLM configured`)**
 Your `backend/.env` is missing, blank, or wasn't saved. This is the most common
 issue. Check it with `type backend\.env` (Windows) or `cat backend/.env` (Mac/Linux):
-- If the lines are blank (`LLM_URL=` with nothing after), you didn't save after editing — redo Step 4c.
-- If the file isn't found, it was never created or is in the wrong folder — redo Step 4a, watching for the `.env.txt` trap and the nested-folder note in Step 4c.
+- If the lines are blank (`LLM_URL=` with nothing after), you didn't save after editing — redo Step 4d.
+- If the file isn't found, it was never created or is in the wrong folder — redo Step 4b, watching for the `.env.txt` trap and the nested-folder note in Step 4d.
 After fixing it, stop the app (Ctrl + C) and run `npm run dev` again.
 
 **`Port already in use` (5000 or 5173)**
@@ -283,6 +307,26 @@ the project **root** containing:
 VITE_BACKEND_URL=http://localhost:5001
 ```
 Restart the app.
+
+**macOS only — AI chat fails even though the app loads (port 5000 / AirPlay)**
+On macOS Monterey and later, Apple's **AirPlay Receiver** uses port `5000` — the same
+port this app's backend needs. This causes one of two things:
+- The `[api]` stream fails to start with an `Address already in use` error, **or**
+- The app loads and charts work, but every AI chat question fails — AirPlay silently
+  intercepts the request and returns a `403 Forbidden` (you may see `Server: AirTunes`
+  in the error). Nothing in the terminal points at the real cause, which makes this
+  one confusing.
+
+**Solution — pick either one:**
+- **Turn off AirPlay Receiver (easiest):** System Settings → General → AirDrop & Handoff
+  → toggle **AirPlay Receiver** off. Port 5000 is freed immediately. Then restart the app.
+- **Or move the backend to another port** without changing macOS settings: open
+  `backend/.env`, set `PORT=5001`, then create a file named `.env.local` in the project
+  **root** containing:
+  ```
+  VITE_BACKEND_URL=http://localhost:5001
+  ```
+  Stop the app (Ctrl + C) and run `npm run dev` again.
 
 **Backend changes don't show up**
 The backend does not auto-reload. Stop the app (Ctrl + C) and run `npm run dev` again.
