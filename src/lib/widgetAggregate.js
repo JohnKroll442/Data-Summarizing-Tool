@@ -185,7 +185,7 @@ function sumDurations(values) {
  * no WIDGET_SUBMEASURE column we can't tell sub-measures apart, so fall back to
  * the max across all network rows (preserves behavior for CSV shapes without it).
  */
-function phasePicks(groupRows, mapping) {
+export function phasePicks(groupRows, mapping) {
   const networkPick = mapping.submeasure
     ? pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'], mapping.submeasure, ['ttfb'])
     : pickMaxRow(groupRows, mapping.duration, mapping.measure, ['network'])

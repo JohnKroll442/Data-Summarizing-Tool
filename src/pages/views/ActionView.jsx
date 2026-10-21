@@ -25,6 +25,7 @@ import { resolveActiveView, isActionViewKey } from '../../lib/actionViews'
 import { exportActionReport } from '../../lib/exportReport'
 import AgentChatPanel from '../../components/AgentChatPanel'
 import { buildAgentPayload, buildPerActionWidgetRows } from '../../lib/buildAgentPayload'
+import { buildPhaseOverlap } from '../../lib/phaseOverlap'
 import { aggregateBySession } from '../../lib/sessionAggregate'
 import { aggregateByWidget } from '../../lib/widgetAggregate'
 import { computeRankings, computeBusiest } from '../../lib/summary'
@@ -198,6 +199,14 @@ function ActionView() {
   // merges a widget across all its appearances.
   const widgetRows = useMemo(
     () => buildPerActionWidgetRows(scopedRows, headers),
+    [scopedRows, headers],
+  )
+
+  // Phase-overlap analysis (render vs network time windows) from the raw rows.
+  // Reads the dedicated per-phase start/end columns the aggregated widget_rows
+  // discard, so "did render and network run in parallel" can be answered.
+  const phaseOverlap = useMemo(
+    () => buildPhaseOverlap(scopedRows, headers),
     [scopedRows, headers],
   )
 
@@ -388,6 +397,8 @@ function ActionView() {
       aggRows, mapping, anomalies, kpis: actionKpis, thresholds, fileName,
       sessionAggRows, sessionKpis: sessionKpisData,
       widgetAggRows,  widgetKpis:  widgetKpisData,
+      perActionWidgetRows: widgetRows,
+      phaseOverlap,
       rankings: rankingsData, busiest: busiestData,
       insights: insightsData,
       offsetDuration,
@@ -396,6 +407,8 @@ function ActionView() {
     aggRows, mapping, anomalies, thresholds, fileName,
     sessionAggRows, sessionKpisData,
     widgetAggRows, widgetKpisData,
+    widgetRows,
+    phaseOverlap,
     rankingsData, busiestData, insightsData,
     offsetDuration,
   ])

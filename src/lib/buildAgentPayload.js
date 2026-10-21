@@ -2,6 +2,8 @@ import { aggregateByWidget } from './widgetAggregate'
 import { findActionNameKey, findActionTimestampKey } from './drillDown'
 import { buildTimeOfDayTrend } from './timeOfDayTrend'
 import { buildStoryActionMatrix } from './storyActionMatrix'
+import { buildTimestampIntegrity } from './timestampIntegrity'
+import { buildPhaseOverlap } from './phaseOverlap'
 
 /**
  * buildAgentPayload — serializes the tool's computed state into the structured
@@ -65,6 +67,10 @@ export function buildAgentPayload({
   sessionAggRows, sessionKpis,
   // Widget View
   widgetAggRows, widgetKpis,
+  // Per-action widget rows (carry raw phase start/end timestamps)
+  perActionWidgetRows,
+  // Phase-overlap analysis (precomputed from raw rows — render vs network windows)
+  phaseOverlap,
   // Summary View
   rankings, busiest,
   // Insights panel
@@ -85,6 +91,8 @@ export function buildAgentPayload({
     time_summary:        buildTimeSummary(aggRows),
     story_action_matrix: buildStoryActionMatrixSummary(aggRows),
     offset_summary:      buildOffsetSummary(offsetDuration),
+    timestamp_integrity: buildTimestampIntegrity(perActionWidgetRows),
+    phase_overlap:       phaseOverlap ?? buildPhaseOverlap([], []),
   }
 }
 
@@ -410,6 +418,14 @@ function buildWidgetSummary(widgetAggRows, widgetKpis) {
     }
   }
 
+  // LEAN CONTRACT — durations only, never per-phase timestamps.
+  // widget_summary covers EVERY widget (top-10 per phase across the whole
+  // dataset), so adding the six render/network/backend start/end strings here
+  // would balloon the payload (~730k tokens measured on a 13.7k-widget set) and
+  // blow the model's input budget. Per-phase timestamps are delivered two
+  // bounded ways instead: compute-and-inject summary blocks (timestamp_integrity,
+  // phase_overlap) and the capped WIDGET_TRACE escape hatch. Keep this row lean —
+  // see timestampIntegrity.test / the payload lean-contract test.
   const widgetRow = (w) => ({
     widget_id:   w.widget_id   ?? '',
     widget_name: w.widget_name ?? '',

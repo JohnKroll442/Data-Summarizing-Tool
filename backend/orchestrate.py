@@ -339,6 +339,37 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
                      "(was CONVERSATIONAL)")
             intent = "DATA_EXPLORATION"
 
+    # ── Deterministic routing guards (override the LLM classifier). ───────────
+    # The classifier keeps mis-routing phase/timing questions to
+    # DATA_EXPLORATION / ROOT_CAUSE (they mention phase names), so we force the
+    # right path by question shape. Precedence matters:
+    #   1. timestamp-ordering  → CONVERSATIONAL — exact answer from the payload's
+    #      timestamp_integrity block (duration-based agents can't give the overrun).
+    #   2. phase-overlap       → CONVERSATIONAL — exact answer from the
+    #      phase_overlap block (computed from the raw per-phase windows).
+    #   3. widget-timing/trace → WIDGET_TRACE — open-ended "timeline / sequence /
+    #      when did each phase run" questions need the trace agent, which now keeps
+    #      the raw phase timestamps for exactly these questions (see
+    #      _build_trace_input). This is an elif: the two exact-answer guards win,
+    #      so a timestamp/overlap question never gets sent to the trace agent.
+    # Placed LAST so these override both the LLM classifier and the follow-up
+    # guard above.
+    if _detect_timestamp_integrity_question(question):
+        if intent != "CONVERSATIONAL":
+            log.info("Routing override: timestamp-ordering question → CONVERSATIONAL "
+                     "(was %s)", intent)
+        intent = "CONVERSATIONAL"
+    elif _detect_phase_overlap_question(question):
+        if intent != "CONVERSATIONAL":
+            log.info("Routing override: phase-overlap question → CONVERSATIONAL "
+                     "(was %s)", intent)
+        intent = "CONVERSATIONAL"
+    elif _detect_widget_timing_question(question):
+        if intent != "WIDGET_TRACE":
+            log.info("Routing override: widget-timing question → WIDGET_TRACE "
+                     "(was %s)", intent)
+        intent = "WIDGET_TRACE"
+
     agent_outputs  = {}
     response_parts = [ack, ""]
     session_notes  = []
@@ -362,6 +393,13 @@ def orchestrate(question: str, payload: dict, dataset_id=None,
         out = run_unified_agent(unified_input, question)
         store_name, out_key = _MODE_MESH[agent_mode]
         agent_outputs[out_key] = out
+        # For a widget trace, if the true slowest action couldn't be traced (no
+        # widget-level data) we substituted the slowest traceable action — surface
+        # that deterministically ABOVE the agent's trace so the user is never told
+        # a faster action is "the slowest".
+        _sel_note = unified_input.get("selection_note")
+        if agent_mode == "widget_trace" and _sel_note:
+            response_parts.append(_sel_note)
         response_parts.append(out.get("_response_text", ""))
         session_notes.extend(out.get("session_notes", []))
         _guard_store(dataset_id, store_name, out)
@@ -631,6 +669,69 @@ def _detect_timing_metric_name(question: str) -> str:
     if re.search(r"\b(?:render(?:ing)?|front\s*end)\b", q):
         return "render"
     return "offset"
+
+
+# Timestamp recording-point / phase-ordering questions. These ask whether the
+# RAW phase end timestamps were recorded consistently (e.g. "is a widget's
+# network end stamped after its render end", "inner phase finishing after the
+# phase that contains it", "clock skew", "out-of-order timestamps"). The answer
+# lives ONLY in the payload's timestamp_integrity block, which is read by the
+# CONVERSATIONAL path — NOT by any analysis agent. The LLM classifier keeps
+# mis-routing these to ROOT_CAUSE_ANALYSIS / network-bound analysis because they
+# mention phase names, so a deterministic guard forces them to CONVERSATIONAL.
+_TIMESTAMP_INTEGRITY_RE = re.compile(
+    r"out[\s-]*of[\s-]*order"
+    r"|recording[\s-]*point"
+    r"|clock\s*(?:skew|drift|reference)"
+    # a timestamp described as inconsistent / mismatched / skewed / wrongly ordered
+    r"|(?:time\s*stamps?|timestamps?)[^.?!]*\b(?:inconsisten\w+|mismatch\w*|"
+    r"skew\w*|misalign\w+|wrong\s+order|out\s+of\s+order|disorder\w*)"
+    # an inner phase described as finishing after / outside the phase containing it
+    r"|\binner\s+phase\b[^.?!]*\b(?:finish\w*|end\w*|after|contain\w*|outer)"
+    # explicit phase-end ordering: "<phase> end ... after ... <phase> end"
+    r"|\b(?:render|network|backend|frontend)\s*end\b[^.?!]*\bafter\b"
+    r"[^.?!]*\b(?:render|network|backend|frontend)\s*end\b"
+    # a phase/end stamped or recorded after another, or an end-timestamp overrun
+    r"|\bphase\s+end\w*\b[^.?!]*\b(?:after|out\s+of\s+order|order)"
+    r"|\bend\s+time\s*stamps?\b[^.?!]*\bafter\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_timestamp_integrity_question(question: str) -> bool:
+    """True when the question is about raw phase-end timestamp ordering /
+    recording-point consistency — answerable only from the payload's
+    timestamp_integrity block via the CONVERSATIONAL path."""
+    return bool(_TIMESTAMP_INTEGRITY_RE.search(question or ""))
+
+
+# Phase-overlap / concurrency questions: "did render and network run in
+# parallel", "do the phases overlap", "are render and network concurrent",
+# "did they run sequentially". Answered from the payload's phase_overlap block
+# (computed frontend-side from the raw per-phase window columns) via the
+# CONVERSATIONAL path. Like the timestamp check, the LLM classifier mis-routes
+# these to DATA_EXPLORATION / network-bound analysis because they name phases.
+_PHASE_OVERLAP_RE = re.compile(
+    r"\b(?:ran?|run|running|execute\w*|happen\w*|load\w*)\s+(?:in\s+)?parallel\b"
+    r"|\bin\s+parallel\b"
+    r"|\bconcurren\w+"
+    r"|\bsimultaneous\w*"
+    r"|\bat\s+the\s+same\s+time\b"
+    r"|\b(?:phase|render|network|backend|frontend)\w*\b[^.?!]*\boverlap\w*"
+    r"|\boverlap\w*[^.?!]*\b(?:phase|render|network|backend|frontend)\b"
+    r"|\b(?:render|network|backend|frontend|phase)\w*\b[^.?!]*\bsequential\w*"
+    r"|\bsequential\w*[^.?!]*\b(?:render|network|backend|frontend|phase)\b"
+    r"|\bone\s+after\s+(?:the\s+)?(?:other|another)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_phase_overlap_question(question: str) -> bool:
+    """True when the question asks whether phases ran in parallel / overlapped /
+    were sequential — answerable only from the payload's phase_overlap block via
+    the CONVERSATIONAL path."""
+    return bool(_PHASE_OVERLAP_RE.search(question or ""))
+
 
 
 def _compute_anomaly_type_scope(raw_fbt: dict, anomaly_type: str,
@@ -2803,6 +2904,43 @@ def _sorted_flagged(flagged: list) -> list:
 
 _TRACE_SCOPED_TOP_N = 5  # slowest actions to trace for a targeted user/action query
 
+# When a trace question is about phase TIMING (timeline / sequence / when a phase
+# started or ended), we keep the six raw phase start/end timestamps in the widget
+# rows instead of stripping them — but only while the chosen actions' total widget
+# count stays under this cap, so a high-widget action can't blow the input budget.
+# At ~214 extra chars per widget (≈ measured), 150 widgets adds ~8k tokens — well
+# within the ~130k input ceiling.
+_TRACE_TIMESTAMP_WIDGET_CAP = 150
+
+# Phrasings that mean the trace question needs the raw phase windows (timeline,
+# sequence, ordering, when each phase started/ended). Phase-overlap and
+# timestamp-ordering questions are intercepted to CONVERSATIONAL before reaching
+# the trace builder, so this covers the OTHER open-ended timing/drill-down
+# questions that do route to WIDGET_TRACE.
+_WIDGET_TIMING_RE = re.compile(
+    r"\btimeline\b"
+    r"|\bwaterfall\b"
+    r"|\bsequenc\w*"
+    r"|\btimings?\b"
+    r"|\bin\s+what\s+order\b|\bwhat\s+order\b|\border\s+of\b"
+    r"|\bstep[\s-]?by[\s-]?step\b"
+    r"|\bwhen\s+(?:did|does|do|each|the|they|it)\b"
+    r"|\b(?:start|end|finish)\w*\s+time\w*"
+    r"|\btime\w*\s+(?:breakdown|line|window)\w*"
+    r"|\btimestamp\w*"
+    r"|\btrace\b[^.?!]*\b(?:timing|phase|widget|render|network|backend)\b"
+    r"|\b(?:render|network|backend|frontend|phase)\w*\b[^.?!]*\b"
+    r"(?:timeline|sequenc\w*|order|when|start\w*|end\w*|finish\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_widget_timing_question(question: str) -> bool:
+    """True when a WIDGET_TRACE question is about phase timing/sequence and
+    therefore benefits from the raw phase start/end timestamps being kept in the
+    widget rows (subject to the widget-count cap)."""
+    return bool(_WIDGET_TIMING_RE.search(question or ""))
+
 
 def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
     """
@@ -2815,19 +2953,63 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
     Two scopes:
       - TARGETED: the question names a specific user/action/story/session
         (parsed deterministically by query_engine). We trace that entity's
-        SLOWEST N actions from the full stored rows — not just anomaly-flagged
-        ones — so any action with widget data can be asked about.
-      - GENERIC (fallback): no entity named → the top 3 flagged actions by
-        duration, as before.
+        SLOWEST actions from the full stored rows.
+      - GENERIC (fallback): no entity named → the slowest actions overall.
 
-    In both cases we include widget rows only for the chosen actions, a slim
-    type summary, and compact mesh outputs.
+    In both scopes we prefer actions that actually have widget-level data so the
+    waterfall isn't empty — but we record the TRUE slowest action and, when it
+    has no widget data and a faster traceable action is substituted, emit a
+    `selection_note`. orchestrate() surfaces that note above the trace so the
+    user is never shown a faster action mislabelled as "the slowest". We include
+    widget rows only for the chosen actions, a slim type summary, and compact
+    mesh outputs.
     """
     import mesh_store
     import query_engine
 
     anomalies = payload.get("anomalies", {})
     flagged_actions = anomalies.get("flagged_actions", [])
+
+    entry = mesh_store.get_dataset(dataset_id) if dataset_id else None
+    all_rows = (entry or {}).get("rows", []) or []
+    all_widget_rows = (entry or {}).get("widget_rows", []) or []
+    keys_with_widgets = {w.get("action_key") for w in all_widget_rows}
+
+    def _akey(a):
+        return f"{a.get('action_name', '')}::{a.get('action_timestamp', '')}"
+
+    def _slim(a):
+        return {
+            "action_name":        a.get("action_name", ""),
+            "action_timestamp":   a.get("action_timestamp", ""),
+            "user":               a.get("user", ""),
+            "action_duration_ms": a.get("action_duration_ms", 0),
+            "anomaly_types":      a.get("anomaly_types", []),
+        }
+
+    # When the genuinely slowest action has no widget-level rows, we trace the
+    # slowest action that DOES — but we must say so, not silently substitute a
+    # faster action and label it "slowest" (that produced a misleading trace).
+    def _substitution_note(scope_label, slowest, substitute):
+        if substitute is not None:
+            return (
+                f"> **Note:** The slowest action{scope_label} — "
+                f"**{slowest.get('action_name', '?')}** "
+                f"({_human_ms(slowest.get('action_duration_ms', 0))}) — has no "
+                f"widget-level timing data, so it can't be traced. Showing the "
+                f"slowest action that *does* have widget data instead: "
+                f"**{substitute.get('action_name', '?')}** "
+                f"({_human_ms(substitute.get('action_duration_ms', 0))})."
+            )
+        return (
+            f"> **Note:** No action{scope_label} has widget-level timing data, so a "
+            f"phase waterfall isn't available. The slowest action is "
+            f"**{slowest.get('action_name', '?')}** "
+            f"({_human_ms(slowest.get('action_duration_ms', 0))})."
+        )
+
+    selection_note = None
+    slowest_action = None
 
     # ── Targeted scope: did the user name a specific entity? ──────────────────
     scoped = False
@@ -2837,53 +3019,48 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
     # Only user/action/story/session make this an action-trace query; a bare
     # date/hour filter is an explorer-style breakdown, not a widget trace.
     if any(scope_filters.get(k) for k in ("user", "action", "story", "session")):
-        entry = mesh_store.get_dataset(dataset_id)
-        rows = (entry or {}).get("rows", []) or []
-        matched = query_engine.filter_rows(rows, scope_filters)
+        matched = query_engine.filter_rows(all_rows, scope_filters)
         matched.sort(key=lambda r: r.get("action_duration_ms") or 0, reverse=True)
-        for a in matched[:_TRACE_SCOPED_TOP_N]:
-            slim_actions.append({
-                "action_name":        a.get("action_name", ""),
-                "action_timestamp":   a.get("action_timestamp", ""),
-                "user":               a.get("user", ""),
-                "action_duration_ms": a.get("action_duration_ms", 0),
-                "anomaly_types":      a.get("anomaly_types", []),
-            })
-        scoped = bool(slim_actions)
+        if matched:
+            true_slowest = matched[0]
+            slowest_has_widgets = _akey(true_slowest) in keys_with_widgets
+            slowest_action = {**_slim(true_slowest), "has_widget_data": slowest_has_widgets}
+            # Prefer actions that actually have widget data so the waterfall isn't
+            # empty; fall back to the raw slowest when none are traceable.
+            traceable = [r for r in matched if _akey(r) in keys_with_widgets]
+            chosen = (traceable or matched)[:_TRACE_SCOPED_TOP_N]
+            slim_actions = [_slim(a) for a in chosen]
+            scoped = bool(slim_actions)
+            if not slowest_has_widgets:
+                _scope_desc = ", ".join(f"{k}={v}" for k, v in scope_filters.items()
+                                        if k in ("user", "action", "story", "session"))
+                selection_note = _substitution_note(
+                    f" for {_scope_desc}" if _scope_desc else " in scope",
+                    true_slowest,
+                    traceable[0] if traceable else None,
+                )
 
-    # ── Generic fallback: top actions by duration ────────────────────────────
+    # ── Generic fallback: slowest actions overall ─────────────────────────────
     # Pull from ALL stored rows (not just flagged) so "the slowest action" is the
-    # TRUE slowest overall — not merely the slowest FLAGGED action, which was
-    # often a different, mid-ranked action and produced a misleading waterfall.
-    # Prefer actions that actually have widget data so the trace/waterfall is
-    # non-empty; fall back to flagged_actions when stored rows are unavailable.
+    # TRUE slowest overall. Prefer actions with widget data so the waterfall is
+    # non-empty — but record the true slowest and note any substitution rather
+    # than silently tracing a faster action.
     if not scoped:
-        source = flagged_actions
-        if dataset_id:
-            entry = mesh_store.get_dataset(dataset_id)
-            rows = (entry or {}).get("rows", []) or []
-            if rows:
-                wrows = (entry or {}).get("widget_rows", []) or []
-                keys_with_widgets = {w.get("action_key") for w in wrows} if wrows else set()
-                traceable = [
-                    r for r in rows
-                    if f"{r.get('action_name', '')}::{r.get('action_timestamp', '')}"
-                    in keys_with_widgets
-                ]
-                source = traceable or rows
-        top_actions = sorted(
-            source,
-            key=lambda a: a.get("action_duration_ms") or 0,
-            reverse=True,
-        )[:3]
-        for a in top_actions:
-            slim_actions.append({
-                "action_name":        a.get("action_name", ""),
-                "action_timestamp":   a.get("action_timestamp", ""),
-                "user":               a.get("user", ""),
-                "action_duration_ms": a.get("action_duration_ms", 0),
-                "anomaly_types":      a.get("anomaly_types", []),
-            })
+        source_all = all_rows or flagged_actions
+        source_sorted = sorted(source_all,
+                               key=lambda a: a.get("action_duration_ms") or 0,
+                               reverse=True)
+        if source_sorted:
+            true_slowest = source_sorted[0]
+            slowest_has_widgets = _akey(true_slowest) in keys_with_widgets
+            slowest_action = {**_slim(true_slowest), "has_widget_data": slowest_has_widgets}
+            traceable = [r for r in source_sorted if _akey(r) in keys_with_widgets]
+            chosen = (traceable or source_sorted)[:3]
+            slim_actions = [_slim(a) for a in chosen]
+            if not slowest_has_widgets:
+                selection_note = _substitution_note(
+                    " overall", true_slowest, traceable[0] if traceable else None,
+                )
 
     # Build a compact type summary: { type_key: action_count } instead of full arrays
     flagged_by_type = anomalies.get("flagged_by_type", {})
@@ -2892,16 +3069,44 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
         if isinstance(actions, list) and len(actions) > 0:
             type_summary[type_key] = len(actions)
 
-    # Fetch widget rows ONLY for the top actions
+    # Fetch widget rows ONLY for the top actions. By default we send slim rows
+    # (durations only) to save tokens. For a phase-TIMING question we instead KEEP
+    # the six raw phase start/end timestamps so the agent can trace when each
+    # phase ran — but only when the chosen actions' total widget count is under
+    # _TRACE_TIMESTAMP_WIDGET_CAP, so a high-widget action can't blow the input
+    # budget. (Phase-overlap and timestamp-ordering questions are answered
+    # deterministically on the CONVERSATIONAL path and never reach here.)
     widget_data = {}
+    timestamps_included = False
     if dataset_id:
         entry = mesh_store.get_dataset(dataset_id)
         if entry:
             all_widget_rows = entry.get("widget_rows", [])
+            # First pass: collect the matching rows per action and count them, so
+            # the cap decision sees the real total before any dicts are built.
+            by_action = {}
             for a in slim_actions:
                 action_key = f"{a['action_name']}::{a['action_timestamp']}"
-                matching = [
-                    {  # Slim widget rows — drop timestamps to save tokens
+                rows_for_action = [
+                    w for w in all_widget_rows if w.get("action_key") == action_key
+                ]
+                if rows_for_action:
+                    by_action[action_key] = rows_for_action
+
+            total_widgets = sum(len(v) for v in by_action.values())
+            include_ts = (
+                _detect_widget_timing_question(question)
+                and 0 < total_widgets <= _TRACE_TIMESTAMP_WIDGET_CAP
+            )
+            timestamps_included = include_ts
+            if _detect_widget_timing_question(question) and not include_ts and total_widgets:
+                log.info("Trace: timing question but %d widgets > cap %d — keeping slim rows",
+                         total_widgets, _TRACE_TIMESTAMP_WIDGET_CAP)
+
+            for action_key, rows_for_action in by_action.items():
+                built = []
+                for w in rows_for_action:
+                    row = {
                         "widget_id":   w.get("widget_id", ""),
                         "widget_name": w.get("widget_name", ""),
                         "render":      w.get("render"),
@@ -2910,11 +3115,20 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
                         "offset":      w.get("offset"),
                         "total":       w.get("total"),
                     }
-                    for w in all_widget_rows
-                    if w.get("action_key") == action_key
-                ]
-                if matching:
-                    widget_data[action_key] = matching
+                    if include_ts:
+                        # Raw phase start/end timestamps — the evidence a timing
+                        # trace needs. Starts are action-anchored in this data; the
+                        # ends are the independent per-phase recording points.
+                        row.update({
+                            "render_start":  w.get("render_start", ""),
+                            "render_end":    w.get("render_end", ""),
+                            "network_start": w.get("network_start", ""),
+                            "network_end":   w.get("network_end", ""),
+                            "backend_start": w.get("backend_start", ""),
+                            "backend_end":   w.get("backend_end", ""),
+                        })
+                    built.append(row)
+                widget_data[action_key] = built
 
     # Compact mesh reads — only the summary fields, not the full agent output
     anomaly_out = read_agent_output(dataset_id, "anomaly-agent")
@@ -2944,7 +3158,10 @@ def _build_trace_input(question: str, payload: dict, dataset_id) -> dict:
         "scope_filters":     scope_filters if scoped else {},
         "type_summary":      type_summary,
         "top_actions":       slim_actions,
+        "slowest_action":     slowest_action,
+        "selection_note":     selection_note,
         "widget_data":       widget_data,
+        "widget_timestamps_included": timestamps_included,
         "anomaly_context":   compact_anomaly,
         "root_cause_context": compact_rc,
     }
@@ -3045,6 +3262,215 @@ def _fetch_detail_rows(question: str, dataset_id: str) -> list:
 
 # ─── conversational fallback ──────────────────────────────────────────────────
 
+def _human_ms(value) -> str:
+    """Format a millisecond count with thousands separators, adding a rough
+    human-readable duration for large values ('1,117,569 ms (~18m 38s)')."""
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "—"
+    if n < 1000:
+        return f"{n:,} ms"
+    secs = n / 1000.0
+    if secs < 60:
+        return f"{n:,} ms (~{secs:.1f}s)"
+    mins = int(secs // 60)
+    rem = int(round(secs - mins * 60))
+    return f"{n:,} ms (~{mins}m {rem:02d}s)"
+
+
+_TS_VIOLATION_LABEL = {
+    "network_after_render":  "network end after render end",
+    "backend_after_network": "backend end after network end",
+}
+
+
+def _format_timestamp_integrity_answer(ti: dict) -> str:
+    """Render the payload's timestamp_integrity block as a clean, focused
+    Markdown answer: a bold headline answer, a breakdown table, and a short
+    ranked list of worst offenders. Used for timestamp recording-point /
+    phase-ordering questions so the response is readable and self-contained
+    instead of the all-sections data dump."""
+    checked = int(ti.get("widgets_checked", 0) or 0)
+
+    if checked == 0:
+        return (
+            "## Timestamp Integrity Check\n\n"
+            "**Answer:** I couldn't find comparable phase end timestamps in the "
+            "flagged actions to check their ordering, so there's nothing to report."
+        )
+
+    disordered = int(ti.get("widgets_disordered", 0) or 0)
+    pct = ti.get("pct_disordered", 0)
+
+    if disordered == 0:
+        return (
+            "## Timestamp Integrity Check\n\n"
+            f"**Answer:** No — all **{checked:,}** widgets checked in flagged actions "
+            "have correctly ordered phase end timestamps "
+            "(`backend_end ≤ network_end ≤ render_end`). No recording-point "
+            "inconsistencies were detected."
+        )
+
+    by_v = ti.get("by_violation", {}) or {}
+    nar = by_v.get("network_after_render", {}) or {}
+    ban = by_v.get("backend_after_network", {}) or {}
+    nar_max = int(nar.get("max_overrun_ms", 0) or 0)
+    ban_max = int(ban.get("max_overrun_ms", 0) or 0)
+
+    if ban_max >= nar_max:
+        worst_kind, worst_max = "backend_after_network", ban_max
+    else:
+        worst_kind, worst_max = "network_after_render", nar_max
+
+    lines = [
+        "## Timestamp Integrity Check",
+        "",
+        f"**Answer:** Yes — **{disordered:,} of {checked:,} widgets ({pct}%)** in "
+        "flagged actions have phase end timestamps recorded out of order. The "
+        f"largest overrun is **{_human_ms(worst_max)}** "
+        f"(a *{_TS_VIOLATION_LABEL.get(worst_kind, worst_kind)}* violation).",
+        "",
+        "**What this checks:** the phases nest — render ⊇ network ⊇ backend — so "
+        "their end timestamps should satisfy `backend_end ≤ network_end ≤ "
+        "render_end`. A violation means an inner phase was stamped as finishing "
+        "*after* the phase that should contain it, which points to inconsistent "
+        "source clocks or recording points rather than a real performance problem.",
+        "",
+        "### Breakdown by violation",
+        "",
+        "| Violation | Widgets | Avg overrun | Max overrun |",
+        "| --- | --- | --- | --- |",
+        f"| **Network end after render end** | {int(nar.get('count', 0) or 0):,} | "
+        f"{_human_ms(nar.get('avg_overrun_ms', 0))} | {_human_ms(nar_max)} |",
+        f"| **Backend end after network end** | {int(ban.get('count', 0) or 0):,} | "
+        f"{_human_ms(ban.get('avg_overrun_ms', 0))} | {_human_ms(ban_max)} |",
+    ]
+
+    offenders = (ti.get("worst_offenders") or [])[:8]
+    if offenders:
+        lines += ["", "### Top offenders", ""]
+        for i, o in enumerate(offenders, 1):
+            name = str(o.get("widget_name") or "").strip()
+            wid = str(o.get("widget_id") or "").strip()
+            display = name or wid or "unknown widget"
+            label = _TS_VIOLATION_LABEL.get(o.get("violation"), str(o.get("violation") or ""))
+            action_name = str(o.get("action_key") or "").partition("::")[0]
+            session = str(o.get("session_id") or "")
+            parts = [
+                f"{i}. **{display}** — {label}, overrun "
+                f"**{_human_ms(o.get('overrun_ms', 0))}**"
+            ]
+            if action_name:
+                parts.append(f"action `{action_name}`")
+            if session:
+                parts.append(f"session `{session}`")
+            lines.append(" · ".join(parts))
+
+    lines += [
+        "",
+        "*Ask about a specific widget or session for its exact render / network / "
+        "backend end timestamps.*",
+    ]
+    return "\n".join(lines)
+
+
+def _format_phase_overlap_answer(po: dict) -> str:
+    """Render the payload's phase_overlap block as a clean, focused Markdown
+    answer: a bold headline, a relationship breakdown, and example actions.
+    Used for 'did render and network run in parallel' questions."""
+    checked = int(po.get("widgets_checked", 0) or 0)
+
+    if checked == 0:
+        return (
+            "## Render / Network Phase Overlap\n\n"
+            "**Answer:** I couldn't find comparable render and network time windows "
+            "in the raw data (the dedicated per-phase start/end columns), so there's "
+            "nothing to compare for parallelism."
+        )
+
+    parallel = int(po.get("parallel_widgets", 0) or 0)
+    sequential = int(po.get("sequential_widgets", 0) or 0)
+    pct = po.get("pct_parallel", 0)
+    rc = po.get("relationship_counts", {}) or {}
+    nested = int(rc.get("nested", 0) or 0)
+    partial = int(rc.get("partial_overlap", 0) or 0)
+    inverted = int(po.get("inverted_start", 0) or 0)
+
+    if parallel and not sequential:
+        answer = (
+            f"**Answer:** Yes — in all **{checked:,}** widgets checked, render and "
+            f"network ran **in parallel** (overlapping time windows). None ran "
+            f"sequentially. This matches the expected model, where the phases nest "
+            f"(render ⊇ network) so network runs inside the render window."
+        )
+    elif parallel:
+        answer = (
+            f"**Answer:** Mostly yes — **{parallel:,} of {checked:,} widgets "
+            f"({pct}%)** ran render and network **in parallel** (overlapping windows), "
+            f"while **{sequential:,}** ran them **sequentially** (no overlap)."
+        )
+    else:
+        answer = (
+            f"**Answer:** No — all **{checked:,}** widgets checked ran render and "
+            f"network **sequentially** (their time windows do not overlap)."
+        )
+
+    lines = [
+        "## Render / Network Phase Overlap",
+        "",
+        answer,
+        "",
+        "**How this is measured:** render window = `WIDGET_RENDER_TIMESTAMP_START → "
+        "WIDGET_RENDER_TIMESTAMP`; network window = `WIDGET_TIMESTAMP_START → "
+        "WIDGET_TIMESTAMP` (ttfb). *Parallel* means the two windows overlap in time; "
+        "*sequential* means they don't.",
+        "",
+        "### Breakdown",
+        "",
+        "| Relationship | Widgets |",
+        "| --- | --- |",
+        f"| **Nested** (network runs entirely inside render) | {nested:,} |",
+        f"| **Partial overlap** (windows overlap, neither contains the other) | {partial:,} |",
+        f"| **Sequential** (no overlap) | {sequential:,} |",
+    ]
+    if parallel:
+        lines.append(
+            f"\nAcross the parallel widgets, the average render/network overlap is "
+            f"**{_human_ms(po.get('avg_overlap_ms', 0))}** "
+            f"(max **{_human_ms(po.get('max_overlap_ms', 0))}**)."
+        )
+    if inverted:
+        lines.append(
+            f"\n> Note: **{inverted:,}** widget(s) have network starting *before* "
+            f"render — an inner phase can't begin before the phase that contains it, "
+            f"so those are a recording inconsistency."
+        )
+
+    par_ex = (po.get("parallel_examples") or [])[:6]
+    if par_ex:
+        lines += ["", "### Example actions — render & network in parallel", ""]
+        for i, e in enumerate(par_ex, 1):
+            widget = e.get("widget_name") or e.get("widget_id") or "widget"
+            rel = "nested" if e.get("relationship") == "nested" else "partial overlap"
+            lines.append(
+                f"{i}. **{widget}** in action `{e.get('action_name', '?')}` — {rel}, "
+                f"overlap **{_human_ms(e.get('overlap_ms', 0))}**"
+            )
+
+    seq_ex = (po.get("sequential_examples") or [])[:6]
+    if seq_ex:
+        lines += ["", "### Example actions — render & network sequential", ""]
+        for i, e in enumerate(seq_ex, 1):
+            widget = e.get("widget_name") or e.get("widget_id") or "widget"
+            lines.append(
+                f"{i}. **{widget}** in action `{e.get('action_name', '?')}` — "
+                f"gap **{_human_ms(e.get('gap_ms', 0))}** between the windows"
+            )
+
+    return "\n".join(lines)
+
+
 def _conversational_answer(question: str, payload: dict,
                            llm_history: list = None,
                            dataset_id: str = None) -> str:
@@ -3070,6 +3496,18 @@ def _conversational_answer(question: str, payload: dict,
     Without history (first question, no session), fall back to a static
     summary of the dataset meta so the response is always fast and cheap.
     """
+
+    # Timestamp recording-point questions get a dedicated, focused answer built
+    # straight from the timestamp_integrity block — no all-sections dump and no
+    # LLM paraphrase — so the output stays clean, bolded and consistent
+    # regardless of session history.
+    if _detect_timestamp_integrity_question(question):
+        return _format_timestamp_integrity_answer(payload.get("timestamp_integrity") or {})
+
+    # Phase-overlap / parallelism questions get their own focused answer from the
+    # phase_overlap block — same rationale as the timestamp short-circuit above.
+    if _detect_phase_overlap_question(question):
+        return _format_phase_overlap_answer(payload.get("phase_overlap") or {})
 
     # ── Build data context snippet from new v1.1 payload sections ──
     data_context_parts: list[str] = []
@@ -3163,6 +3601,46 @@ def _conversational_answer(question: str, payload: dict,
                     f"{s.get('action_count', '?')} actions"
                 )
         data_context_parts.append("\n".join(sess_lines))
+
+    # -- timestamp_integrity: raw phase END recording-point ordering check.
+    #    Not surfaced in the Action View anomaly list — this is the ONLY place
+    #    the AI can answer "are render/network/backend end timestamps recorded
+    #    out of order" questions (e.g. network end stamped after render end).
+    ts_integ = payload.get("timestamp_integrity")
+    if ts_integ and ts_integ.get("widgets_checked", 0) > 0:
+        ti_lines = [
+            "## Timestamp Integrity (raw phase end recording points)",
+            ts_integ.get("note", ""),
+            f"Widgets checked: {ts_integ.get('widgets_checked', 0)}",
+            f"Widgets with out-of-order end timestamps: "
+            f"{ts_integ.get('widgets_disordered', 0)} "
+            f"({ts_integ.get('pct_disordered', 0)}%)",
+        ]
+        by_v = ts_integ.get("by_violation", {}) or {}
+        nar = by_v.get("network_after_render", {}) or {}
+        ban = by_v.get("backend_after_network", {}) or {}
+        ti_lines.append(
+            f"  - network_end after render_end: {nar.get('count', 0)} widgets "
+            f"(avg {nar.get('avg_overrun_ms', 0)} ms, max {nar.get('max_overrun_ms', 0)} ms overrun)"
+        )
+        ti_lines.append(
+            f"  - backend_end after network_end: {ban.get('count', 0)} widgets "
+            f"(avg {ban.get('avg_overrun_ms', 0)} ms, max {ban.get('max_overrun_ms', 0)} ms overrun)"
+        )
+        offenders = (ts_integ.get("worst_offenders") or [])[:10]
+        if offenders:
+            ti_lines.append("Worst offenders (top 10 by overrun):")
+            for o in offenders:
+                ti_lines.append(
+                    f"  - widget {o.get('widget_id', '?')} "
+                    f"({o.get('widget_name', '?')}) in action {o.get('action_key', '?')}"
+                    f", session {o.get('session_id', '?')}: {o.get('violation', '?')} "
+                    f"by {o.get('overrun_ms', '?')} ms "
+                    f"[render_end={o.get('render_end', '')}, "
+                    f"network_end={o.get('network_end', '')}, "
+                    f"backend_end={o.get('backend_end', '')}]"
+                )
+        data_context_parts.append("\n".join(ti_lines))
 
     # -- on-demand aggregation from the full stored dataset --
     # Deterministically parse the question for a filter/group-by drilldown and
