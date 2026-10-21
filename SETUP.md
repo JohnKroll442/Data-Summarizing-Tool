@@ -36,7 +36,7 @@ You need three things installed **before** you start. Install any that are missi
   ```bash
   node --version
   ```
-  You should see `v18.x.x` or higher.
+  You should see `v20.19.x` or higher.
 
 ### 1c. Python (version 3.10 or higher)
 
