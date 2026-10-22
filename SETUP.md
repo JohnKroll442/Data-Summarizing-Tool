@@ -7,6 +7,18 @@ This guide covers **Windows**, **macOS**, and **Linux**. Where commands differ, 
 
 ---
 
+## Setting up HyperSpace LLM Proxy
+
+Before proceeding with the steps below, you will need to set up the HyperSpace LLM Proxy.
+
+Open the link and follow the instructions on the site to set up the proxy:
+
+**[HyperSpace LLM Proxy Quickstart](https://ai-docs.portal.hyperspace.tools.sap/llm-proxy/quickstart/)**
+
+Once the proxy is set up, you are ready to continue with the remaining steps in this guide.
+
+---
+
 ## What you are setting up
 
 - A **frontend** (React, runs in your browser on port `5173`)
